@@ -1,4 +1,4 @@
-name: CI test to build and run the unit tests for Thompson cloud microphysics on ubuntu v22.04.
+name: CI test to build and run the unit tests for TEMPO microphysics on ubuntu v22.04.
 
 on: [pull_request,workflow_dispatch,push]
 
