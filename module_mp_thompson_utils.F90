@@ -4,10 +4,10 @@ module module_mp_thompson_utils
 
     use module_mp_thompson_params
 
-#if defined(CCPP)
-    use machine, only: wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
-#elif defined(mpas)
+#if defined(mpas)
     use mpas_kind_types, only: wp => RKIND, sp => R4KIND, dp => R8KIND
+#else
+    use machine, only: wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
 #endif
 
     !    use mp_radar
@@ -718,6 +718,622 @@ contains
 
     end subroutine table_ccnAct
 
+    !+---+-----------------------------------------------------------------+
+    !+---+-----------------------------------------------------------------+
+    !+---+-----------------------------------------------------------------+
+    !ctrlL
+    !+---+-----------------------------------------------------------------+
+    !..Creation of the lookup tables and support functions found below here.
+    !+---+-----------------------------------------------------------------+
+    !>\ingroup aathompson
+    !! Rain collecting graupel (and inverse).  Explicit CE integration.
+    subroutine qr_acr_qg_par
+
+        implicit none
+
+        !..Local variables
+        INTEGER:: i, j, k, m, n, n2, n3
+        INTEGER:: km, km_s, km_e
+        DOUBLE PRECISION, DIMENSION(nbg):: vg, N_g
+        DOUBLE PRECISION, DIMENSION(nbr):: vr, N_r
+        DOUBLE PRECISION:: N0_r, N0_g, lam_exp, lamg, lamr
+        DOUBLE PRECISION:: massg, massr, dvg, dvr, t1, t2, z1, z2, y1, y2
+        LOGICAL force_read_thompson, write_thompson_tables
+        LOGICAL lexist,lopen
+        INTEGER good,ierr
+
+        force_read_thompson = .false.
+        write_thompson_tables = .false.
+        !+---+
+
+
+        good = 0
+        INQUIRE(FILE=qr_acr_qg_file, EXIST=lexist)
+#ifdef MPI
+        call MPI_BARRIER(mpi_communicator,ierr)
+#endif
+        IF ( lexist ) THEN
+            OPEN(63,file=qr_acr_qg_file,form="unformatted",err=1234)
+            !sms$serial begin
+            READ(63,err=1234) tcg_racg
+            READ(63,err=1234) tmr_racg
+            READ(63,err=1234) tcr_gacr
+            READ(63,err=1234) tmg_gacr
+            READ(63,err=1234) tnr_racg
+            READ(63,err=1234) tnr_gacr
+            !sms$serial end
+            good = 1
+1234        CONTINUE
+            IF ( good .NE. 1 ) THEN
+                INQUIRE(63,opened=lopen)
+                IF (lopen) THEN
+                    IF( force_read_thompson ) THEN
+                        write(0,*) "Error reading "//qr_acr_qg_file//" Aborting because force_read_thompson is .true."
+                        return
+                    ENDIF
+                    CLOSE(63)
+                ELSE
+                    IF( force_read_thompson ) THEN
+                        write(0,*) "Error opening "//qr_acr_qg_file//" Aborting because force_read_thompson is .true."
+                        return
+                    ENDIF
+                ENDIF
+            ELSE
+                INQUIRE(63,opened=lopen)
+                IF (lopen) THEN
+                    CLOSE(63)
+                ENDIF
+            ENDIF
+        ELSE
+            IF( force_read_thompson ) THEN
+                write(0,*) "Non-existent "//qr_acr_qg_file//" Aborting because force_read_thompson is .true."
+                return
+            ENDIF
+        ENDIF
+
+        IF (.NOT. good .EQ. 1 ) THEN
+            if (thompson_table_writer) then
+                write_thompson_tables = .true.
+                write(0,*) "ThompMP: computing qr_acr_qg"
+            endif
+            do n2 = 1, nbr
+                !        vr(n2) = av_r*Dr(n2)**bv_r * DEXP(-fv_r*Dr(n2))
+                vr(n2) = -0.1021 + 4.932E3*Dr(n2) - 0.9551E6*Dr(n2)*Dr(n2)     &
+                    + 0.07934E9*Dr(n2)*Dr(n2)*Dr(n2)                          &
+                    - 0.002362E12*Dr(n2)*Dr(n2)*Dr(n2)*Dr(n2)
+            enddo
+            !   do n = 1, nbg
+            !    vg(n) = av_g*Dg(n)**bv_g
+            !   enddo
+
+            do n3 = 1, 1
+                do n = 1, nbg
+                    idx_bg = idx_bg1
+                    vg(n,n3) = av_g(idx_bg)*Dg(n)**bv_g(idx_bg)
+                enddo
+            enddo
+
+            !..Note values returned from wrf_dm_decomp1d are zero-based, add 1 for
+            !.. fortran indices.  J. Michalakes, 2009Oct30.
+
+#if ( defined( DM_PARALLEL ) && ( ! defined( STUBMPI ) ) )
+            CALL wrf_dm_decomp1d ( ntb_r*ntb_r1, km_s, km_e )
+#else
+            km_s = 0
+            km_e = ntb_r*ntb_r1 - 1
+#endif
+
+            do km = km_s, km_e
+                m = km / ntb_r1 + 1
+                k = mod( km , ntb_r1 ) + 1
+
+                lam_exp = (N0r_exp(k)*am_r*crg(1)/r_r(m))**ore1
+                lamr = lam_exp * (crg(3)*org2*org1)**obmr
+                N0_r = N0r_exp(k)/(crg(2)*lam_exp) * lamr**cre(2)
+                do n2 = 1, nbr
+                    N_r(n2) = N0_r*Dr(n2)**mu_r *DEXP(-lamr*Dr(n2))*dtr(n2)
+                enddo
+
+                do n3 = 1, 1
+                    idx_bg = idx_bg1
+
+                    do j = 1, ntb_g
+                        do i = 1, ntb_g1
+                            lam_exp = (N0g_exp(i)*am_g*cgg(1)/r_g(j))**oge1
+                            lamg = lam_exp * (cgg(3)*ogg2*ogg1)**obmg
+                            N0_g = N0g_exp(i)/(cgg(2)*lam_exp) * lamg**cge(2)
+                            do n = 1, nbg
+                                N_g(n) = N0_g*Dg(n)**mu_g * DEXP(-lamg*Dg(n))*dtg(n)
+                            enddo
+
+                            t1 = 0.0d0
+                            t2 = 0.0d0
+                            z1 = 0.0d0
+                            z2 = 0.0d0
+                            y1 = 0.0d0
+                            y2 = 0.0d0
+                            do n2 = 1, nbr
+                                massr = am_r * Dr(n2)**bm_r
+                                do n = 1, nbg
+                                    massg = am_g * Dg(n)**bm_g
+
+                                    dvg = 0.5d0*((vr(n2) - vg(n)) + DABS(vr(n2)-vg(n)))
+                                    dvr = 0.5d0*((vg(n) - vr(n2)) + DABS(vg(n)-vr(n2)))
+
+                                    t1 = t1+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
+                                        *dvg*massg * N_g(n)* N_r(n2)
+                                    z1 = z1+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
+                                        *dvg*massr * N_g(n)* N_r(n2)
+                                    y1 = y1+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
+                                        *dvg       * N_g(n)* N_r(n2)
+
+                                    t2 = t2+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
+                                        *dvr*massr * N_g(n)* N_r(n2)
+                                    y2 = y2+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
+                                        *dvr       * N_g(n)* N_r(n2)
+                                    z2 = z2+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
+                                        *dvr*massg * N_g(n)* N_r(n2)
+                                enddo
+97                              continue
+                            enddo
+                            tcg_racg(i,j,k,m) = t1
+                            tmr_racg(i,j,k,m) = DMIN1(z1, r_r(m)*1.0d0)
+                            tcr_gacr(i,j,k,m) = t2
+                            tmg_gacr(i,j,k,m) = DMIN1(z2, r_g(j)*1.0d0)
+                            tnr_racg(i,j,k,m) = y1
+                            tnr_gacr(i,j,k,m) = y2
+                        enddo
+                    enddo
+                enddo
+            enddo
+            IF ( write_thompson_tables ) THEN
+                write(0,*) "Writing "//qr_acr_qg_file//" in Thompson MP init"
+                OPEN(63,file=qr_acr_qg_file,form="unformatted",err=9234)
+                WRITE(63,err=9234) tcg_racg
+                WRITE(63,err=9234) tmr_racg
+                WRITE(63,err=9234) tcr_gacr
+                WRITE(63,err=9234) tnr_racg
+                WRITE(63,err=9234) tnr_gacr
+                CLOSE(63)
+                RETURN    ! ----- RETURN
+9234            CONTINUE
+                write(0,*) "Error writing "//qr_acr_qg_file
+                return
+            ENDIF
+        ENDIF
+
+    end subroutine qr_acr_qg_par
+    !+---+-----------------------------------------------------------------+
+    !ctrlL
+    !+---+-----------------------------------------------------------------+
+    !>\ingroup aathompson
+    !!Rain collecting snow (and inverse).  Explicit CE integration.
+    subroutine qr_acr_qs_par
+
+        implicit none
+
+        !..Local variables
+        INTEGER:: i, j, k, m, n, n2
+        INTEGER:: km, km_s, km_e
+        DOUBLE PRECISION, DIMENSION(nbr):: vr, D1, N_r
+        DOUBLE PRECISION, DIMENSION(nbs):: vs, N_s
+        DOUBLE PRECISION:: loga_, a_, b_, second, M0, M2, M3, Mrat, oM3
+        DOUBLE PRECISION:: N0_r, lam_exp, lamr, slam1, slam2
+        DOUBLE PRECISION:: dvs, dvr, masss, massr
+        DOUBLE PRECISION:: t1, t2, t3, t4, z1, z2, z3, z4
+        DOUBLE PRECISION:: y1, y2, y3, y4
+        LOGICAL force_read_thompson, write_thompson_tables
+        LOGICAL lexist,lopen
+        INTEGER good,ierr
+
+        !+---+
+
+        force_read_thompson = .false.
+        write_thompson_tables = .false.
+
+        good = 0
+        INQUIRE(FILE=qr_acr_qs_file, EXIST=lexist)
+#ifdef MPI
+        call MPI_BARRIER(mpi_communicator,ierr)
+#endif
+        IF ( lexist ) THEN
+            !write(0,*) "ThompMP: read "//qr_acr_qs_file//" instead of computing"
+            OPEN(63,file=qr_acr_qs_file,form="unformatted",err=1234)
+            !sms$serial begin
+            READ(63,err=1234)tcs_racs1
+            READ(63,err=1234)tmr_racs1
+            READ(63,err=1234)tcs_racs2
+            READ(63,err=1234)tmr_racs2
+            READ(63,err=1234)tcr_sacr1
+            READ(63,err=1234)tms_sacr1
+            READ(63,err=1234)tcr_sacr2
+            READ(63,err=1234)tms_sacr2
+            READ(63,err=1234)tnr_racs1
+            READ(63,err=1234)tnr_racs2
+            READ(63,err=1234)tnr_sacr1
+            READ(63,err=1234)tnr_sacr2
+            !sms$serial end
+            good = 1
+1234        CONTINUE
+            IF ( good .NE. 1 ) THEN
+                INQUIRE(63,opened=lopen)
+                IF (lopen) THEN
+                    IF( force_read_thompson ) THEN
+                        write(0,*) "Error reading "//qr_acr_qs_file//" Aborting because force_read_thompson is .true."
+                        return
+                    ENDIF
+                    CLOSE(63)
+                ELSE
+                    IF( force_read_thompson ) THEN
+                        write(0,*) "Error opening "//qr_acr_qs_file//" Aborting because force_read_thompson is .true."
+                        return
+                    ENDIF
+                ENDIF
+            ELSE
+                INQUIRE(63,opened=lopen)
+                IF (lopen) THEN
+                    CLOSE(63)
+                ENDIF
+            ENDIF
+        ELSE
+            IF( force_read_thompson ) THEN
+                write(0,*) "Non-existent "//qr_acr_qs_file//" Aborting because force_read_thompson is .true."
+                return
+            ENDIF
+        ENDIF
+
+        IF (.NOT. good .EQ. 1 ) THEN
+            if (thompson_table_writer) then
+                write_thompson_tables = .true.
+                write(0,*) "ThompMP: computing qr_acr_qs"
+            endif
+            do n2 = 1, nbr
+                !        vr(n2) = av_r*Dr(n2)**bv_r * DEXP(-fv_r*Dr(n2))
+                vr(n2) = -0.1021 + 4.932E3*Dr(n2) - 0.9551E6*Dr(n2)*Dr(n2)     &
+                    + 0.07934E9*Dr(n2)*Dr(n2)*Dr(n2)                          &
+                    - 0.002362E12*Dr(n2)*Dr(n2)*Dr(n2)*Dr(n2)
+                D1(n2) = (vr(n2)/av_s)**(1./bv_s)
+            enddo
+            do n = 1, nbs
+                vs(n) = 1.5*av_s*Ds(n)**bv_s * DEXP(-fv_s*Ds(n))
+            enddo
+
+            !..Note values returned from wrf_dm_decomp1d are zero-based, add 1 for
+            !.. fortran indices.  J. Michalakes, 2009Oct30.
+
+#if ( defined( DM_PARALLEL ) && ( ! defined( STUBMPI ) ) )
+            CALL wrf_dm_decomp1d ( ntb_r*ntb_r1, km_s, km_e )
+#else
+            km_s = 0
+            km_e = ntb_r*ntb_r1 - 1
+#endif
+
+            do km = km_s, km_e
+                m = km / ntb_r1 + 1
+                k = mod( km , ntb_r1 ) + 1
+
+                lam_exp = (N0r_exp(k)*am_r*crg(1)/r_r(m))**ore1
+                lamr = lam_exp * (crg(3)*org2*org1)**obmr
+                N0_r = N0r_exp(k)/(crg(2)*lam_exp) * lamr**cre(2)
+                do n2 = 1, nbr
+                    N_r(n2) = N0_r*Dr(n2)**mu_r * DEXP(-lamr*Dr(n2))*dtr(n2)
+                enddo
+
+                do j = 1, ntb_t
+                    do i = 1, ntb_s
+
+                        !..From the bm_s moment, compute plus one moment.  If we are not
+                        !.. using bm_s=2, then we must transform to the pure 2nd moment
+                        !.. (variable called "second") and then to the bm_s+1 moment.
+
+                        M2 = r_s(i)*oams *1.0d0
+                        if (bm_s.gt.2.0-1.E-3 .and. bm_s.lt.2.0+1.E-3) then
+                            loga_ = sa(1) + sa(2)*Tc(j) + sa(3)*bm_s &
+                                + sa(4)*Tc(j)*bm_s + sa(5)*Tc(j)*Tc(j) &
+                                + sa(6)*bm_s*bm_s + sa(7)*Tc(j)*Tc(j)*bm_s &
+                                + sa(8)*Tc(j)*bm_s*bm_s + sa(9)*Tc(j)*Tc(j)*Tc(j) &
+                                + sa(10)*bm_s*bm_s*bm_s
+                            a_ = 10.0**loga_
+                            b_ = sb(1) + sb(2)*Tc(j) + sb(3)*bm_s &
+                                + sb(4)*Tc(j)*bm_s + sb(5)*Tc(j)*Tc(j) &
+                                + sb(6)*bm_s*bm_s + sb(7)*Tc(j)*Tc(j)*bm_s &
+                                + sb(8)*Tc(j)*bm_s*bm_s + sb(9)*Tc(j)*Tc(j)*Tc(j) &
+                                + sb(10)*bm_s*bm_s*bm_s
+                            second = (M2/a_)**(1./b_)
+                        else
+                            second = M2
+                        endif
+
+                        loga_ = sa(1) + sa(2)*Tc(j) + sa(3)*cse(1) &
+                            + sa(4)*Tc(j)*cse(1) + sa(5)*Tc(j)*Tc(j) &
+                            + sa(6)*cse(1)*cse(1) + sa(7)*Tc(j)*Tc(j)*cse(1) &
+                            + sa(8)*Tc(j)*cse(1)*cse(1) + sa(9)*Tc(j)*Tc(j)*Tc(j) &
+                            + sa(10)*cse(1)*cse(1)*cse(1)
+                        a_ = 10.0**loga_
+                        b_ = sb(1)+sb(2)*Tc(j)+sb(3)*cse(1) + sb(4)*Tc(j)*cse(1) &
+                            + sb(5)*Tc(j)*Tc(j) + sb(6)*cse(1)*cse(1) &
+                            + sb(7)*Tc(j)*Tc(j)*cse(1) + sb(8)*Tc(j)*cse(1)*cse(1) &
+                            + sb(9)*Tc(j)*Tc(j)*Tc(j)+sb(10)*cse(1)*cse(1)*cse(1)
+                        M3 = a_ * second**b_
+
+                        oM3 = 1./M3
+                        Mrat = M2*(M2*oM3)*(M2*oM3)*(M2*oM3)
+                        M0   = (M2*oM3)**mu_s
+                        slam1 = M2 * oM3 * Lam0
+                        slam2 = M2 * oM3 * Lam1
+
+                        do n = 1, nbs
+                            N_s(n) = Mrat*(Kap0*DEXP(-slam1*Ds(n)) &
+                                + Kap1*M0*Ds(n)**mu_s * DEXP(-slam2*Ds(n)))*dts(n)
+                        enddo
+
+                        t1 = 0.0d0
+                        t2 = 0.0d0
+                        t3 = 0.0d0
+                        t4 = 0.0d0
+                        z1 = 0.0d0
+                        z2 = 0.0d0
+                        z3 = 0.0d0
+                        z4 = 0.0d0
+                        y1 = 0.0d0
+                        y2 = 0.0d0
+                        y3 = 0.0d0
+                        y4 = 0.0d0
+                        do n2 = 1, nbr
+                            massr = am_r * Dr(n2)**bm_r
+                            do n = 1, nbs
+                                masss = am_s * Ds(n)**bm_s
+
+                                dvs = 0.5d0*((vr(n2) - vs(n)) + DABS(vr(n2)-vs(n)))
+                                dvr = 0.5d0*((vs(n) - vr(n2)) + DABS(vs(n)-vr(n2)))
+
+                                if (massr .gt. 1.5*masss) then
+                                    t1 = t1+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvs*masss * N_s(n)* N_r(n2)
+                                    z1 = z1+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvs*massr * N_s(n)* N_r(n2)
+                                    y1 = y1+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvs       * N_s(n)* N_r(n2)
+                                else
+                                    t3 = t3+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvs*masss * N_s(n)* N_r(n2)
+                                    z3 = z3+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvs*massr * N_s(n)* N_r(n2)
+                                    y3 = y3+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvs       * N_s(n)* N_r(n2)
+                                endif
+
+                                if (massr .gt. 1.5*masss) then
+                                    t2 = t2+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvr*massr * N_s(n)* N_r(n2)
+                                    y2 = y2+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvr       * N_s(n)* N_r(n2)
+                                    z2 = z2+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvr*masss * N_s(n)* N_r(n2)
+                                else
+                                    t4 = t4+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvr*massr * N_s(n)* N_r(n2)
+                                    y4 = y4+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvr       * N_s(n)* N_r(n2)
+                                    z4 = z4+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
+                                        *dvr*masss * N_s(n)* N_r(n2)
+                                endif
+
+                            enddo
+                        enddo
+                        tcs_racs1(i,j,k,m) = t1
+                        tmr_racs1(i,j,k,m) = DMIN1(z1, r_r(m)*1.0d0)
+                        tcs_racs2(i,j,k,m) = t3
+                        tmr_racs2(i,j,k,m) = z3
+                        tcr_sacr1(i,j,k,m) = t2
+                        tms_sacr1(i,j,k,m) = z2
+                        tcr_sacr2(i,j,k,m) = t4
+                        tms_sacr2(i,j,k,m) = z4
+                        tnr_racs1(i,j,k,m) = y1
+                        tnr_racs2(i,j,k,m) = y3
+                        tnr_sacr1(i,j,k,m) = y2
+                        tnr_sacr2(i,j,k,m) = y4
+                    enddo
+                enddo
+            enddo
+
+            IF ( write_thompson_tables ) THEN
+                write(0,*) "Writing "//qr_acr_qs_file//" in Thompson MP init"
+                OPEN(63,file=qr_acr_qs_file,form="unformatted",err=9234)
+                WRITE(63,err=9234)tcs_racs1
+                WRITE(63,err=9234)tmr_racs1
+                WRITE(63,err=9234)tcs_racs2
+                WRITE(63,err=9234)tmr_racs2
+                WRITE(63,err=9234)tcr_sacr1
+                WRITE(63,err=9234)tms_sacr1
+                WRITE(63,err=9234)tcr_sacr2
+                WRITE(63,err=9234)tms_sacr2
+                WRITE(63,err=9234)tnr_racs1
+                WRITE(63,err=9234)tnr_racs2
+                WRITE(63,err=9234)tnr_sacr1
+                WRITE(63,err=9234)tnr_sacr2
+                CLOSE(63)
+                RETURN    ! ----- RETURN
+9234            CONTINUE
+                write(0,*) "Error writing "//qr_acr_qs_file
+            ENDIF
+        ENDIF
+
+    end subroutine qr_acr_qs_par
+    !+---+-----------------------------------------------------------------+
+    !ctrlL
+    !+---+-----------------------------------------------------------------+
+    !>\ingroup aathompson
+    !! This is a literal adaptation of Bigg (1954) probability of drops of
+    !! a particular volume freezing.  Given this probability, simply freeze
+    !! the proportion of drops summing their masses.
+    subroutine freezeH2O_par(threads)
+
+        implicit none
+
+        !..Interface variables
+        INTEGER, INTENT(IN):: threads
+
+        !..Local variables
+        INTEGER:: i, j, k, m, n, n2
+        DOUBLE PRECISION:: N_r, N_c
+        DOUBLE PRECISION, DIMENSION(nbr):: massr
+        DOUBLE PRECISION, DIMENSION(nbc):: massc
+        DOUBLE PRECISION:: sum1, sum2, sumn1, sumn2, &
+            prob, vol, Texp, orho_w, &
+            lam_exp, lamr, N0_r, lamc, N0_c, y
+        INTEGER:: nu_c
+        REAL:: T_adjust
+        LOGICAL force_read_thompson, write_thompson_tables
+        LOGICAL lexist,lopen
+        INTEGER good,ierr
+
+        !+---+
+        force_read_thompson = .false.
+        write_thompson_tables = .false.
+
+        good = 0
+        INQUIRE(FILE=freeze_h2o_file,EXIST=lexist)
+#ifdef MPI
+        call MPI_BARRIER(mpi_communicator,ierr)
+#endif
+        IF ( lexist ) THEN
+            !write(0,*) "ThompMP: read "//freeze_h2o_file//" instead of computing"
+            OPEN(63,file=freeze_h2o_file,form="unformatted",err=1234)
+            !sms$serial begin
+            READ(63,err=1234)tpi_qrfz
+            READ(63,err=1234)tni_qrfz
+            READ(63,err=1234)tpg_qrfz
+            READ(63,err=1234)tnr_qrfz
+            READ(63,err=1234)tpi_qcfz
+            READ(63,err=1234)tni_qcfz
+            !sms$serial end
+            good = 1
+1234        CONTINUE
+            IF ( good .NE. 1 ) THEN
+                INQUIRE(63,opened=lopen)
+                IF (lopen) THEN
+                    IF( force_read_thompson ) THEN
+                        write(0,*) "Error reading "//freeze_h2o_file//" Aborting because force_read_thompson is .true."
+                        return
+                    ENDIF
+                    CLOSE(63)
+                ELSE
+                    IF( force_read_thompson ) THEN
+                        write(0,*) "Error opening "//freeze_h2o_file//" Aborting because force_read_thompson is .true."
+                        return
+                    ENDIF
+                ENDIF
+            ELSE
+                INQUIRE(63,opened=lopen)
+                IF (lopen) THEN
+                    CLOSE(63)
+                ENDIF
+            ENDIF
+        ELSE
+            IF( force_read_thompson ) THEN
+                write(0,*) "Non-existent "//freeze_h2o_file//" Aborting because force_read_thompson is .true."
+                return
+            ENDIF
+        ENDIF
+
+        IF (.NOT. good .EQ. 1 ) THEN
+            if (thompson_table_writer) then
+                write_thompson_tables = .true.
+                write(0,*) "ThompMP: computing freezeH2O"
+            endif
+
+            orho_w = 1./rho_w
+
+            do n2 = 1, nbr
+                massr(n2) = am_r*Dr(n2)**bm_r
+            enddo
+            do n = 1, nbc
+                massc(n) = am_r*Dc(n)**bm_r
+            enddo
+
+            !..Freeze water (smallest drops become cloud ice, otherwise graupel).
+            do m = 1, ntb_IN
+                T_adjust = MAX(-3.0, MIN(3.0 - ALOG10(Nt_IN(m)), 3.0))
+                do k = 1, 45
+                    !         print*, ' Freezing water for temp = ', -k
+                    Texp = DEXP( DFLOAT(k) - T_adjust*1.0D0 ) - 1.0D0
+                    !$OMP PARALLEL DO SCHEDULE(dynamic) num_threads(threads) &
+                    !$OMP PRIVATE(j,i,lam_exp,lamr,N0_r,sum1,sum2,sumn1,sumn2,n2,N_r,vol,prob)
+                    do j = 1, ntb_r1
+                        do i = 1, ntb_r
+                            lam_exp = (N0r_exp(j)*am_r*crg(1)/r_r(i))**ore1
+                            lamr = lam_exp * (crg(3)*org2*org1)**obmr
+                            N0_r = N0r_exp(j)/(crg(2)*lam_exp) * lamr**cre(2)
+                            sum1 = 0.0d0
+                            sum2 = 0.0d0
+                            sumn1 = 0.0d0
+                            sumn2 = 0.0d0
+                            do n2 = nbr, 1, -1
+                                N_r = N0_r*Dr(n2)**mu_r*DEXP(-lamr*Dr(n2))*dtr(n2)
+                                vol = massr(n2)*orho_w
+                                prob = MAX(0.0D0, 1.0D0 - DEXP(-120.0D0*vol*5.2D-4 * Texp))
+                                if (massr(n2) .lt. xm0g) then
+                                    sumn1 = sumn1 + prob*N_r
+                                    sum1 = sum1 + prob*N_r*massr(n2)
+                                else
+                                    sumn2 = sumn2 + prob*N_r
+                                    sum2 = sum2 + prob*N_r*massr(n2)
+                                endif
+                                if ((sum1+sum2).ge.r_r(i)) EXIT
+                            enddo
+                            tpi_qrfz(i,j,k,m) = sum1
+                            tni_qrfz(i,j,k,m) = sumn1
+                            tpg_qrfz(i,j,k,m) = sum2
+                            tnr_qrfz(i,j,k,m) = sumn2
+                        enddo
+                    enddo
+                    !$OMP END PARALLEL DO
+
+                    !$OMP PARALLEL DO SCHEDULE(dynamic) num_threads(threads) &
+                    !$OMP PRIVATE(j,i,nu_c,lamc,N0_c,sum1,sumn2,vol,prob,N_c)
+                    do j = 1, nbc
+                        nu_c = MIN(15, NINT(1000.E6/t_Nc(j)) + 2)
+                        do i = 1, ntb_c
+                            lamc = (t_Nc(j)*am_r* ccg(2,nu_c) * ocg1(nu_c) / r_c(i))**obmr
+                            N0_c = t_Nc(j)*ocg1(nu_c) * lamc**cce(1,nu_c)
+                            sum1 = 0.0d0
+                            sumn2 = 0.0d0
+                            do n = nbc, 1, -1
+                                vol = massc(n)*orho_w
+                                prob = MAX(0.0D0, 1.0D0 - DEXP(-120.0D0*vol*5.2D-4 * Texp))
+                                N_c = N0_c*Dc(n)**nu_c*EXP(-lamc*Dc(n))*dtc(n)
+                                sumn2 = MIN(t_Nc(j), sumn2 + prob*N_c)
+                                sum1 = sum1 + prob*N_c*massc(n)
+                                if (sum1 .ge. r_c(i)) EXIT
+                            enddo
+                            tpi_qcfz(i,j,k,m) = sum1
+                            tni_qcfz(i,j,k,m) = sumn2
+                        enddo
+                    enddo
+                    !$OMP END PARALLEL DO
+                enddo
+            enddo
+
+            IF ( write_thompson_tables ) THEN
+                write(0,*) "Writing "//freeze_h2o_file//" in Thompson MP init"
+                OPEN(63,file=freeze_h2o_file,form="unformatted",err=9234)
+                WRITE(63,err=9234)tpi_qrfz
+                WRITE(63,err=9234)tni_qrfz
+                WRITE(63,err=9234)tpg_qrfz
+                WRITE(63,err=9234)tnr_qrfz
+                WRITE(63,err=9234)tpi_qcfz
+                WRITE(63,err=9234)tni_qcfz
+                CLOSE(63)
+                RETURN    ! ----- RETURN
+9234            CONTINUE
+                write(0,*) "Error writing "//freeze_h2o_file
+                return
+            ENDIF
+        ENDIF
+
+    end subroutine freezeH2O_par
+
 #endif
     !+---+-----------------------------------------------------------------+
     !..Compute _radiation_ effective radii of cloud water, ice, and snow.
@@ -1375,621 +1991,6 @@ contains
         return
     end function make_RainNumber
 
-    !+---+-----------------------------------------------------------------+
-    !+---+-----------------------------------------------------------------+
-    !+---+-----------------------------------------------------------------+
-    !ctrlL
-    !+---+-----------------------------------------------------------------+
-    !..Creation of the lookup tables and support functions found below here.
-    !+---+-----------------------------------------------------------------+
-    !>\ingroup aathompson
-    !! Rain collecting graupel (and inverse).  Explicit CE integration.
-    subroutine qr_acr_qg_par
-
-        implicit none
-
-        !..Local variables
-        INTEGER:: i, j, k, m, n, n2, n3
-        INTEGER:: km, km_s, km_e
-        DOUBLE PRECISION, DIMENSION(nbg):: vg, N_g
-        DOUBLE PRECISION, DIMENSION(nbr):: vr, N_r
-        DOUBLE PRECISION:: N0_r, N0_g, lam_exp, lamg, lamr
-        DOUBLE PRECISION:: massg, massr, dvg, dvr, t1, t2, z1, z2, y1, y2
-        LOGICAL force_read_thompson, write_thompson_tables
-        LOGICAL lexist,lopen
-        INTEGER good,ierr
-
-        force_read_thompson = .false.
-        write_thompson_tables = .false.
-        !+---+
-
-
-        good = 0
-        INQUIRE(FILE=qr_acr_qg_file, EXIST=lexist)
-#ifdef MPI
-        call MPI_BARRIER(mpi_communicator,ierr)
-#endif
-        IF ( lexist ) THEN
-            OPEN(63,file=qr_acr_qg_file,form="unformatted",err=1234)
-            !sms$serial begin
-            READ(63,err=1234) tcg_racg
-            READ(63,err=1234) tmr_racg
-            READ(63,err=1234) tcr_gacr
-            READ(63,err=1234) tmg_gacr
-            READ(63,err=1234) tnr_racg
-            READ(63,err=1234) tnr_gacr
-            !sms$serial end
-            good = 1
-1234        CONTINUE
-            IF ( good .NE. 1 ) THEN
-                INQUIRE(63,opened=lopen)
-                IF (lopen) THEN
-                    IF( force_read_thompson ) THEN
-                        write(0,*) "Error reading "//qr_acr_qg_file//" Aborting because force_read_thompson is .true."
-                        return
-                    ENDIF
-                    CLOSE(63)
-                ELSE
-                    IF( force_read_thompson ) THEN
-                        write(0,*) "Error opening "//qr_acr_qg_file//" Aborting because force_read_thompson is .true."
-                        return
-                    ENDIF
-                ENDIF
-            ELSE
-                INQUIRE(63,opened=lopen)
-                IF (lopen) THEN
-                    CLOSE(63)
-                ENDIF
-            ENDIF
-        ELSE
-            IF( force_read_thompson ) THEN
-                write(0,*) "Non-existent "//qr_acr_qg_file//" Aborting because force_read_thompson is .true."
-                return
-            ENDIF
-        ENDIF
-
-        IF (.NOT. good .EQ. 1 ) THEN
-            if (thompson_table_writer) then
-                write_thompson_tables = .true.
-                write(0,*) "ThompMP: computing qr_acr_qg"
-            endif
-            do n2 = 1, nbr
-                !        vr(n2) = av_r*Dr(n2)**bv_r * DEXP(-fv_r*Dr(n2))
-                vr(n2) = -0.1021 + 4.932E3*Dr(n2) - 0.9551E6*Dr(n2)*Dr(n2)     &
-                    + 0.07934E9*Dr(n2)*Dr(n2)*Dr(n2)                          &
-                    - 0.002362E12*Dr(n2)*Dr(n2)*Dr(n2)*Dr(n2)
-            enddo
-            !   do n = 1, nbg
-            !    vg(n) = av_g*Dg(n)**bv_g
-            !   enddo
-
-            do n3 = 1, 1
-                do n = 1, nbg
-                    idx_bg = idx_bg1
-                    vg(n,n3) = av_g(idx_bg)*Dg(n)**bv_g(idx_bg)
-                enddo
-            enddo
-
-            !..Note values returned from wrf_dm_decomp1d are zero-based, add 1 for
-            !.. fortran indices.  J. Michalakes, 2009Oct30.
-
-#if ( defined( DM_PARALLEL ) && ( ! defined( STUBMPI ) ) )
-            CALL wrf_dm_decomp1d ( ntb_r*ntb_r1, km_s, km_e )
-#else
-            km_s = 0
-            km_e = ntb_r*ntb_r1 - 1
-#endif
-
-            do km = km_s, km_e
-                m = km / ntb_r1 + 1
-                k = mod( km , ntb_r1 ) + 1
-
-                lam_exp = (N0r_exp(k)*am_r*crg(1)/r_r(m))**ore1
-                lamr = lam_exp * (crg(3)*org2*org1)**obmr
-                N0_r = N0r_exp(k)/(crg(2)*lam_exp) * lamr**cre(2)
-                do n2 = 1, nbr
-                    N_r(n2) = N0_r*Dr(n2)**mu_r *DEXP(-lamr*Dr(n2))*dtr(n2)
-                enddo
-
-                do n3 = 1, 1
-                    idx_bg = idx_bg1
-
-                    do j = 1, ntb_g
-                        do i = 1, ntb_g1
-                            lam_exp = (N0g_exp(i)*am_g*cgg(1)/r_g(j))**oge1
-                            lamg = lam_exp * (cgg(3)*ogg2*ogg1)**obmg
-                            N0_g = N0g_exp(i)/(cgg(2)*lam_exp) * lamg**cge(2)
-                            do n = 1, nbg
-                                N_g(n) = N0_g*Dg(n)**mu_g * DEXP(-lamg*Dg(n))*dtg(n)
-                            enddo
-
-                            t1 = 0.0d0
-                            t2 = 0.0d0
-                            z1 = 0.0d0
-                            z2 = 0.0d0
-                            y1 = 0.0d0
-                            y2 = 0.0d0
-                            do n2 = 1, nbr
-                                massr = am_r * Dr(n2)**bm_r
-                                do n = 1, nbg
-                                    massg = am_g * Dg(n)**bm_g
-
-                                    dvg = 0.5d0*((vr(n2) - vg(n)) + DABS(vr(n2)-vg(n)))
-                                    dvr = 0.5d0*((vg(n) - vr(n2)) + DABS(vg(n)-vr(n2)))
-
-                                    t1 = t1+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
-                                        *dvg*massg * N_g(n)* N_r(n2)
-                                    z1 = z1+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
-                                        *dvg*massr * N_g(n)* N_r(n2)
-                                    y1 = y1+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
-                                        *dvg       * N_g(n)* N_r(n2)
-
-                                    t2 = t2+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
-                                        *dvr*massr * N_g(n)* N_r(n2)
-                                    y2 = y2+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
-                                        *dvr       * N_g(n)* N_r(n2)
-                                    z2 = z2+ PI*.25*Ef_rg*(Dg(n)+Dr(n2))*(Dg(n)+Dr(n2)) &
-                                        *dvr*massg * N_g(n)* N_r(n2)
-                                enddo
-97                              continue
-                            enddo
-                            tcg_racg(i,j,k,m) = t1
-                            tmr_racg(i,j,k,m) = DMIN1(z1, r_r(m)*1.0d0)
-                            tcr_gacr(i,j,k,m) = t2
-                            tmg_gacr(i,j,k,m) = DMIN1(z2, r_g(j)*1.0d0)
-                            tnr_racg(i,j,k,m) = y1
-                            tnr_gacr(i,j,k,m) = y2
-                        enddo
-                    enddo
-                enddo
-            enddo
-            IF ( write_thompson_tables ) THEN
-                write(0,*) "Writing "//qr_acr_qg_file//" in Thompson MP init"
-                OPEN(63,file=qr_acr_qg_file,form="unformatted",err=9234)
-                WRITE(63,err=9234) tcg_racg
-                WRITE(63,err=9234) tmr_racg
-                WRITE(63,err=9234) tcr_gacr
-                WRITE(63,err=9234) tnr_racg
-                WRITE(63,err=9234) tnr_gacr
-                CLOSE(63)
-                RETURN    ! ----- RETURN
-9234            CONTINUE
-                write(0,*) "Error writing "//qr_acr_qg_file
-                return
-            ENDIF
-        ENDIF
-
-    end subroutine qr_acr_qg_par
-    !+---+-----------------------------------------------------------------+
-    !ctrlL
-    !+---+-----------------------------------------------------------------+
-    !>\ingroup aathompson
-    !!Rain collecting snow (and inverse).  Explicit CE integration.
-    subroutine qr_acr_qs_par
-
-        implicit none
-
-        !..Local variables
-        INTEGER:: i, j, k, m, n, n2
-        INTEGER:: km, km_s, km_e
-        DOUBLE PRECISION, DIMENSION(nbr):: vr, D1, N_r
-        DOUBLE PRECISION, DIMENSION(nbs):: vs, N_s
-        DOUBLE PRECISION:: loga_, a_, b_, second, M0, M2, M3, Mrat, oM3
-        DOUBLE PRECISION:: N0_r, lam_exp, lamr, slam1, slam2
-        DOUBLE PRECISION:: dvs, dvr, masss, massr
-        DOUBLE PRECISION:: t1, t2, t3, t4, z1, z2, z3, z4
-        DOUBLE PRECISION:: y1, y2, y3, y4
-        LOGICAL force_read_thompson, write_thompson_tables
-        LOGICAL lexist,lopen
-        INTEGER good,ierr
-
-        !+---+
-
-        force_read_thompson = .false.
-        write_thompson_tables = .false.
-
-        good = 0
-        INQUIRE(FILE=qr_acr_qs_file, EXIST=lexist)
-#ifdef MPI
-        call MPI_BARRIER(mpi_communicator,ierr)
-#endif
-        IF ( lexist ) THEN
-            !write(0,*) "ThompMP: read "//qr_acr_qs_file//" instead of computing"
-            OPEN(63,file=qr_acr_qs_file,form="unformatted",err=1234)
-            !sms$serial begin
-            READ(63,err=1234)tcs_racs1
-            READ(63,err=1234)tmr_racs1
-            READ(63,err=1234)tcs_racs2
-            READ(63,err=1234)tmr_racs2
-            READ(63,err=1234)tcr_sacr1
-            READ(63,err=1234)tms_sacr1
-            READ(63,err=1234)tcr_sacr2
-            READ(63,err=1234)tms_sacr2
-            READ(63,err=1234)tnr_racs1
-            READ(63,err=1234)tnr_racs2
-            READ(63,err=1234)tnr_sacr1
-            READ(63,err=1234)tnr_sacr2
-            !sms$serial end
-            good = 1
-1234        CONTINUE
-            IF ( good .NE. 1 ) THEN
-                INQUIRE(63,opened=lopen)
-                IF (lopen) THEN
-                    IF( force_read_thompson ) THEN
-                        write(0,*) "Error reading "//qr_acr_qs_file//" Aborting because force_read_thompson is .true."
-                        return
-                    ENDIF
-                    CLOSE(63)
-                ELSE
-                    IF( force_read_thompson ) THEN
-                        write(0,*) "Error opening "//qr_acr_qs_file//" Aborting because force_read_thompson is .true."
-                        return
-                    ENDIF
-                ENDIF
-            ELSE
-                INQUIRE(63,opened=lopen)
-                IF (lopen) THEN
-                    CLOSE(63)
-                ENDIF
-            ENDIF
-        ELSE
-            IF( force_read_thompson ) THEN
-                write(0,*) "Non-existent "//qr_acr_qs_file//" Aborting because force_read_thompson is .true."
-                return
-            ENDIF
-        ENDIF
-
-        IF (.NOT. good .EQ. 1 ) THEN
-            if (thompson_table_writer) then
-                write_thompson_tables = .true.
-                write(0,*) "ThompMP: computing qr_acr_qs"
-            endif
-            do n2 = 1, nbr
-                !        vr(n2) = av_r*Dr(n2)**bv_r * DEXP(-fv_r*Dr(n2))
-                vr(n2) = -0.1021 + 4.932E3*Dr(n2) - 0.9551E6*Dr(n2)*Dr(n2)     &
-                    + 0.07934E9*Dr(n2)*Dr(n2)*Dr(n2)                          &
-                    - 0.002362E12*Dr(n2)*Dr(n2)*Dr(n2)*Dr(n2)
-                D1(n2) = (vr(n2)/av_s)**(1./bv_s)
-            enddo
-            do n = 1, nbs
-                vs(n) = 1.5*av_s*Ds(n)**bv_s * DEXP(-fv_s*Ds(n))
-            enddo
-
-            !..Note values returned from wrf_dm_decomp1d are zero-based, add 1 for
-            !.. fortran indices.  J. Michalakes, 2009Oct30.
-
-#if ( defined( DM_PARALLEL ) && ( ! defined( STUBMPI ) ) )
-            CALL wrf_dm_decomp1d ( ntb_r*ntb_r1, km_s, km_e )
-#else
-            km_s = 0
-            km_e = ntb_r*ntb_r1 - 1
-#endif
-
-            do km = km_s, km_e
-                m = km / ntb_r1 + 1
-                k = mod( km , ntb_r1 ) + 1
-
-                lam_exp = (N0r_exp(k)*am_r*crg(1)/r_r(m))**ore1
-                lamr = lam_exp * (crg(3)*org2*org1)**obmr
-                N0_r = N0r_exp(k)/(crg(2)*lam_exp) * lamr**cre(2)
-                do n2 = 1, nbr
-                    N_r(n2) = N0_r*Dr(n2)**mu_r * DEXP(-lamr*Dr(n2))*dtr(n2)
-                enddo
-
-                do j = 1, ntb_t
-                    do i = 1, ntb_s
-
-                        !..From the bm_s moment, compute plus one moment.  If we are not
-                        !.. using bm_s=2, then we must transform to the pure 2nd moment
-                        !.. (variable called "second") and then to the bm_s+1 moment.
-
-                        M2 = r_s(i)*oams *1.0d0
-                        if (bm_s.gt.2.0-1.E-3 .and. bm_s.lt.2.0+1.E-3) then
-                            loga_ = sa(1) + sa(2)*Tc(j) + sa(3)*bm_s &
-                                + sa(4)*Tc(j)*bm_s + sa(5)*Tc(j)*Tc(j) &
-                                + sa(6)*bm_s*bm_s + sa(7)*Tc(j)*Tc(j)*bm_s &
-                                + sa(8)*Tc(j)*bm_s*bm_s + sa(9)*Tc(j)*Tc(j)*Tc(j) &
-                                + sa(10)*bm_s*bm_s*bm_s
-                            a_ = 10.0**loga_
-                            b_ = sb(1) + sb(2)*Tc(j) + sb(3)*bm_s &
-                                + sb(4)*Tc(j)*bm_s + sb(5)*Tc(j)*Tc(j) &
-                                + sb(6)*bm_s*bm_s + sb(7)*Tc(j)*Tc(j)*bm_s &
-                                + sb(8)*Tc(j)*bm_s*bm_s + sb(9)*Tc(j)*Tc(j)*Tc(j) &
-                                + sb(10)*bm_s*bm_s*bm_s
-                            second = (M2/a_)**(1./b_)
-                        else
-                            second = M2
-                        endif
-
-                        loga_ = sa(1) + sa(2)*Tc(j) + sa(3)*cse(1) &
-                            + sa(4)*Tc(j)*cse(1) + sa(5)*Tc(j)*Tc(j) &
-                            + sa(6)*cse(1)*cse(1) + sa(7)*Tc(j)*Tc(j)*cse(1) &
-                            + sa(8)*Tc(j)*cse(1)*cse(1) + sa(9)*Tc(j)*Tc(j)*Tc(j) &
-                            + sa(10)*cse(1)*cse(1)*cse(1)
-                        a_ = 10.0**loga_
-                        b_ = sb(1)+sb(2)*Tc(j)+sb(3)*cse(1) + sb(4)*Tc(j)*cse(1) &
-                            + sb(5)*Tc(j)*Tc(j) + sb(6)*cse(1)*cse(1) &
-                            + sb(7)*Tc(j)*Tc(j)*cse(1) + sb(8)*Tc(j)*cse(1)*cse(1) &
-                            + sb(9)*Tc(j)*Tc(j)*Tc(j)+sb(10)*cse(1)*cse(1)*cse(1)
-                        M3 = a_ * second**b_
-
-                        oM3 = 1./M3
-                        Mrat = M2*(M2*oM3)*(M2*oM3)*(M2*oM3)
-                        M0   = (M2*oM3)**mu_s
-                        slam1 = M2 * oM3 * Lam0
-                        slam2 = M2 * oM3 * Lam1
-
-                        do n = 1, nbs
-                            N_s(n) = Mrat*(Kap0*DEXP(-slam1*Ds(n)) &
-                                + Kap1*M0*Ds(n)**mu_s * DEXP(-slam2*Ds(n)))*dts(n)
-                        enddo
-
-                        t1 = 0.0d0
-                        t2 = 0.0d0
-                        t3 = 0.0d0
-                        t4 = 0.0d0
-                        z1 = 0.0d0
-                        z2 = 0.0d0
-                        z3 = 0.0d0
-                        z4 = 0.0d0
-                        y1 = 0.0d0
-                        y2 = 0.0d0
-                        y3 = 0.0d0
-                        y4 = 0.0d0
-                        do n2 = 1, nbr
-                            massr = am_r * Dr(n2)**bm_r
-                            do n = 1, nbs
-                                masss = am_s * Ds(n)**bm_s
-
-                                dvs = 0.5d0*((vr(n2) - vs(n)) + DABS(vr(n2)-vs(n)))
-                                dvr = 0.5d0*((vs(n) - vr(n2)) + DABS(vs(n)-vr(n2)))
-
-                                if (massr .gt. 1.5*masss) then
-                                    t1 = t1+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvs*masss * N_s(n)* N_r(n2)
-                                    z1 = z1+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvs*massr * N_s(n)* N_r(n2)
-                                    y1 = y1+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvs       * N_s(n)* N_r(n2)
-                                else
-                                    t3 = t3+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvs*masss * N_s(n)* N_r(n2)
-                                    z3 = z3+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvs*massr * N_s(n)* N_r(n2)
-                                    y3 = y3+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvs       * N_s(n)* N_r(n2)
-                                endif
-
-                                if (massr .gt. 1.5*masss) then
-                                    t2 = t2+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvr*massr * N_s(n)* N_r(n2)
-                                    y2 = y2+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvr       * N_s(n)* N_r(n2)
-                                    z2 = z2+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvr*masss * N_s(n)* N_r(n2)
-                                else
-                                    t4 = t4+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvr*massr * N_s(n)* N_r(n2)
-                                    y4 = y4+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvr       * N_s(n)* N_r(n2)
-                                    z4 = z4+ PI*.25*Ef_rs*(Ds(n)+Dr(n2))*(Ds(n)+Dr(n2)) &
-                                        *dvr*masss * N_s(n)* N_r(n2)
-                                endif
-
-                            enddo
-                        enddo
-                        tcs_racs1(i,j,k,m) = t1
-                        tmr_racs1(i,j,k,m) = DMIN1(z1, r_r(m)*1.0d0)
-                        tcs_racs2(i,j,k,m) = t3
-                        tmr_racs2(i,j,k,m) = z3
-                        tcr_sacr1(i,j,k,m) = t2
-                        tms_sacr1(i,j,k,m) = z2
-                        tcr_sacr2(i,j,k,m) = t4
-                        tms_sacr2(i,j,k,m) = z4
-                        tnr_racs1(i,j,k,m) = y1
-                        tnr_racs2(i,j,k,m) = y3
-                        tnr_sacr1(i,j,k,m) = y2
-                        tnr_sacr2(i,j,k,m) = y4
-                    enddo
-                enddo
-            enddo
-
-            IF ( write_thompson_tables ) THEN
-                write(0,*) "Writing "//qr_acr_qs_file//" in Thompson MP init"
-                OPEN(63,file=qr_acr_qs_file,form="unformatted",err=9234)
-                WRITE(63,err=9234)tcs_racs1
-                WRITE(63,err=9234)tmr_racs1
-                WRITE(63,err=9234)tcs_racs2
-                WRITE(63,err=9234)tmr_racs2
-                WRITE(63,err=9234)tcr_sacr1
-                WRITE(63,err=9234)tms_sacr1
-                WRITE(63,err=9234)tcr_sacr2
-                WRITE(63,err=9234)tms_sacr2
-                WRITE(63,err=9234)tnr_racs1
-                WRITE(63,err=9234)tnr_racs2
-                WRITE(63,err=9234)tnr_sacr1
-                WRITE(63,err=9234)tnr_sacr2
-                CLOSE(63)
-                RETURN    ! ----- RETURN
-9234            CONTINUE
-                write(0,*) "Error writing "//qr_acr_qs_file
-            ENDIF
-        ENDIF
-
-    end subroutine qr_acr_qs_par
-    !+---+-----------------------------------------------------------------+
-    !ctrlL
-    !+---+-----------------------------------------------------------------+
-    !>\ingroup aathompson
-    !! This is a literal adaptation of Bigg (1954) probability of drops of
-    !! a particular volume freezing.  Given this probability, simply freeze
-    !! the proportion of drops summing their masses.
-    subroutine freezeH2O_par(threads)
-
-        implicit none
-
-        !..Interface variables
-        INTEGER, INTENT(IN):: threads
-
-        !..Local variables
-        INTEGER:: i, j, k, m, n, n2
-        DOUBLE PRECISION:: N_r, N_c
-        DOUBLE PRECISION, DIMENSION(nbr):: massr
-        DOUBLE PRECISION, DIMENSION(nbc):: massc
-        DOUBLE PRECISION:: sum1, sum2, sumn1, sumn2, &
-            prob, vol, Texp, orho_w, &
-            lam_exp, lamr, N0_r, lamc, N0_c, y
-        INTEGER:: nu_c
-        REAL:: T_adjust
-        LOGICAL force_read_thompson, write_thompson_tables
-        LOGICAL lexist,lopen
-        INTEGER good,ierr
-
-        !+---+
-        force_read_thompson = .false.
-        write_thompson_tables = .false.
-
-        good = 0
-        INQUIRE(FILE=freeze_h2o_file,EXIST=lexist)
-#ifdef MPI
-        call MPI_BARRIER(mpi_communicator,ierr)
-#endif
-        IF ( lexist ) THEN
-            !write(0,*) "ThompMP: read "//freeze_h2o_file//" instead of computing"
-            OPEN(63,file=freeze_h2o_file,form="unformatted",err=1234)
-            !sms$serial begin
-            READ(63,err=1234)tpi_qrfz
-            READ(63,err=1234)tni_qrfz
-            READ(63,err=1234)tpg_qrfz
-            READ(63,err=1234)tnr_qrfz
-            READ(63,err=1234)tpi_qcfz
-            READ(63,err=1234)tni_qcfz
-            !sms$serial end
-            good = 1
-1234        CONTINUE
-            IF ( good .NE. 1 ) THEN
-                INQUIRE(63,opened=lopen)
-                IF (lopen) THEN
-                    IF( force_read_thompson ) THEN
-                        write(0,*) "Error reading "//freeze_h2o_file//" Aborting because force_read_thompson is .true."
-                        return
-                    ENDIF
-                    CLOSE(63)
-                ELSE
-                    IF( force_read_thompson ) THEN
-                        write(0,*) "Error opening "//freeze_h2o_file//" Aborting because force_read_thompson is .true."
-                        return
-                    ENDIF
-                ENDIF
-            ELSE
-                INQUIRE(63,opened=lopen)
-                IF (lopen) THEN
-                    CLOSE(63)
-                ENDIF
-            ENDIF
-        ELSE
-            IF( force_read_thompson ) THEN
-                write(0,*) "Non-existent "//freeze_h2o_file//" Aborting because force_read_thompson is .true."
-                return
-            ENDIF
-        ENDIF
-
-        IF (.NOT. good .EQ. 1 ) THEN
-            if (thompson_table_writer) then
-                write_thompson_tables = .true.
-                write(0,*) "ThompMP: computing freezeH2O"
-            endif
-
-            orho_w = 1./rho_w
-
-            do n2 = 1, nbr
-                massr(n2) = am_r*Dr(n2)**bm_r
-            enddo
-            do n = 1, nbc
-                massc(n) = am_r*Dc(n)**bm_r
-            enddo
-
-            !..Freeze water (smallest drops become cloud ice, otherwise graupel).
-            do m = 1, ntb_IN
-                T_adjust = MAX(-3.0, MIN(3.0 - ALOG10(Nt_IN(m)), 3.0))
-                do k = 1, 45
-                    !         print*, ' Freezing water for temp = ', -k
-                    Texp = DEXP( DFLOAT(k) - T_adjust*1.0D0 ) - 1.0D0
-                    !$OMP PARALLEL DO SCHEDULE(dynamic) num_threads(threads) &
-                    !$OMP PRIVATE(j,i,lam_exp,lamr,N0_r,sum1,sum2,sumn1,sumn2,n2,N_r,vol,prob)
-                    do j = 1, ntb_r1
-                        do i = 1, ntb_r
-                            lam_exp = (N0r_exp(j)*am_r*crg(1)/r_r(i))**ore1
-                            lamr = lam_exp * (crg(3)*org2*org1)**obmr
-                            N0_r = N0r_exp(j)/(crg(2)*lam_exp) * lamr**cre(2)
-                            sum1 = 0.0d0
-                            sum2 = 0.0d0
-                            sumn1 = 0.0d0
-                            sumn2 = 0.0d0
-                            do n2 = nbr, 1, -1
-                                N_r = N0_r*Dr(n2)**mu_r*DEXP(-lamr*Dr(n2))*dtr(n2)
-                                vol = massr(n2)*orho_w
-                                prob = MAX(0.0D0, 1.0D0 - DEXP(-120.0D0*vol*5.2D-4 * Texp))
-                                if (massr(n2) .lt. xm0g) then
-                                    sumn1 = sumn1 + prob*N_r
-                                    sum1 = sum1 + prob*N_r*massr(n2)
-                                else
-                                    sumn2 = sumn2 + prob*N_r
-                                    sum2 = sum2 + prob*N_r*massr(n2)
-                                endif
-                                if ((sum1+sum2).ge.r_r(i)) EXIT
-                            enddo
-                            tpi_qrfz(i,j,k,m) = sum1
-                            tni_qrfz(i,j,k,m) = sumn1
-                            tpg_qrfz(i,j,k,m) = sum2
-                            tnr_qrfz(i,j,k,m) = sumn2
-                        enddo
-                    enddo
-                    !$OMP END PARALLEL DO
-
-                    !$OMP PARALLEL DO SCHEDULE(dynamic) num_threads(threads) &
-                    !$OMP PRIVATE(j,i,nu_c,lamc,N0_c,sum1,sumn2,vol,prob,N_c)
-                    do j = 1, nbc
-                        nu_c = MIN(15, NINT(1000.E6/t_Nc(j)) + 2)
-                        do i = 1, ntb_c
-                            lamc = (t_Nc(j)*am_r* ccg(2,nu_c) * ocg1(nu_c) / r_c(i))**obmr
-                            N0_c = t_Nc(j)*ocg1(nu_c) * lamc**cce(1,nu_c)
-                            sum1 = 0.0d0
-                            sumn2 = 0.0d0
-                            do n = nbc, 1, -1
-                                vol = massc(n)*orho_w
-                                prob = MAX(0.0D0, 1.0D0 - DEXP(-120.0D0*vol*5.2D-4 * Texp))
-                                N_c = N0_c*Dc(n)**nu_c*EXP(-lamc*Dc(n))*dtc(n)
-                                sumn2 = MIN(t_Nc(j), sumn2 + prob*N_c)
-                                sum1 = sum1 + prob*N_c*massc(n)
-                                if (sum1 .ge. r_c(i)) EXIT
-                            enddo
-                            tpi_qcfz(i,j,k,m) = sum1
-                            tni_qcfz(i,j,k,m) = sumn2
-                        enddo
-                    enddo
-                    !$OMP END PARALLEL DO
-                enddo
-            enddo
-
-            IF ( write_thompson_tables ) THEN
-                write(0,*) "Writing "//freeze_h2o_file//" in Thompson MP init"
-                OPEN(63,file=freeze_h2o_file,form="unformatted",err=9234)
-                WRITE(63,err=9234)tpi_qrfz
-                WRITE(63,err=9234)tni_qrfz
-                WRITE(63,err=9234)tpg_qrfz
-                WRITE(63,err=9234)tnr_qrfz
-                WRITE(63,err=9234)tpi_qcfz
-                WRITE(63,err=9234)tni_qcfz
-                CLOSE(63)
-                RETURN    ! ----- RETURN
-9234            CONTINUE
-                write(0,*) "Error writing "//freeze_h2o_file
-                return
-            ENDIF
-        ENDIF
-
-    end subroutine freezeH2O_par
 
     !>\ingroup aathompson
     REAL FUNCTION GAMMP(A,X)

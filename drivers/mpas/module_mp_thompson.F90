@@ -1,4 +1,4 @@
-! 3D TEMPO Driver for MPAS
+! 3D TEMPO Driver for MPASA
 !=================================================================================================================
 module module_mp_thompson
 
@@ -28,7 +28,7 @@ contains
 
         ! Input arguments:
         logical, intent(in) :: l_mp_tables, hail_aware_flag
-        logical, optional, intent(in) :: aerosol_aware_flag
+        logical, intent(in), optional :: aerosol_aware_flag
 
         integer, parameter :: open_OK = 0
         integer, parameter :: num_records = 5
@@ -584,12 +584,12 @@ contains
         integer, intent(in) :: has_reqc, has_reqi, has_reqs
         real, dimension(ims:ime, kms:kme, jms:jme), intent(in) :: pii, p, w, dz
         real, dimension(ims:ime, jms:jme), intent(inout) :: rainnc, rainncv, sr
-        real, dimension(ims:ime, jms:jme), intent(in), optional :: ntc, muc
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: rainprod, evapprod
-        real, dimension(ims:ime, kms:kme, jms:jme), optional, intent(inout) :: nc, nwfa, nifa, qb, ng
-        real, dimension(ims:ime, jms:jme), optional, intent(in) :: nwfa2d, nifa2d
+        real, dimension(ims:ime, jms:jme), intent(in), optional :: ntc, muc
+        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng
+        real, dimension(ims:ime, jms:jme), intent(in), optional :: nwfa2d, nifa2d
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: refl_10cm
-        real, dimension(ims:ime, jms:jme), optional, intent(inout) :: snownc, snowncv, graupelnc, graupelncv
+        real, dimension(ims:ime, jms:jme), intent(inout), optional :: snownc, snowncv, graupelnc, graupelncv
         real, intent(in) :: dt_in
         integer, intent(in) :: itimestep
 
@@ -612,7 +612,7 @@ contains
         integer :: i_start, j_start, i_end, j_end
         logical, optional, intent(in) :: diagflag
         integer, optional, intent(in) :: do_radar_ref
-        character*256:: mp_debug
+        character(len=132) :: message
 
         !=================================================================================================================
         i_start = its
@@ -741,7 +741,16 @@ contains
                         endif
                     enddo
                 endif
-
+                
+                if (itimestep == 1) then
+                   call physics_message('--- thompson_3d_to_1d_driver() configuration...')
+                   write(message, '(L1)') configs%hail_aware
+                   call physics_message('       hail_aware_flag = ' // trim(message))
+                   write(message, '(L1)') configs%aerosol_aware
+                   call physics_message('       aerosol_aware_flag = ' // trim(message))
+                   call physics_message('calling mp_thompson_main() at itimestep = 1')
+                endif
+                
                 !=================================================================================================================
                 ! Main call to the 1D microphysics
                 call mp_thompson_main(qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &

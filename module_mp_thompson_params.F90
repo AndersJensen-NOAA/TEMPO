@@ -56,7 +56,7 @@ module module_mp_thompson_params
 
     ! Hail-aware microphysics options
     logical, parameter :: build_hail_aware_table = .false.
-    logical :: using_hail_aware_table
+    logical :: using_hail_aware_table = .false.
     integer, parameter :: NRHG = 9
     integer, parameter :: NRHG1 = 1
     integer :: dimNRHG

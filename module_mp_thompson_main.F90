@@ -3,12 +3,12 @@
 module module_mp_thompson_main
 
     use module_mp_thompson_params
-    use module_mp_thompson_utils, only : gammln
+!    use module_mp_thompson_utils, only : gammln
 
-#if defined(CCPP)
-    use machine, only: wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
-#elif defined(mpas)
+#if defined(mpas)
     use mpas_kind_types, only: wp => RKIND, sp => R4KIND, dp => R8KIND
+#else
+    use machine, only: wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
 #endif
 
 contains
@@ -50,7 +50,7 @@ contains
         rainprod, evapprod, &
 #endif
 
-#if defined(CCPP)
+#if !defined(mpas)
         rand1, rand2, rand3, &
     ! Extended diagnostics, most arrays only
     ! allocated if ext_diag flag is .true.
@@ -71,7 +71,7 @@ contains
         kts, kte, dt, ii, jj, &
         configs)
 
-#if defined(CCPP) && defined (MPI)
+#if !defined(mpas) && defined (MPI)
         use mpi_f08
 #endif
         implicit none
@@ -86,7 +86,7 @@ contains
 
         type(config_flags), intent(in) :: configs
 
-#if defined(CCPP)
+#if !defined(mpas)
         real(wp), dimension(kts:kte), intent(out) :: pfil1, pfll1
         integer, intent(in) :: lsml
         real(wp), intent(in) :: rand1, rand2, rand3
@@ -147,7 +147,7 @@ contains
             pbg_sml, pbg_gml
 
         real(dp), parameter :: zerod0 = 0.0d0
-#if defined (CCPP)
+#if !defined (mpas)
         real(wp), dimension(kts:kte) :: pfll, pfil, pdummy
         ! real(wp) :: dtcfl, rainsfc, graulsfc, orhodt
         ! integer :: niter
@@ -221,7 +221,7 @@ contains
         odts = 1./dtsave
         iexfrq = 1
 
-#if defined(CCPP)
+#if !defined(mpas)
         ! Transition value of coefficient matching at crossover from cloud ice to snow
         av_i = av_s * D0s ** (bv_s - bv_i)
 #endif
@@ -338,7 +338,7 @@ contains
             pnd_rcd(k) = 0.
             pnd_scd(k) = 0.
             pnd_gcd(k) = 0.
-#if defined(CCPP)
+#if !defined(mpas)
             pfil1(k) = 0.
             pfll1(k) = 0.
             pfil(k) = 0.
@@ -353,7 +353,7 @@ contains
         enddo
 #endif
 
-#if defined(CCPP)
+#if !defined(mpas)
         !Diagnostics
         if (ext_diag) then
             do k = kts, kte
@@ -1022,23 +1022,25 @@ contains
                         const_Ri = MAX(0.1, MIN(const_Ri, 10.))
                         rime_dens = (0.051 + 0.114*const_Ri - 0.0055*const_Ri*const_Ri)*1000.
                         ! CCPP version has check on xDg > D0g
-                        if (stoke_g.ge.0.4 .and. stoke_g.le.10.) then
-                            Ef_gw = 0.55*log10(2.51*stoke_g)
-                        elseif (stoke_g.lt.0.4) then
-                            Ef_gw = 0.0
-                        elseif (stoke_g.gt.10) then
-                            Ef_gw = 0.77
+                        if (xDg > D0g) then
+                            if (stoke_g.ge.0.4 .and. stoke_g.le.10.) then
+                                Ef_gw = 0.55*log10(2.51*stoke_g)
+                            elseif (stoke_g.lt.0.4) then
+                                Ef_gw = 0.0
+                            elseif (stoke_g.gt.10) then
+                                Ef_gw = 0.77
+                            endif
+                            ! Not sure what to do here - hail increases size rapidly here below melting level.
+                            if (temp(k).gt.T_0) Ef_gw = Ef_gw*0.1
+                            t1_qg_qc = PI*.25*av_g(idx_bg(k)) * cgg(9,idx_bg(k))
+                            prg_gcw(k) = rhof(k)*t1_qg_qc*Ef_gw*rc(k)*N0_g(k) &
+                                 *ilamg(k)**cge(9,idx_bg(k))
+                            pnc_gcw(k) = rhof(k)*t1_qg_qc*Ef_gw*nc(k)*N0_g(k)           &
+                                 *ilamg(k)**cge(9,idx_bg(k))                    ! Qc2M
+                            pnc_gcw(k) = min(real(nc(k)*odts, kind=dp), pnc_gcw(k))
+                            if (temp(k).lt.T_0) pbg_gcw(k) = prg_gcw(k)/rime_dens
+                            ! CCPP version has end check on xDg > D0g
                         endif
-!!! Not sure what to do here - hail increases size rapidly here below melting level.
-                        if (temp(k).gt.T_0) Ef_gw = Ef_gw*0.1
-                        t1_qg_qc = PI*.25*av_g(idx_bg(k)) * cgg(9,idx_bg(k))
-                        prg_gcw(k) = rhof(k)*t1_qg_qc*Ef_gw*rc(k)*N0_g(k) &
-                            *ilamg(k)**cge(9,idx_bg(k))
-                        pnc_gcw(k) = rhof(k)*t1_qg_qc*Ef_gw*nc(k)*N0_g(k)           &
-                            *ilamg(k)**cge(9,idx_bg(k))                    ! Qc2M
-                        pnc_gcw(k) = min(real(nc(k)*odts, kind=dp), pnc_gcw(k))
-                        if (temp(k).lt.T_0) pbg_gcw(k) = prg_gcw(k)/rime_dens
-                        ! CCPP version has end check on xDg > D0g
                     endif
                 endif
 
@@ -2418,7 +2420,7 @@ contains
                     nrten(k) = nrten(k) - sed_n(k)*odzq*onstep(1)*orho
                     rr(k) = max(r1, rr(k) - sed_r(k)*odzq*dt*onstep(1))
                     nr(k) = max(r2, nr(k) - sed_n(k)*odzq*dt*onstep(1))
-#if defined(CCPP)
+#if !defined(mpas)
                     pfll1(k) = pfll1(k) + sed_r(k)*DT*onstep(1)
 #endif
                     do k = ksed1(1), kts, -1
@@ -2432,7 +2434,7 @@ contains
                             *odzq*dt*onstep(1))
                         nr(k) = max(r2, nr(k) + (sed_n(k+1)-sed_n(k)) &
                             *odzq*DT*onstep(1))
-#if defined(CCPP)
+#if !defined(mpas)
                         pfll1(k) = pfll1(k) + sed_r(k)*DT*onstep(1)
 #endif
                     enddo
@@ -2517,7 +2519,7 @@ contains
                 niten(k) = niten(k) - sed_n(k)*odzq*onstep(2)*orho
                 ri(k) = max(r1, ri(k) - sed_i(k)*odzq*dt*onstep(2))
                 ni(k) = max(r2, ni(k) - sed_n(k)*odzq*dt*onstep(2))
-#if defined(CCPP)
+#if !defined(mpas)
                 pfil1(k) = pfil1(k) + sed_i(k)*DT*onstep(2)
 #endif
                 do k = ksed1(2), kts, -1
@@ -2531,7 +2533,7 @@ contains
                         *odzq*dt*onstep(2))
                     ni(k) = max(r2, ni(k) + (sed_n(k+1)-sed_n(k)) &
                         *odzq*DT*onstep(2))
-#if defined(CCPP)
+#if !defined(mpas)
                     pfil1(k) = pfil1(k) + sed_i(k)*DT*onstep(2)
 #endif
                 enddo
@@ -2555,7 +2557,7 @@ contains
                 orho = 1./rho(k)
                 qsten(k) = qsten(k) - sed_s(k)*odzq*onstep(3)*orho
                 rs(k) = max(r1, rs(k) - sed_s(k)*odzq*dt*onstep(3))
-#if defined(CCPP)
+#if !defined(mpas)
                 pfil1(k) = pfil1(k) + sed_s(k)*DT*onstep(3)
 #endif
                 do k = ksed1(3), kts, -1
@@ -2565,7 +2567,7 @@ contains
                         *odzq*onstep(3)*orho
                     rs(k) = max(r1, rs(k) + (sed_s(k+1)-sed_s(k)) &
                         *odzq*DT*onstep(3))
-#if defined(CCPP)
+#if !defined(mpas)
                     pfil1(k) = pfil1(k) + sed_s(k)*DT*onstep(3)
 #endif
                 enddo
@@ -2596,7 +2598,7 @@ contains
                     rg(k) = max(r1, rg(k) - sed_g(k)*odzq*dt*onstep(4))
                     ng(k) = max(r2, ng(k) - sed_n(k)*odzq*dt*onstep(4))
                     rb(k) = max(r1/rho(k)/rho_g(nrhg), rb(k) - sed_b(k)*odzq*dt*onstep(4))
-#if defined(CCPP)
+#if !defined(mpas)
                     pfil1(k) = pfil1(k) + sed_g(k)*DT*onstep(4)
 #endif
                     do k = ksed1(4), kts, -1
@@ -2614,7 +2616,7 @@ contains
                             *odzq*dt*onstep(4))
                         rb(k) = max(rg(k)/rho(k)/rho_g(nrhg), rb(k) + (sed_b(k+1)-sed_b(k))  &
                             *odzq*DT*onstep(4))
-#if defined(CCPP)
+#if !defined(mpas)
                         pfil1(k) = pfil1(k) + sed_g(k)*DT*onstep(4)
 #endif
                     enddo
@@ -2787,7 +2789,7 @@ contains
 
         enddo
 
-#if defined(CCPP)
+#if !defined(mpas)
         ! Diagnostics
         calculate_extended_diagnostics: if (ext_diag) then
             do k = kts, kte
@@ -3018,7 +3020,6 @@ contains
 
     end function activ_ncloud
 
-#if !defined(mpas)
     !=================================================================================================================
 
     !+---+-----------------------------------------------------------------+
@@ -3088,7 +3089,6 @@ contains
 
     END FUNCTION RSIF
 
-#endif
     !+---+-----------------------------------------------------------------+
     real function iceDeMott(tempc, qv, qvs, qvsi, rho, nifa)
         implicit none
