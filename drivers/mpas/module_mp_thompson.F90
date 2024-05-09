@@ -1,4 +1,4 @@
-! 3D Thompson-Eidhammer Microphysics Driver for MPAS
+! 3D TEMPO Driver for MPAS
 !=================================================================================================================
 module module_mp_thompson
 
@@ -16,17 +16,17 @@ module module_mp_thompson
     type(config_flags) configs
 
 contains
-!=================================================================================================================
-! This subroutine handles initialzation of the microphysics scheme including building of lookup tables,
-! allocating arrays for the microphysics scheme, and defining gamma function variables. 
+    !=================================================================================================================
+    ! This subroutine handles initialzation of the microphysics scheme including building of lookup tables,
+    ! allocating arrays for the microphysics scheme, and defining gamma function variables.
 
-! Input:
-!   l_mp_tables = .false. to build lookup tables. If l_mp_tables = .true., lookup tables are not built.
+    ! Input:
+    !   l_mp_tables = .false. to build lookup tables. If l_mp_tables = .true., lookup tables are not built.
 
     ! AAJ No support yet for hail_aware in microphysics driver
     subroutine thompson_init(l_mp_tables, hail_aware_flag, aerosol_aware_flag)
-    
-! Input arguments:
+
+        ! Input arguments:
         logical, intent(in) :: l_mp_tables, hail_aware_flag
         logical, optional, intent(in) :: aerosol_aware_flag
 
@@ -42,17 +42,17 @@ contains
 
         ! If lookup tables are already built
         if (l_mp_tables) then
-           configs%hail_aware = hail_aware_flag
-           write(message, '(L1)') configs%hail_aware
-           call physics_message('--- thompson_init() called with hail_aware_flag = ' // trim(message))
+            configs%hail_aware = hail_aware_flag
+            write(message, '(L1)') configs%hail_aware
+            call physics_message('--- thompson_init() called with hail_aware_flag = ' // trim(message))
 
-           if (present(aerosol_aware_flag)) then
-              configs%aerosol_aware = aerosol_aware_flag
-              write(message, '(L1)') configs%aerosol_aware
-              call physics_message('--- thompson_init() called with aerosol_aware_flag = ' // trim(message))
-           endif
+            if (present(aerosol_aware_flag)) then
+                configs%aerosol_aware = aerosol_aware_flag
+                write(message, '(L1)') configs%aerosol_aware
+                call physics_message('--- thompson_init() called with aerosol_aware_flag = ' // trim(message))
+            endif
         endif
-        
+
         if (configs%hail_aware) then
             dimNRHG = NRHG
         else
@@ -63,46 +63,46 @@ contains
 
         micro_init = .false.
 
-!=================================================================================================================
-! Check the qr_acr_qg lookup table to make sure it is compatible with runtime options
+        !=================================================================================================================
+        ! Check the qr_acr_qg lookup table to make sure it is compatible with runtime options
 
         ! If lookup tables are already built
         if (l_mp_tables) then
 
-           inquire(file='MP_THOMPSON_QRacrQG_DATA.DBL', exist=qr_acr_qg_exists)
-           if (qr_acr_qg_exists) then ! Check again that file exists
+            inquire(file='MP_THOMPSON_QRacrQG_DATA.DBL', exist=qr_acr_qg_exists)
+            if (qr_acr_qg_exists) then ! Check again that file exists
 
-! Add check on qr_ac_qg filesize to determine if table includes hail-awareness (dimNRHG=9)
-              qr_acr_qg_check = dp * num_records * (dimNRHG * ntb_g1 * ntb_g * ntb_r1 * ntb_r + 1)
-              qr_acr_qg_dim1size = dp * num_records * (NRHG1 * ntb_g1 * ntb_g * ntb_r1 * ntb_r + 1)
-              qr_acr_qg_dim9size = dp * num_records * (NRHG * ntb_g1 * ntb_g * ntb_r1 * ntb_r + 1)
+                ! Add check on qr_ac_qg filesize to determine if table includes hail-awareness (dimNRHG=9)
+                qr_acr_qg_check = dp * num_records * (dimNRHG * ntb_g1 * ntb_g * ntb_r1 * ntb_r + 1)
+                qr_acr_qg_dim1size = dp * num_records * (NRHG1 * ntb_g1 * ntb_g * ntb_r1 * ntb_r + 1)
+                qr_acr_qg_dim9size = dp * num_records * (NRHG * ntb_g1 * ntb_g * ntb_r1 * ntb_r + 1)
 
-              inquire(file='MP_THOMPSON_QRacrQG_DATA.DBL', size=qr_acr_qg_filesize)
+                inquire(file='MP_THOMPSON_QRacrQG_DATA.DBL', size=qr_acr_qg_filesize)
 
-              if (qr_acr_qg_filesize == qr_acr_qg_dim1size) then
-                 using_hail_aware_table = .false.
-                 call physics_message('--- thompson_init() ' // &
-                      'Lookup table for qr_acr_qg is not hail aware.')
-                 if (hail_aware_flag) then
-                    call physics_error_fatal('--- thompson_init() Cannot use hail-aware microphysics ' // &
-                         'with non hail-aware qr_acr_qg lookup table. ' // &
-                         'Please rebuild table with parameter build_hail_aware_table set to true.')
-                 endif
-              elseif (qr_acr_qg_filesize == qr_acr_qg_dim9size) then
-                 using_hail_aware_table = .true.
-                 call physics_message('--- thompson_init() ' // &
-                      'Lookup table for qr_acr_qg is hail aware.')
-              else
-                 using_hail_aware_table = .false.
-                 if (hail_aware_flag) using_hail_aware_table = .true.
-                 call physics_message('--- thompson_init() ' // &
-                      'Could not determine if lookup table for qr_acr_qg is hail aware based on file size.')
-              endif
-           endif
+                if (qr_acr_qg_filesize == qr_acr_qg_dim1size) then
+                    using_hail_aware_table = .false.
+                    call physics_message('--- thompson_init() ' // &
+                        'Lookup table for qr_acr_qg is not hail aware.')
+                    if (hail_aware_flag) then
+                        call physics_error_fatal('--- thompson_init() Cannot use hail-aware microphysics ' // &
+                            'with non hail-aware qr_acr_qg lookup table. ' // &
+                            'Please rebuild table with parameter build_hail_aware_table set to true.')
+                    endif
+                elseif (qr_acr_qg_filesize == qr_acr_qg_dim9size) then
+                    using_hail_aware_table = .true.
+                    call physics_message('--- thompson_init() ' // &
+                        'Lookup table for qr_acr_qg is hail aware.')
+                else
+                    using_hail_aware_table = .false.
+                    if (hail_aware_flag) using_hail_aware_table = .true.
+                    call physics_message('--- thompson_init() ' // &
+                        'Could not determine if lookup table for qr_acr_qg is hail aware based on file size.')
+                endif
+            endif
         endif
 
-!=================================================================================================================
-! Allocate space for lookup tables (J. Michalakes 2009Jun08).
+        !=================================================================================================================
+        ! Allocate space for lookup tables (J. Michalakes 2009Jun08).
         if (.not. allocated(tcg_racg)) then
             allocate(tcg_racg(ntb_g1,ntb_g,dimNRHG,ntb_r1,ntb_r))
             micro_init = .true.
@@ -155,18 +155,18 @@ contains
         ! CCN
         if (.not. allocated(tnccn_act)) allocate(tnccn_act(ntb_arc,ntb_arw,ntb_art,ntb_arr,ntb_ark))
 
-!=================================================================================================================
+        !=================================================================================================================
         if (micro_init) then
 
-! Schmidt number to one-third used numerous times.
+            ! Schmidt number to one-third used numerous times.
             Sc3 = Sc**(1./3.)
 
-! Compute minimum ice diameter from mass and minimum snow/graupel mass from diameter
+            ! Compute minimum ice diameter from mass and minimum snow/graupel mass from diameter
             D0i = (xm0i/am_i)**(1.0/bm_i)
             xm0s = am_s * D0s**bm_s
             xm0g = am_g(NRHG) * D0g**bm_g
 
-! These constants various exponents and gamma() assoc with cloud, rain, snow, and graupel.
+            ! These constants various exponents and gamma() assoc with cloud, rain, snow, and graupel.
             do n = 1, 15
                 cce(1,n) = n + 1.
                 cce(2,n) = bm_r + n + 1.
@@ -285,43 +285,43 @@ contains
             ogg2 = 1.0 / cgg(2,1)
             ogg3 = 1.0 / cgg(3,1)
 
-!=================================================================================================================
-! Simplify various rate eqns the best we can now.
+            !=================================================================================================================
+            ! Simplify various rate eqns the best we can now.
 
-! Rain collecting cloud water and cloud ice
+            ! Rain collecting cloud water and cloud ice
             t1_qr_qc = PI * 0.25 * av_r * crg(9)
             t1_qr_qi = PI * 0.25 * av_r * crg(9)
             t2_qr_qi = PI * 0.25 * am_r*av_r * crg(8)
 
-! Graupel collecting cloud water
-!     t1_qg_qc = PI*.25*av_g * cgg(9)
+            ! Graupel collecting cloud water
+            !     t1_qg_qc = PI*.25*av_g * cgg(9)
 
-! Snow collecting cloud water
+            ! Snow collecting cloud water
             t1_qs_qc = PI * 0.25 * av_s
 
-! Snow collecting cloud ice
+            ! Snow collecting cloud ice
             t1_qs_qi = PI * 0.25 * av_s
 
-! Evaporation of rain; ignore depositional growth of rain.
+            ! Evaporation of rain; ignore depositional growth of rain.
             t1_qr_ev = 0.78 * crg(10)
             t2_qr_ev = 0.308 * Sc3 * SQRT(av_r) * crg(11)
 
-! Sublimation/depositional growth of snow
+            ! Sublimation/depositional growth of snow
             t1_qs_sd = 0.86
             t2_qs_sd = 0.28 * Sc3 * SQRT(av_s)
 
-! Melting of snow
+            ! Melting of snow
             t1_qs_me = PI * 4. *C_sqrd * olfus * 0.86
             t2_qs_me = PI * 4. *C_sqrd * olfus * 0.28 * Sc3 * SQRT(av_s)
 
-! Sublimation/depositional growth of graupel
+            ! Sublimation/depositional growth of graupel
             t1_qg_sd = 0.86 * cgg(10,1)
-!     t2_qg_sd = 0.28*Sc3*SQRT(av_g) * cgg(11)
+            !     t2_qg_sd = 0.28*Sc3*SQRT(av_g) * cgg(11)
 
-! Melting of graupel
+            ! Melting of graupel
             t1_qg_me = PI * 4. * C_cube * olfus * 0.86 * cgg(10,1)
 
-! Constants for helping find lookup table indexes.
+            ! Constants for helping find lookup table indexes.
             nic2 = nint(alog10(r_c(1)))
             nii2 = nint(alog10(r_i(1)))
             nii3 = nint(alog10(Nt_i(1)))
@@ -332,7 +332,7 @@ contains
             nig3 = nint(alog10(N0g_exp(1)))
             niIN2 = nint(alog10(Nt_IN(1)))
 
-! Create bins of cloud water (from minimum diameter to 100 microns).
+            ! Create bins of cloud water (from minimum diameter to 100 microns).
             Dc(1) = D0c*1.0_dp
             dtc(1) = D0c*1.0_dp
             do n = 2, nbc
@@ -340,30 +340,30 @@ contains
                 dtc(n) = (Dc(n) - Dc(n-1))
             enddo
 
-! Create bins of cloud ice (from min diameter up to 2x min snow size).
+            ! Create bins of cloud ice (from min diameter up to 2x min snow size).
             call create_bins(numbins=nbi, lowbin=D0i*1.0_dp, highbin=D0s*2.0_dp, &
-                bins=Di, deltabins=dti) 
+                bins=Di, deltabins=dti)
 
-! Create bins of rain (from min diameter up to 5 mm).
+            ! Create bins of rain (from min diameter up to 5 mm).
             call create_bins(numbins=nbr, lowbin=D0r*1.0_dp, highbin=0.005_dp, &
-                bins=Dr, deltabins=dtr) 
-            
-! Create bins of snow (from min diameter up to 2 cm).
+                bins=Dr, deltabins=dtr)
+
+            ! Create bins of snow (from min diameter up to 2 cm).
             call create_bins(numbins=nbs, lowbin=D0s*1.0_dp, highbin=0.02_dp, &
                 bins=Ds, deltabins=dts)
 
-! Create bins of graupel (from min diameter up to 5 cm).
+            ! Create bins of graupel (from min diameter up to 5 cm).
             call create_bins(numbins=nbg, lowbin=D0g*1.0_dp, highbin=0.05_dp, &
-                bins=Dg, deltabins=dtg) 
+                bins=Dg, deltabins=dtg)
 
-! Create bins of cloud droplet number concentration (1 to 3000 per cc).
+            ! Create bins of cloud droplet number concentration (1 to 3000 per cc).
             call create_bins(numbins=nbc, lowbin=1.0_dp, highbin=3000.0_dp, &
-                bins=t_Nc) 
+                bins=t_Nc)
             t_Nc = t_Nc * 1.0e6_dp
             nic1 = log(t_Nc(nbc)/t_Nc(1))
 
-!=================================================================================================================
-! Create lookup tables for most costly calculations.
+            !=================================================================================================================
+            ! Create lookup tables for most costly calculations.
 
             do m = 1, ntb_r
                 do k = 1, ntb_r1
@@ -467,29 +467,29 @@ contains
                 enddo
             enddo
 
-!=================================================================================================================
-! Check that the look-up tables are available.
+            !=================================================================================================================
+            ! Check that the look-up tables are available.
             if (.not. l_mp_tables) return
 
-! Collision efficiency between rain/snow and cloud water.
+            ! Collision efficiency between rain/snow and cloud water.
             call table_Efrw ! => fills t_Efrw
-            call table_Efsw ! => fills t_Efsw 
+            call table_Efsw ! => fills t_Efsw
 
-! Drop evaporation
+            ! Drop evaporation
             call table_dropEvap ! => fills tpc_wev and tnc_wev
 
-! Read a static file containing CCN activation of aerosols. The data were created from a parcel model
-! by Feingold & Heymsfield with further changes by Eidhammer and Kriedenweis.
+            ! Read a static file containing CCN activation of aerosols. The data were created from a parcel model
+            ! by Feingold & Heymsfield with further changes by Eidhammer and Kriedenweis.
             call mpas_new_unit(mp_unit, unformatted = .true.)
 
             open(unit=mp_unit,file='CCN_ACTIVATE.BIN',form='unformatted',status='old',action='read',iostat=istat)
             if (istat /= open_OK) then
                 call physics_error_fatal('--- thompson_init() failure opening CCN_ACTIVATE.BIN')
-            endif   
+            endif
             read(mp_unit) tnccn_act
             close(unit=mp_unit)
 
-! Rain collecting graupel & graupel collecting rain.
+            ! Rain collecting graupel & graupel collecting rain.
 
             open(unit=mp_unit,file='MP_THOMPSON_QRacrQG_DATA.DBL',form='unformatted',status='old',action='read', &
                 iostat=istat)
@@ -503,7 +503,7 @@ contains
             read(mp_unit) tnr_gacr
             close(unit=mp_unit)
 
-! Rain collecting snow & snow collecting rain.
+            ! Rain collecting snow & snow collecting rain.
             open(unit=mp_unit,file='MP_THOMPSON_QRacrQS_DATA.DBL',form='unformatted',status='old',action='read', &
                 iostat=istat)
             if (istat /= open_OK) then
@@ -523,7 +523,7 @@ contains
             read(mp_unit) tnr_sacr2
             close(unit=mp_unit)
 
-! Cloud water and rain freezing (Bigg, 1953).
+            ! Cloud water and rain freezing (Bigg, 1953).
             open(unit=mp_unit,file='MP_THOMPSON_freezeH2O_DATA.DBL',form='unformatted',status='old',action='read', &
                 iostat=istat)
             if (istat /= open_OK) then
@@ -537,19 +537,19 @@ contains
             read(mp_unit) tni_qcfz
             close(unit=mp_unit)
 
-! Conversion of some ice mass into snow category.
+            ! Conversion of some ice mass into snow category.
             open(unit=mp_unit,file='MP_THOMPSON_QIautQS_DATA.DBL',form='unformatted',status='old',action='read', &
                 iostat=istat)
             if (istat /= open_OK) then
                 call physics_error_fatal('--- thompson_init() failure opening MP_THOMPSON_QIautQS.DBL')
-            endif   
+            endif
             read(mp_unit) tpi_ide
             read(mp_unit) tps_iaus
             read(mp_unit) tni_iaus
             close(unit=mp_unit)
             call mpas_release_unit(mp_unit)
 
-! Initialize various constants for computing radar reflectivity.
+            ! Initialize various constants for computing radar reflectivity.
             xam_r = am_r
             xbm_r = bm_r
             xmu_r = mu_r
@@ -565,10 +565,10 @@ contains
 
     end subroutine thompson_init
 
-!=================================================================================================================
-! This is a wrapper routine designed to transfer values from 3D to 1D.
-! Required microphysics variables are qv, qc, qr, nr, qi, ni, qs, qg
-! Optional microphysics variables are aerosol aware (nc, nwfa, nifa, nwfa2d, nifa2d), and hail aware (ng, qg)
+    !=================================================================================================================
+    ! This is a wrapper routine designed to transfer values from 3D to 1D.
+    ! Required microphysics variables are qv, qc, qr, nr, qi, ni, qs, qg
+    ! Optional microphysics variables are aerosol aware (nc, nwfa, nifa, nwfa2d, nifa2d), and hail aware (ng, qg)
 
     subroutine thompson_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, &
         nwfa, nifa, nwfa2d, nifa2d, th, pii, p, w, dz, dt_in, itimestep, &
@@ -577,7 +577,7 @@ contains
         has_reqc, has_reqi, has_reqs, ntc, muc, rainprod, evapprod, &
         ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
 
-! Subroutine (3D) arguments
+        ! Subroutine (3D) arguments
         integer, intent(in) :: ids,ide, jds,jde, kds,kde, ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: qv, qc, qr, qi, qs, qg, ni, nr, th
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: re_cloud, re_ice, re_snow
@@ -593,7 +593,7 @@ contains
         real, intent(in) :: dt_in
         integer, intent(in) :: itimestep
 
-! Local (1d) variables
+        ! Local (1d) variables
         real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
             nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz
         real, dimension(kts:kte) :: re_qc1d, re_qi1d, re_qs1d
@@ -614,7 +614,7 @@ contains
         integer, optional, intent(in) :: do_radar_ref
         character*256:: mp_debug
 
-!=================================================================================================================        
+        !=================================================================================================================
         i_start = its
         j_start = jts
         i_end = min(ite, ide-1)
@@ -650,7 +650,7 @@ contains
         kmax_ni = 0
         kmax_nr = 0
 
-!=================================================================================================================
+        !=================================================================================================================
         j_loop:  do j = j_start, j_end
             i_loop:  do i = i_start, i_end
                 pptrain = 0.0
@@ -673,10 +673,10 @@ contains
                 else
                     Nt_c = Nt_c_o
                     mu_c = 4
-                endif   
-                
-!=================================================================================================================
-! Begin k loop
+                endif
+
+                !=================================================================================================================
+                ! Begin k loop
                 do k = kts, kte
                     t1d(k) = th(i,k,j) * pii(i,k,j)
                     p1d(k) = p(i,k,j)
@@ -692,30 +692,30 @@ contains
                     nr1d(k) = nr(i,k,j)
                     rho(k) = RoverRv * p1d(k) / (R * t1d(k) * (qv1d(k)+RoverRv))
 
-! nwfa, nifa, and nc are optional aerosol-aware variables
+                    ! nwfa, nifa, and nc are optional aerosol-aware variables
                     if (present(nwfa)) then
-                       nwfa1d(k) = nwfa(i,k,j)
+                        nwfa1d(k) = nwfa(i,k,j)
                     else
-                       nwfa1d(k) = nwfa_default / rho(k)
-                       configs%aerosol_aware = .false.
+                        nwfa1d(k) = nwfa_default / rho(k)
+                        configs%aerosol_aware = .false.
                     endif
 
                     if (present(nifa)) then
-                       nifa1d(k) = nifa(i,k,j)
+                        nifa1d(k) = nifa(i,k,j)
                     else
-                       nifa1d(k) = nifa_default / rho(k)
-                       configs%aerosol_aware = .false.
+                        nifa1d(k) = nifa_default / rho(k)
+                        configs%aerosol_aware = .false.
                     endif
 
                     if (present(nc)) then
-                       nc1d(k) = nc(i,k,j)
+                        nc1d(k) = nc(i,k,j)
                     else
-                       nc1d(k) = Nt_c / rho(k)
-                       configs%aerosol_aware = .false.
+                        nc1d(k) = Nt_c / rho(k)
+                        configs%aerosol_aware = .false.
                     endif
-                 enddo
+                enddo
 
-! ng and qb are optional hail-aware variables
+                ! ng and qb are optional hail-aware variables
                 if ((present(ng)) .and. (present(qb))) then
                     configs%hail_aware = .true.
                     do k = kts, kte
@@ -724,7 +724,7 @@ contains
                     enddo
                 else
                     do k = kte, kts, -1
-! This is the one-moment graupel formulation
+                        ! This is the one-moment graupel formulation
                         if (qg1d(k) > R1) then
                             ygra1 = log10(max(1.e-9, qg1d(k)*rho(k)))
                             zans1 = 3.0 + 2.0/7.0*(ygra1+8.0)
@@ -742,14 +742,14 @@ contains
                     enddo
                 endif
 
-!=================================================================================================================
-! Main call to the 1D microphysics
+                !=================================================================================================================
+                ! Main call to the 1D microphysics
                 call mp_thompson_main(qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
                     nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, pptrain, pptsnow, pptgraul, pptice, &
                     rainprod1d, evapprod1d, kts, kte, dt, i, j, configs)
-                    
-!=================================================================================================================
-! Compute diagnostics and return output to 3D
+
+                !=================================================================================================================
+                ! Compute diagnostics and return output to 3D
                 pcp_ra(i,j) = pptrain
                 pcp_sn(i,j) = pptsnow
                 pcp_gr(i,j) = pptgraul
@@ -790,15 +790,15 @@ contains
                     evapprod(i,k,j) = evapprod1d(k)
                 enddo
 
-!=================================================================================================================
-! Reflectivity
+                !=================================================================================================================
+                ! Reflectivity
                 call calc_refl10cm (qv1d, qc1d, qr1d, nr1d, qs1d, qg1d, ng1d, qb1d, &
-                     t1d, p1d, dBZ, kts, kte, i, j, configs)
+                    t1d, p1d, dBZ, kts, kte, i, j, configs)
                 do k = kts, kte
-                   refl_10cm(i,k,j) = max(-35.0_wp, dBZ(k))
+                    refl_10cm(i,k,j) = max(-35.0_wp, dBZ(k))
                 enddo
 
-! Cloud, ice, and snow effective radius
+                ! Cloud, ice, and snow effective radius
                 if (has_reqc /= 0 .and. has_reqi /= 0 .and. has_reqs /= 0) then
                     do k = kts, kte
                         re_qc1d(k) = 2.49e-6
@@ -818,6 +818,6 @@ contains
         enddo j_loop
 
     end subroutine thompson_3d_to_1d_driver
-!=================================================================================================================
+    !=================================================================================================================
 
 end module module_mp_thompson
