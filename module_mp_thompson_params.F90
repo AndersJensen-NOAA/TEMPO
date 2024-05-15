@@ -53,6 +53,7 @@ module module_mp_thompson_params
 
     !    logical :: is_aerosol_aware = .true.
     logical :: merra2_aerosol_aware = .false.
+    logical :: sedi_semi = .false.
 
     ! Hail-aware microphysics options
     logical, parameter :: build_hail_aware_table = .false.
@@ -343,7 +344,8 @@ module module_mp_thompson_params
     real(wp), parameter :: nifa_default = naIN1*0.01
     real(wp), parameter :: aero_max = 9999.e6
     real(dp), parameter :: max_ni = 4999.e3
-
+    real(wp), parameter :: icenuc_max = 1000.e3
+    
     real(wp), parameter :: rime_threshold = 5.0 ! For MPAS
     real(wp), parameter :: rime_conversion = 0.75 ! For MPAS
 

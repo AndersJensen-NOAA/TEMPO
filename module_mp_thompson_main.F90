@@ -3,7 +3,6 @@
 module module_mp_thompson_main
 
     use module_mp_thompson_params
-!    use module_mp_thompson_utils, only : gammln
 
 #if defined(mpas)
     use mpas_kind_types, only: wp => RKIND, sp => R4KIND, dp => R8KIND
@@ -11,38 +10,14 @@ module module_mp_thompson_main
     use machine, only: wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
 #endif
 
+    implicit none
+
 contains
     !=================================================================================================================
     ! This subroutine computes the moisture tendencies of water vapor, cloud droplets, rain, cloud ice (pristine),
     ! snow, and graupel. Previously this code was based on Reisner et al (1998), but few of those pieces remain.
     ! A complete description is now found in Thompson et al. (2004, 2008), Thompson and Eidhammer (2014),
     ! and Jensen et al. (2023).
-
-    ! MPAS CALL
-    ! call mp_thompson_main(qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
-    ! nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, pptrain, pptsnow, pptgraul, pptice, &
-    ! rainprod1d, evapprod1d, kts, kte, dt, i, j, configs)
-
-    ! CCPP CALL
-    ! call mp_thompson_main(qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, ni1d,     &
-    ! nr1d, nc1d, nwfa1d, nifa1d, t1d, p1d, w1d, dz1d,  &
-    ! lsml, pptrain, pptsnow, pptgraul, pptice, &
-    ! rand1, rand2, rand3, &
-    ! kts, kte, dt, i, j, ext_diag,                    &
-    ! sedi_semi, decfl,                                &
-    ! !vtsk1, txri1, txrc1,                            &
-    ! prw_vcdc1, prw_vcde1,                            &
-    ! tpri_inu1, tpri_ide1_d, tpri_ide1_s, tprs_ide1,  &
-    ! tprs_sde1_d, tprs_sde1_s,                        &
-    ! tprg_gde1_d, tprg_gde1_s, tpri_iha1, tpri_wfz1,  &
-    ! tpri_rfz1, tprg_rfz1, tprs_scw1, tprg_scw1,      &
-    ! tprg_rcs1, tprs_rcs1, tprr_rci1,                 &
-    ! tprg_rcg1, tprw_vcd1_c,                          &
-    ! tprw_vcd1_e, tprr_sml1, tprr_gml1, tprr_rcg1,    &
-    ! tprr_rcs1, tprv_rev1,                            &
-    ! tten1, qvten1, qrten1, qsten1,                   &
-    ! qgten1, qiten1, niten1, nrten1, ncten1, qcten1,  &
-    ! pfil1, pfll1)
 
     subroutine mp_thompson_main(qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
         nwfa1d, nifa1d, t1d, p1d, w1d, dzq, pptrain, pptsnow, pptgraul, pptice, &
@@ -88,7 +63,7 @@ contains
 
 #if !defined(mpas)
         real(wp), dimension(kts:kte), intent(out) :: pfil1, pfll1
-        integer, intent(in) :: lsml
+        integer, intent(in), optional :: lsml
         real(wp), intent(in) :: rand1, rand2, rand3
         ! Extended diagnostics, most arrays only allocated if ext_diag is true
         logical, intent(in) :: ext_diag
@@ -427,8 +402,8 @@ contains
             ! CCPP version has rho(k) multiplier for min and max
             ! nwfa(k) = max(11.1e6, min(9999.e6, nwfa1d(k)*rho(k)))
             ! nifa(k) = max(nain1*0.01, min(9999.e6, nifa1d(k)*rho(k)))
-            nwfa(k) = MAX(nwfa_default*rho(k), MIN(aero_max*rho(k), nwfa1d(k)*rho(k)))
-            nifa(k) = MAX(nifa_default*rho(k), MIN(aero_max*rho(k), nifa1d(k)*rho(k)))
+            nwfa(k) = max(nwfa_default*rho(k), min(aero_max*rho(k), nwfa1d(k)*rho(k)))
+            nifa(k) = max(nifa_default*rho(k), min(aero_max*rho(k), nifa1d(k)*rho(k)))
 
             ! From CCPP version
             mvd_r(k) = D0r
@@ -439,13 +414,13 @@ contains
                 rc(k) = qc1d(k)*rho(k)
                 nc(k) = max(2., min(nc1d(k)*rho(k), nt_c_max))
                 l_qc(k) = .true.
-                if (nc(k).gt.10000.E6) then
+                if (nc(k).gt.10000.e6) then
                     nu_c = 2
                 elseif (nc(k).lt.100.) then
                     nu_c = 15
                 else
-                    nu_c = NINT(1000.E6/nc(k)) + 2
-                    nu_c = MAX(2, MIN(nu_c+NINT(rand2), 15))
+                    nu_c = nint(nu_c_scale/nc(k)) + 2
+                    nu_c = max(2, min(nu_c+nint(rand2), 15))
                 endif
                 lamc = (nc(k)*am_r*ccg(2,nu_c)*ocg1(nu_c)/rc(k))**obmr
                 xDc = (bm_r + nu_c + 1.) / lamc
@@ -456,7 +431,7 @@ contains
                 endif
                 nc(k) = min(real(nt_c_max, kind=dp), ccg(1,nu_c)*ocg2(nu_c)*rc(k) / am_r*lamc**bm_r)
                 ! CCPP version has different values of Nt_c for land/ocean
-                if (.NOT. (configs%aerosol_aware .or. merra2_aerosol_aware)) then
+                if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
                     nc(k) = Nt_c
                     if (present(lsml)) then
                         if (lsml == 1) then
@@ -788,15 +763,15 @@ contains
 
             mvd_c(k) = D0c
             if (l_qc(k)) then
-                if (nc(k).gt.10000.E6) then
+                if (nc(k).gt.10000.e6) then
                     nu_c = 2
                 elseif (nc(k).lt.100.) then
                     nu_c = 15
                 else
-                    nu_c = NINT(1000.E6/nc(k)) + 2
-                    nu_c = MAX(2, MIN(nu_c+NINT(rand2), 15))
+                    nu_c = nint(nu_c_scale/nc(k)) + 2
+                    nu_c = max(2, min(nu_c+nint(rand2), 15))
                 endif
-                xdc = max(d0c*1.e6, ((rc(k)/(am_r*nc(k)))**obmr) * 1.e6)
+                xdc = max(D0c*1.e6, ((rc(k)/(am_r*nc(k)))**obmr) * 1.e6)
                 lamc = (nc(k)*am_r* ccg(2,nu_c) * ocg1(nu_c) / rc(k))**obmr
                 mvd_c(k) = (3.0+nu_c+0.672) / lamc
                 mvd_c(k) = max(d0c, min(mvd_c(k), d0r))
@@ -855,7 +830,8 @@ contains
         if (.not. iiwarm) then
             do k = kts, kte
                 vts_boost(k) = 1.0
-                xDx = 0.0
+                xDs = 0.0
+                if (L_qs(k)) xDs = smoc(k) / smob(k)
                 !                orho = 1./rho(k)
 
                 ! if (L_qs(k)) then
@@ -1002,7 +978,7 @@ contains
                 if (L_qc(k) .and. mvd_c(k).gt. D0c) then
                     ! xDs = 0.0
                     ! if (L_qs(k)) xDs = smoc(k) / smob(k)
-                    if (xds .gt. d0s) then
+                    if (xDs > d0s) then
                         idx = 1 + int(nbs*log(real(xDs/Ds(1), kind=dp)) / log(real(Ds(nbs)/Ds(1), kind=dp)))
                         idx = min(idx, nbs)
                         Ef_sw = t_Efsw(idx, int(mvd_c(k)*1.E6))
@@ -1144,7 +1120,7 @@ contains
 
                 if (temp(k).lt.T_0) then
 
-                    !vts_boost(k) = 1.0
+                    vts_boost(k) = 1.0
                     rate_max = (qv(k)-qvsi(k))*rho(k)*odts*0.999
 
                     !+---+---------------- BEGIN NEW ICE NUCLEATION -----------------------+
@@ -1162,7 +1138,7 @@ contains
                     !+---+-----------------------------------------------------------------+
 
                     ! if (dustyIce) then
-                    if (dustyIce .AND. (configs%aerosol_aware .or. merra2_aerosol_aware)) then
+                    if (dustyIce .and. (configs%aerosol_aware .or. merra2_aerosol_aware)) then
                         xni = iceDeMott(tempc,qvs(k),qvs(k),qvsi(k),rho(k),nifa(k))
                     else
                         xni = 1.0 *1000. ! Default is 1.0 per Liter
@@ -1212,9 +1188,8 @@ contains
                         if (dustyIce) then
                             xnc = iceDeMott(tempc,qv(k),qvs(k),qvsi(k),rho(k),nifa(k))
                             xnc = xnc*(1.0 + 50.*rand3)
-
                         else
-                            xnc = min(1000.e3, tno*exp(ato*(t_0-temp(k))))
+                            xnc = min(icenuc_max, tno*exp(ato*(t_0-temp(k))))
                         endif
                         xni = ni(k) + (pni_rfz(k)+pni_wfz(k))*dtsave
                         pni_inu(k) = 0.5*(xnc-xni + abs(xnc-xni))*odts
@@ -1224,8 +1199,8 @@ contains
 
                     !..Freezing of aqueous aerosols based on Koop et al (2001, Nature)
                     xni = ns(k)+ni(k) + (pni_rfz(k)+pni_wfz(k)+pni_inu(k))*dtsave
-                    if ((configs%aerosol_aware .or. merra2_aerosol_aware) .AND. homogIce .AND. &
-                        (xni.le.max_ni) .AND.(temp(k).lt.238).AND.(ssati(k).ge.0.4) ) then
+                    if ((configs%aerosol_aware .or. merra2_aerosol_aware) .and. homogIce .and. &
+                        (xni.le.max_ni) .and.(temp(k).lt.238.).and.(ssati(k).ge.0.4)) then
 
                         xnc = iceKoop(temp(k),qv(k),qvs(k),nwfa(k), dtsave)
                         pni_iha(k) = xnc*odts
@@ -1348,9 +1323,8 @@ contains
                     !.. Interp from 15 to 95% as riming factor increases from 2.0 to 30.0
                     !.. 0.028 came from (.95-.15)/(30.-2.).  This remains ad-hoc and should
                     !.. be revisited.
-                    if (prs_scw(k).gt.rime_threshold*prs_sde(k) .and. &
-                        prs_sde(k).gt.eps) then
-                        r_frac = min(30.0d0, prs_scw(k)/prs_sde(k))
+                    if (prs_scw(k).gt.rime_threshold*prs_sde(k) .and. prs_sde(k).gt.eps) then
+                        r_frac = min(30.0_dp, prs_scw(k)/prs_sde(k))
                         g_frac = min(rime_conversion), 0.15 + (r_frac-2.)*.028)
                         vts_boost(k) = min(1.5, 1.1 + (r_frac-2.)*.016)
                         prg_scw(k) = g_frac*prs_scw(k)
@@ -1583,13 +1557,13 @@ contains
             xrc=max(r1, (qc1d(k) + qcten(k)*dtsave)*rho(k))
             xnc=max(2., (nc1d(k) + ncten(k)*dtsave)*rho(k))
             if (xrc .gt. r1) then
-                if (xnc.gt.10000.E6) then
+                if (xnc.gt.10000.e6) then
                     nu_c = 2
                 elseif (xnc.lt.100.) then
                     nu_c = 15
                 else
-                    nu_c = NINT(1000.E6/xnc) + 2
-                    nu_c = MAX(2, MIN(nu_c+NINT(rand2), 15))
+                    nu_c = nint(nu_c_scale/xnc) + 2
+                    nu_c = max(2, min(nu_c+nint(rand2), 15))
                 endif
                 lamc = (xnc*am_r*ccg(2,nu_c)*ocg1(nu_c)/rc(k))**obmr
                 xDc = (bm_r + nu_c + 1.) / lamc
@@ -1783,15 +1757,16 @@ contains
             ocp(k) = 1./(cp2*(1.+0.887*qv(k)))
             lvt2(k)=lvap(k)*lvap(k)*ocp(k)*orv*otemp*otemp
 
-            if (is_aerosol_aware)                                                 &
-                nwfa(k) = MAX(11.1E6*rho(k), (nwfa1d(k) + nwfaten(k)*DT)*rho(k))
+            if (configs%aerosol_aware) then
+                nwfa(k) = MAX(nwfa_default*rho(k), (nwfa1d(k) + nwfaten(k)*DT)*rho(k))
+            endif
         enddo
 
         do k = kts, kte
             if ((qc1d(k) + qcten(k)*dt) .gt. r1) then
                 rc(k) = (qc1d(k) + qcten(k)*dt)*rho(k)
                 nc(k) = max(2., min((nc1d(k)+ncten(k)*dt)*rho(k), nt_c_max))
-                if (.NOT. (configs%aerosol_aware .or. merra2_aerosol_aware)) then
+                if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
                     nc(k) = Nt_c
                     if(present(lsml)) then
                         if(lsml == 1) then
@@ -1982,8 +1957,7 @@ contains
         !+---+-----------------------------------------------------------------+
         do k = kts, kte
             orho = 1./rho(k)
-            if ( (ssatw(k).gt. eps) .or. (ssatw(k).lt. -eps .and. &
-                L_qc(k)) ) then
+            if ((ssatw(k).gt. eps) .or. (ssatw(k).lt. -eps .and. L_qc(k))) then
                 clap = (qv(k)-qvs(k))/(1. + lvt2(k)*qvs(k))
                 do n = 1, 3
                     fcd = qvs(k)* exp(lvt2(k)*clap) - qv(k) + clap
@@ -1992,13 +1966,14 @@ contains
                 enddo
                 xrc = rc(k) + clap*rho(k)
                 xnc = 0.
-                if (xrc.gt. R1) then
+                if (xrc > R1) then
                     prw_vcd(k) = clap*odt
                     !+---+-----------------------------------------------------------------+ !  DROPLET NUCLEATION
                     if (clap .gt. eps) then
                         if (configs%aerosol_aware .or. merra2_aerosol_aware) then
                             xnc = max(2., activ_ncloud(temp(k), w1d(k)+rand3, nwfa(k), lsml))
                         else
+                            xnc = Nt_c
                             if(present(lsml)) then
                                 if(lsml == 1) then
                                     xnc = Nt_c_l
@@ -2010,12 +1985,10 @@ contains
                         pnc_wcd(k) = 0.5*(xnc-nc(k) + abs(xnc-nc(k)))*odts*orho
 
                         ! Be careful here: initial cloud evaporation can increase aerosols
-                        if (configs%aerosol_aware) &
-                            nwfaten(k) = nwfaten(k) - pnc_wcd(k)
+                        if (configs%aerosol_aware) nwfaten(k) = nwfaten(k) - pnc_wcd(k)
 
                         !+---+-----------------------------------------------------------------+ !  EVAPORATION
-                    elseif (clap .lt. -eps .AND. ssatw(k).lt.-1.E-6 .AND.     &
-                        configs%aerosol_aware) then
+                    elseif (clap .lt. -eps .AND. ssatw(k).lt.-1.e-6 .and. configs%aerosol_aware) then
                         tempc = temp(k) - 273.15
                         otemp = 1./temp(k)
                         rvs = rho(k)*qvs(k)
@@ -2061,9 +2034,7 @@ contains
                         pnc_wcd(k) = max(real(-nc(k)*0.99*orho*odt, &
                             kind=dp), real(-tnc_wev(idx_d, idx_c, idx_n)*orho*odt, kind=dp))
                         ! Be careful here: initial cloud evaporation can increase aerosols
-                        if (configs%aerosol_aware) &
-                            nwfaten(k) = nwfaten(k) - pnc_wcd(k)
-
+                        if (configs%aerosol_aware) nwfaten(k) = nwfaten(k) - pnc_wcd(k)
                     endif
                 else
                     prw_vcd(k) = -rc(k)*orho*odt
@@ -2083,302 +2054,302 @@ contains
                 rc(k) = max(R1, (qc1d(k) + dt*qcten(k))*rho(k))
                 if (rc(k).eq.R1) l_qc(k) = .false.
                 nc(k) = max(2., min((nc1d(k)+ncten(k)*dt)*rho(k), nt_c_max))
-                if (.NOT. (configs%aerosol_aware .or. merra2_aerosol_aware)) then
+                if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
                     if present(lsml) then
                     if(lsml == 1) then
                         nc(k) = Nt_c_l
                     else
                         nc(k) = Nt_c_o
                     endif
+                endif                   
+                qv(k) = max(min_qv, qv1d(k) + DT*qvten(k))
+                temp(k) = t1d(k) + DT*tten(k)
+                rho(k) = RoverRv*pres(k)/(R*temp(k)*(qv(k)+RoverRv))
+                qvs(k) = rslf(pres(k), temp(k))
+                ssatw(k) = qv(k)/qvs(k) - 1.
+            endif
+        enddo
+
+        !=================================================================================================================
+        !.. If still subsaturated, allow rain to evaporate, following
+        !.. Srivastava & Coen (1992).
+        !+---+-----------------------------------------------------------------+
+        do k = kts, kte
+            if ( (ssatw(k).lt. -eps) .and. L_qr(k) &
+                .and. (.not.(prw_vcd(k).gt. 0.)) ) then
+                tempc = temp(k) - 273.15
+                otemp = 1./temp(k)
+                orho = 1./rho(k)
+                rhof(k) = sqrt(rho_not*orho)
+                rhof2(k) = sqrt(rhof(k))
+                diffu(k) = 2.11e-5*(temp(k)/273.15)**1.94 * (101325./pres(k))
+                if (tempc .ge. 0.0) then
+                    visco(k) = (1.718+0.0049*tempc)*1.0e-5
+                else
+                    visco(k) = (1.718+0.0049*tempc-1.2e-5*tempc*tempc)*1.0e-5
                 endif
+                vsc2(k) = sqrt(rho(k)/visco(k))
+                lvap(k) = lvap0 + (2106.0 - 4218.0)*tempc
+                tcond(k) = (5.69 + 0.0168*tempc)*1.0E-5 * 418.936
+                ocp(k) = 1./(Cp2*(1.+0.887*qv(k)))
+
+                rvs = rho(k)*qvs(k)
+                rvs_p = rvs*otemp*(lvap(k)*otemp*oRv - 1.)
+                rvs_pp = rvs * ( otemp*(lvap(k)*otemp*oRv - 1.) &
+                    *otemp*(lvap(k)*otemp*oRv - 1.) &
+                    + (-2.*lvap(k)*otemp*otemp*otemp*oRv) &
+                    + otemp*otemp)
+                gamsc = lvap(k)*diffu(k)/tcond(k) * rvs_p
+                alphsc = 0.5*(gamsc/(1.+gamsc))*(gamsc/(1.+gamsc)) &
+                    * rvs_pp/rvs_p * rvs/rvs_p
+                alphsc = max(1.E-9, alphsc)
+                xsat   = min(-1.E-9, ssatw(k))
+                t1_evap = 2.*PI*( 1.0 - alphsc*xsat  &
+                    + 2.*alphsc*alphsc*xsat*xsat  &
+                    - 5.*alphsc*alphsc*alphsc*xsat*xsat*xsat ) &
+                    / (1.+gamsc)
+
+                lamr = 1./ilamr(k)
+                !..Rapidly eliminate near zero values when low humidity (<95%)
+                if (qv(k)/qvs(k) .lt. 0.95 .AND. rr(k)*orho.le.1.E-8) then
+                    prv_rev(k) = rr(k)*orho*odts
+                else
+                    prv_rev(k) = t1_evap*diffu(k)*(-ssatw(k))*N0_r(k)*rvs &
+                        * (t1_qr_ev*ilamr(k)**cre(10) &
+                        + t2_qr_ev*vsc2(k)*rhof2(k)*((lamr+0.5*fv_r)**(-cre(11))))
+                    rate_max = min((rr(k)*orho*odts), (qvs(k)-qv(k))*odts)
+                    prv_rev(k) = min(real(rate_max, kind=dp), prv_rev(k)*orho)
+
+                    !..TEST: G. Thompson  10 May 2013
+                    !..Reduce the rain evaporation in same places as melting graupel occurs.
+                    !..Rationale: falling and simultaneous melting graupel in subsaturated
+                    !..regions will not melt as fast because particle temperature stays
+                    !..at 0C.  Also not much shedding of the water from the graupel so
+                    !..likely that the water-coated graupel evaporating much slower than
+                    !..if the water was immediately shed off.
+                    IF (prr_gml(k).gt.0.0) THEN
+                        eva_factor = min(1.0, 0.01+(0.99-0.01)*(tempc/20.0))
+                        prv_rev(k) = prv_rev(k)*eva_factor
+                    ENDIF
+                endif
+
+                pnr_rev(k) = min(real(nr(k)*0.99*orho*odts, kind=dp),                  &   ! RAIN2M
+                    prv_rev(k) * nr(k)/rr(k))
+
+                qrten(k) = qrten(k) - prv_rev(k)
+                qvten(k) = qvten(k) + prv_rev(k)
+                nrten(k) = nrten(k) - pnr_rev(k)
+                nwfaten(k) = nwfaten(k) + pnr_rev(k)
+                tten(k) = tten(k) - lvap(k)*ocp(k)*prv_rev(k)*(1-IFDRY)
+
+                rr(k) = max(r1, (qr1d(k) + dt*qrten(k))*rho(k))
+                qv(k) = max(1.e-10, qv1d(k) + dt*qvten(k))
+                nr(k) = max(r2, (nr1d(k) + dt*nrten(k))*rho(k))
+                temp(k) = t1d(k) + DT*tten(k)
+                rho(k) = RoverRv*pres(k)/(R*temp(k)*(qv(k)+RoverRv))
             endif
-            qv(k) = max(min_qv, qv1d(k) + DT*qvten(k))
-            temp(k) = t1d(k) + DT*tten(k)
-            rho(k) = RoverRv*pres(k)/(R*temp(k)*(qv(k)+RoverRv))
-            qvs(k) = rslf(pres(k), temp(k))
-            ssatw(k) = qv(k)/qvs(k) - 1.
-        endif
-    enddo
-
-    !=================================================================================================================
-    !.. If still subsaturated, allow rain to evaporate, following
-    !.. Srivastava & Coen (1992).
-    !+---+-----------------------------------------------------------------+
-    do k = kts, kte
-        if ( (ssatw(k).lt. -eps) .and. L_qr(k) &
-            .and. (.not.(prw_vcd(k).gt. 0.)) ) then
-            tempc = temp(k) - 273.15
-            otemp = 1./temp(k)
-            orho = 1./rho(k)
-            rhof(k) = sqrt(rho_not*orho)
-            rhof2(k) = sqrt(rhof(k))
-            diffu(k) = 2.11e-5*(temp(k)/273.15)**1.94 * (101325./pres(k))
-            if (tempc .ge. 0.0) then
-                visco(k) = (1.718+0.0049*tempc)*1.0e-5
-            else
-                visco(k) = (1.718+0.0049*tempc-1.2e-5*tempc*tempc)*1.0e-5
-            endif
-            vsc2(k) = sqrt(rho(k)/visco(k))
-            lvap(k) = lvap0 + (2106.0 - 4218.0)*tempc
-            tcond(k) = (5.69 + 0.0168*tempc)*1.0E-5 * 418.936
-            ocp(k) = 1./(Cp2*(1.+0.887*qv(k)))
-
-            rvs = rho(k)*qvs(k)
-            rvs_p = rvs*otemp*(lvap(k)*otemp*oRv - 1.)
-            rvs_pp = rvs * ( otemp*(lvap(k)*otemp*oRv - 1.) &
-                *otemp*(lvap(k)*otemp*oRv - 1.) &
-                + (-2.*lvap(k)*otemp*otemp*otemp*oRv) &
-                + otemp*otemp)
-            gamsc = lvap(k)*diffu(k)/tcond(k) * rvs_p
-            alphsc = 0.5*(gamsc/(1.+gamsc))*(gamsc/(1.+gamsc)) &
-                * rvs_pp/rvs_p * rvs/rvs_p
-            alphsc = max(1.E-9, alphsc)
-            xsat   = min(-1.E-9, ssatw(k))
-            t1_evap = 2.*PI*( 1.0 - alphsc*xsat  &
-                + 2.*alphsc*alphsc*xsat*xsat  &
-                - 5.*alphsc*alphsc*alphsc*xsat*xsat*xsat ) &
-                / (1.+gamsc)
-
-            lamr = 1./ilamr(k)
-            !..Rapidly eliminate near zero values when low humidity (<95%)
-            if (qv(k)/qvs(k) .lt. 0.95 .AND. rr(k)*orho.le.1.E-8) then
-                prv_rev(k) = rr(k)*orho*odts
-            else
-                prv_rev(k) = t1_evap*diffu(k)*(-ssatw(k))*N0_r(k)*rvs &
-                    * (t1_qr_ev*ilamr(k)**cre(10) &
-                    + t2_qr_ev*vsc2(k)*rhof2(k)*((lamr+0.5*fv_r)**(-cre(11))))
-                rate_max = min((rr(k)*orho*odts), (qvs(k)-qv(k))*odts)
-                prv_rev(k) = min(real(rate_max, kind=dp), prv_rev(k)*orho)
-
-                !..TEST: G. Thompson  10 May 2013
-                !..Reduce the rain evaporation in same places as melting graupel occurs.
-                !..Rationale: falling and simultaneous melting graupel in subsaturated
-                !..regions will not melt as fast because particle temperature stays
-                !..at 0C.  Also not much shedding of the water from the graupel so
-                !..likely that the water-coated graupel evaporating much slower than
-                !..if the water was immediately shed off.
-                IF (prr_gml(k).gt.0.0) THEN
-                    eva_factor = min(1.0, 0.01+(0.99-0.01)*(tempc/20.0))
-                    prv_rev(k) = prv_rev(k)*eva_factor
-                ENDIF
-            endif
-
-            pnr_rev(k) = min(real(nr(k)*0.99*orho*odts, kind=dp),                  &   ! RAIN2M
-                prv_rev(k) * nr(k)/rr(k))
-
-            qrten(k) = qrten(k) - prv_rev(k)
-            qvten(k) = qvten(k) + prv_rev(k)
-            nrten(k) = nrten(k) - pnr_rev(k)
-            nwfaten(k) = nwfaten(k) + pnr_rev(k)
-            tten(k) = tten(k) - lvap(k)*ocp(k)*prv_rev(k)*(1-IFDRY)
-
-            rr(k) = max(r1, (qr1d(k) + dt*qrten(k))*rho(k))
-            qv(k) = max(1.e-10, qv1d(k) + dt*qvten(k))
-            nr(k) = max(r2, (nr1d(k) + dt*nrten(k))*rho(k))
-            temp(k) = t1d(k) + DT*tten(k)
-            rho(k) = RoverRv*pres(k)/(R*temp(k)*(qv(k)+RoverRv))
-        endif
-    enddo
+        enddo
 #if defined(mpas)
-    do k = kts, kte
-        evapprod(k) = prv_rev(k) - (min(zeroD0,prs_sde(k)) + &
-            min(zeroD0,prg_gde(k)))
-        rainprod(k) = prr_wau(k) + prr_rcw(k) + prs_scw(k) + &
-            prg_scw(k) + prs_iau(k) + &
-            prg_gcw(k) + prs_sci(k) + &
-            pri_rci(k)
-    enddo
+        do k = kts, kte
+            evapprod(k) = prv_rev(k) - (min(zeroD0,prs_sde(k)) + &
+                min(zeroD0,prg_gde(k)))
+            rainprod(k) = prr_wau(k) + prr_rcw(k) + prs_scw(k) + &
+                prg_scw(k) + prs_iau(k) + &
+                prg_gcw(k) + prs_sci(k) + &
+                pri_rci(k)
+        enddo
 #endif
 
-    !=================================================================================================================
-    !..Find max terminal fallspeed (distribution mass-weighted mean
-    !.. velocity) and use it to determine if we need to split the timestep
-    !.. (var nstep>1).  Either way, only bother to do sedimentation below
-    !.. 1st level that contains any sedimenting particles (k=ksed1 on down).
-    !.. New in v3.0+ is computing separate for rain, ice, snow, and
-    !.. graupel species thus making code faster with credit to J. Schmidt.
-    !+---+-----------------------------------------------------------------+
-    nstep = 0
-    onstep(:) = 1.0
-    ksed1(:) = 1
-    do k = kte+1, kts, -1
-        vtrk(k) = 0.
-        vtnrk(k) = 0.
-        vtik(k) = 0.
-        vtnik(k) = 0.
-        vtsk(k) = 0.
-        vtgk(k) = 0.
-        vtngk(k) = 0.
-        vtck(k) = 0.
-        vtnck(k) = 0.
-    enddo
-    if (any(l_qr .eqv. .true.)) then
-        do k = kte, kts, -1
-            vtr = 0.
-            rhof(k) = sqrt(rho_not/rho(k))
-
-            if (rr(k).gt. R1) then
-                lamr = (am_r*crg(3)*org2*nr(k)/rr(k))**obmr
-                vtr = rhof(k)*av_r*crg(6)*org3 * lamr**cre(3)                 &
-                    *((lamr+fv_r)**(-cre(6)))
-                vtrk(k) = vtr
-                ! First below is technically correct:
-                !         vtr = rhof(k)*av_r*crg(5)*org2 * lamr**cre(2)                 &
-                !                     *((lamr+fv_r)**(-cre(5)))
-                ! Test: make number fall faster (but still slower than mass)
-                ! Goal: less prominent size sorting
-                vtr = rhof(k)*av_r*crg(7)/crg(12) * lamr**cre(12)             &
-                    *((lamr+fv_r)**(-cre(7)))
-                vtnrk(k) = vtr
-            else
-                vtrk(k) = vtrk(k+1)
-                vtnrk(k) = vtnrk(k+1)
-            endif
-
-            if (max(vtrk(k),vtnrk(k)) .gt. 1.e-3) then
-                ksed1(1) = max(ksed1(1), k)
-                delta_tp = dzq(k)/(max(vtrk(k),vtnrk(k)))
-                nstep = max(nstep, int(dt/delta_tp + 1.))
-            endif
+        !=================================================================================================================
+        !..Find max terminal fallspeed (distribution mass-weighted mean
+        !.. velocity) and use it to determine if we need to split the timestep
+        !.. (var nstep>1).  Either way, only bother to do sedimentation below
+        !.. 1st level that contains any sedimenting particles (k=ksed1 on down).
+        !.. New in v3.0+ is computing separate for rain, ice, snow, and
+        !.. graupel species thus making code faster with credit to J. Schmidt.
+        !+---+-----------------------------------------------------------------+
+        nstep = 0
+        onstep(:) = 1.0
+        ksed1(:) = 1
+        do k = kte+1, kts, -1
+            vtrk(k) = 0.
+            vtnrk(k) = 0.
+            vtik(k) = 0.
+            vtnik(k) = 0.
+            vtsk(k) = 0.
+            vtgk(k) = 0.
+            vtngk(k) = 0.
+            vtck(k) = 0.
+            vtnck(k) = 0.
         enddo
-        if (ksed1(1) .eq. kte) ksed1(1) = kte-1
-        if (nstep .gt. 0) onstep(1) = 1./real(nstep)
-    endif
-
-    !+---+-----------------------------------------------------------------+
-
-    if (any(l_qc .eqv. .true.)) then
-        hgt_agl = 0.
-        do_loop_hgt_agl : do k = kts, kte-1
-            if (rc(k) .gt. R2) ksed1(5) = k
-            hgt_agl = hgt_agl + dzq(k)
-            if (hgt_agl .gt. 500.0) exit do_loop_hgt_agl
-        enddo do_loop_hgt_agl
-
-        do k = ksed1(5), kts, -1
-            vtc = 0.
-            if (rc(k) .gt. R1 .and. w1d(k) .lt. 1.E-1) then
-                if (nc(k).gt.10000.E6) then
-                    nu_c = 2
-                elseif (nc(k).lt.100.) then
-                    nu_c = 15
-                else
-                    nu_c = NINT(1000.E6/nc(k)) + 2
-                    nu_c = MAX(2, MIN(nu_c+NINT(rand2), 15))
-                endif
-                lamc = (nc(k)*am_r*ccg(2,nu_c)*ocg1(nu_c)/rc(k))**obmr
-                ilamc = 1./lamc
-                vtc = rhof(k)*av_c*ccg(5,nu_c)*ocg2(nu_c) * ilamc**bv_c
-                vtck(k) = vtc
-                vtc = rhof(k)*av_c*ccg(4,nu_c)*ocg1(nu_c) * ilamc**bv_c
-                vtnck(k) = vtc
-            endif
-        enddo
-    endif
-
-    !+---+-----------------------------------------------------------------+
-
-    if (.not. iiwarm) then
-        if (any(l_qi .eqv. .true.)) then
-
-            nstep = 0
+        if (any(l_qr .eqv. .true.)) then
             do k = kte, kts, -1
-                vti = 0.
+                vtr = 0.
+                rhof(k) = sqrt(rho_not/rho(k))
 
-                if (ri(k).gt. R1) then
-                    lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
-                    ilami = 1./lami
-                    vti = rhof(k)*av_i*cig(3)*oig2 * ilami**bv_i
-                    vtik(k) = vti
+                if (rr(k).gt. R1) then
+                    lamr = (am_r*crg(3)*org2*nr(k)/rr(k))**obmr
+                    vtr = rhof(k)*av_r*crg(6)*org3 * lamr**cre(3)                 &
+                        *((lamr+fv_r)**(-cre(6)))
+                    vtrk(k) = vtr
                     ! First below is technically correct:
-                    !          vti = rhof(k)*av_i*cig(4)*oig1 * ilami**bv_i
+                    !         vtr = rhof(k)*av_r*crg(5)*org2 * lamr**cre(2)                 &
+                    !                     *((lamr+fv_r)**(-cre(5)))
+                    ! Test: make number fall faster (but still slower than mass)
                     ! Goal: less prominent size sorting
-                    vti = rhof(k)*av_i*cig(6)/cig(7) * ilami**bv_i
-                    vtnik(k) = vti
+                    vtr = rhof(k)*av_r*crg(7)/crg(12) * lamr**cre(12)             &
+                        *((lamr+fv_r)**(-cre(7)))
+                    vtnrk(k) = vtr
                 else
-                    vtik(k) = vtik(k+1)
-                    vtnik(k) = vtnik(k+1)
+                    vtrk(k) = vtrk(k+1)
+                    vtnrk(k) = vtnrk(k+1)
                 endif
 
-                if (vtik(k) .gt. 1.e-3) then
-                    ksed1(2) = max(ksed1(2), k)
-                    delta_tp = dzq(k)/vtik(k)
+                if (max(vtrk(k),vtnrk(k)) .gt. 1.e-3) then
+                    ksed1(1) = max(ksed1(1), k)
+                    delta_tp = dzq(k)/(max(vtrk(k),vtnrk(k)))
                     nstep = max(nstep, int(dt/delta_tp + 1.))
                 endif
             enddo
-            if (ksed1(2) .eq. kte) ksed1(2) = kte-1
-            if (nstep .gt. 0) onstep(2) = 1./real(nstep)
+            if (ksed1(1) .eq. kte) ksed1(1) = kte-1
+            if (nstep .gt. 0) onstep(1) = 1./real(nstep)
         endif
 
-        !+---+-----------------------------------------------------------------+
+    !+---+-----------------------------------------------------------------+
 
-        if (any(l_qs .eqv. .true.)) then
+        if (any(l_qc .eqv. .true.)) then
+            hgt_agl = 0.
+            do_loop_hgt_agl : do k = kts, kte-1
+                if (rc(k) .gt. R2) ksed1(5) = k
+                hgt_agl = hgt_agl + dzq(k)
+                if (hgt_agl .gt. 500.0) exit do_loop_hgt_agl
+            enddo do_loop_hgt_agl
 
-            nstep = 0
-            do k = kte, kts, -1
-                vts = 0.
-
-                if (rs(k).gt. R1) then
-                    xDs = smoc(k) / smob(k)
-                    Mrat = 1./xDs
-                    ils1 = 1./(Mrat*Lam0 + fv_s)
-                    ils2 = 1./(Mrat*Lam1 + fv_s)
-                    t1_vts = Kap0*csg(4)*ils1**cse(4)
-                    t2_vts = Kap1*Mrat**mu_s*csg(10)*ils2**cse(10)
-                    ils1 = 1./(Mrat*Lam0)
-                    ils2 = 1./(Mrat*Lam1)
-                    t3_vts = Kap0*csg(1)*ils1**cse(1)
-                    t4_vts = Kap1*Mrat**mu_s*csg(7)*ils2**cse(7)
-                    vts = rhof(k)*av_s * (t1_vts+t2_vts)/(t3_vts+t4_vts)
-                    if (prr_sml(k) .gt. 0.0) then
-                        SR = rs(k)/(rs(k)+rr(k))
-                        vtsk(k) = vts*SR + (1.-SR)*vtrk(k)
+            do k = ksed1(5), kts, -1
+                vtc = 0.
+                if (rc(k) .gt. R1 .and. w1d(k) .lt. 1.E-1) then
+                    if (nc(k).gt.10000.e6) then
+                        nu_c = 2
+                    elseif (nc(k).lt.100.) then
+                        nu_c = 15
                     else
-                        vtsk(k) = vts*vts_boost(k)
+                        nu_c = nint(nu_c_scale/nc(k)) + 2
+                        nu_c = max(2, min(nu_c+nint(rand2), 15))
                     endif
-                else
-                    vtsk(k) = vtsk(k+1)
-                endif
-
-                if (vtsk(k) .gt. 1.e-3) then
-                    ksed1(3) = max(ksed1(3), k)
-                    delta_tp = dzq(k)/vtsk(k)
-                    nstep = max(nstep, int(dt/delta_tp + 1.))
+                    lamc = (nc(k)*am_r*ccg(2,nu_c)*ocg1(nu_c)/rc(k))**obmr
+                    ilamc = 1./lamc
+                    vtc = rhof(k)*av_c*ccg(5,nu_c)*ocg2(nu_c) * ilamc**bv_c
+                    vtck(k) = vtc
+                    vtc = rhof(k)*av_c*ccg(4,nu_c)*ocg1(nu_c) * ilamc**bv_c
+                    vtnck(k) = vtc
                 endif
             enddo
-            if (ksed1(3) .eq. kte) ksed1(3) = kte-1
-            if (nstep .gt. 0) onstep(3) = 1./real(nstep)
         endif
+
+    !+---+-----------------------------------------------------------------+
+
+        if (.not. iiwarm) then
+            if (any(l_qi .eqv. .true.)) then
+
+                nstep = 0
+                do k = kte, kts, -1
+                    vti = 0.
+
+                    if (ri(k).gt. R1) then
+                        lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
+                        ilami = 1./lami
+                        vti = rhof(k)*av_i*cig(3)*oig2 * ilami**bv_i
+                        vtik(k) = vti
+                        ! First below is technically correct:
+                        !          vti = rhof(k)*av_i*cig(4)*oig1 * ilami**bv_i
+                        ! Goal: less prominent size sorting
+                        vti = rhof(k)*av_i*cig(6)/cig(7) * ilami**bv_i
+                        vtnik(k) = vti
+                    else
+                        vtik(k) = vtik(k+1)
+                        vtnik(k) = vtnik(k+1)
+                    endif
+
+                    if (vtik(k) .gt. 1.e-3) then
+                        ksed1(2) = max(ksed1(2), k)
+                        delta_tp = dzq(k)/vtik(k)
+                        nstep = max(nstep, int(dt/delta_tp + 1.))
+                    endif
+                enddo
+                if (ksed1(2) .eq. kte) ksed1(2) = kte-1
+                if (nstep .gt. 0) onstep(2) = 1./real(nstep)
+            endif
 
         !+---+-----------------------------------------------------------------+
 
-        if (ANY(L_qg .eqv. .true.)) then
-            nstep = 0
-            do k = kte, kts, -1
-                vtg = 0.
+            if (any(l_qs .eqv. .true.)) then
 
-                if (rg(k).gt. R1) then
-                    if (configs%hail_aware) then
-                        xrho_g = MAX(rho_g(1),MIN(rg(k)/rho(k)/rb(k),rho_g(NRHG)))
-                        afall = a_coeff*((4.0*xrho_g*9.8)/(3.0*rho(k)))**b_coeff
-                        afall = afall * visco(k)**(1.0-2.0*b_coeff)
+                nstep = 0
+                do k = kte, kts, -1
+                    vts = 0.
+
+                    if (rs(k).gt. R1) then
+                        xDs = smoc(k) / smob(k)
+                        Mrat = 1./xDs
+                        ils1 = 1./(Mrat*Lam0 + fv_s)
+                        ils2 = 1./(Mrat*Lam1 + fv_s)
+                        t1_vts = Kap0*csg(4)*ils1**cse(4)
+                        t2_vts = Kap1*Mrat**mu_s*csg(10)*ils2**cse(10)
+                        ils1 = 1./(Mrat*Lam0)
+                        ils2 = 1./(Mrat*Lam1)
+                        t3_vts = Kap0*csg(1)*ils1**cse(1)
+                        t4_vts = Kap1*Mrat**mu_s*csg(7)*ils2**cse(7)
+                        vts = rhof(k)*av_s * (t1_vts+t2_vts)/(t3_vts+t4_vts)
+                        if (prr_sml(k) .gt. 0.0) then
+                            SR = rs(k)/(rs(k)+rr(k))
+                            vtsk(k) = vts*SR + (1.-SR)*vtrk(k)
+                        else
+                            vtsk(k) = vts*vts_boost(k)
+                        endif
                     else
-                        afall = av_g_old
-                        bfall = bv_g_old
+                        vtsk(k) = vtsk(k+1)
                     endif
-                    vtg = rhof(k)*afall*cgg(6,idx_bg(k))*ogg3 * ilamg(k)**bfall
-                    vtgk(k) = vtg
-                    ! Goal: less prominent size sorting
-                    !    the ELSE section below is technically (mathematically) correct:
-                    if (mu_g .eq. 0) then
-                        vtg = rhof(k)*afall*cgg(7,idx_bg(k))/cgg(12,idx_bg(k)) * ilamg(k)**bfall
-                    else
-                        vtg = rhof(k)*afall*cgg(8,idx_bg(k))*ogg2 * ilamg(k)**bfall
+
+                    if (vtsk(k) .gt. 1.e-3) then
+                        ksed1(3) = max(ksed1(3), k)
+                        delta_tp = dzq(k)/vtsk(k)
+                        nstep = max(nstep, int(dt/delta_tp + 1.))
                     endif
-                    if (temp(k).gt. T_0) then
-                        vtgk(k) = MAX(vtg, vtrk(k))
-                    else
-                        vtngk(k) = vtg
+                enddo
+                if (ksed1(3) .eq. kte) ksed1(3) = kte-1
+                if (nstep .gt. 0) onstep(3) = 1./real(nstep)
+            endif
+
+        !+---+-----------------------------------------------------------------+
+
+            if (ANY(L_qg .eqv. .true.)) then
+                nstep = 0
+                do k = kte, kts, -1
+                    vtg = 0.
+
+                    if (rg(k).gt. R1) then
+                        if (configs%hail_aware) then
+                            xrho_g = MAX(rho_g(1),MIN(rg(k)/rho(k)/rb(k),rho_g(NRHG)))
+                            afall = a_coeff*((4.0*xrho_g*9.8)/(3.0*rho(k)))**b_coeff
+                            afall = afall * visco(k)**(1.0-2.0*b_coeff)
+                        else
+                            afall = av_g_old
+                            bfall = bv_g_old
+                        endif
+                        vtg = rhof(k)*afall*cgg(6,idx_bg(k))*ogg3 * ilamg(k)**bfall
+                        vtgk(k) = vtg
+                        ! Goal: less prominent size sorting
+                        !    the ELSE section below is technically (mathematically) correct:
+                        if (mu_g .eq. 0) then
+                            vtg = rhof(k)*afall*cgg(7,idx_bg(k))/cgg(12,idx_bg(k)) * ilamg(k)**bfall
+                        else
+                            vtg = rhof(k)*afall*cgg(8,idx_bg(k))*ogg2 * ilamg(k)**bfall
+                        endif
+                        if (temp(k).gt. T_0) then
+                            vtgk(k) = MAX(vtg, vtrk(k))
+                        else
+                            vtngk(k) = vtg
+                        endif
                     else
                         vtgk(k) = vtgk(k+1)
                         vtngk(k) = vtngk(k+1)
@@ -2395,15 +2366,15 @@ contains
             endif
         endif
 
-        !=================================================================================================================
-        !..Sedimentation of mixing ratio is the integral of v(D)*m(D)*N(D)*dD,
-        !.. whereas neglect m(D) term for number concentration.  Therefore,
-        !.. cloud ice has proper differential sedimentation.
-        !.. New in v3.0+ is computing separate for rain, ice, snow, and
-        !.. graupel species thus making code faster with credit to J. Schmidt.
-        !.. Bug fix, 2013Nov01 to tendencies using rho(k+1) correction thanks to
-        !.. Eric Skyllingstad.
-        !+---+-----------------------------------------------------------------+
+    !=================================================================================================================
+    !..Sedimentation of mixing ratio is the integral of v(D)*m(D)*N(D)*dD,
+    !.. whereas neglect m(D) term for number concentration.  Therefore,
+    !.. cloud ice has proper differential sedimentation.
+    !.. New in v3.0+ is computing separate for rain, ice, snow, and
+    !.. graupel species thus making code faster with credit to J. Schmidt.
+    !.. Bug fix, 2013Nov01 to tendencies using rho(k+1) correction thanks to
+    !.. Eric Skyllingstad.
+    !+---+-----------------------------------------------------------------+
 
         if (any(l_qr .eqv. .true.)) then
             nstep = nint(1./onstep(1))
@@ -2484,7 +2455,7 @@ contains
                 enddo
             endif! if(.not. sedi_semi)
         endif
-        !+---+-----------------------------------------------------------------+
+    !+---+-----------------------------------------------------------------+
 
         if (any(l_qc .eqv. .true.)) then
 
@@ -2701,23 +2672,20 @@ contains
             qc1d(k) = qc1d(k) + qcten(k)*dt
             nc1d(k) = max(2./rho(k), min(nc1d(k) + ncten(k)*dt, nt_c_max))
             if (configs%aerosol_aware) then
-
-                nwfa1d(k) = max(11.1e6, min(9999.e6,                           &
-                    (nwfa1d(k)+nwfaten(k)*dt)))
-                nifa1d(k) = max(nain1*0.01, min(9999.e6,                       &
-                    (nifa1d(k)+nifaten(k)*dt)))
+                nwfa1d(k) = max(nwfa_default, min(aero_max, (nwfa1d(k)+nwfaten(k)*dt)))
+                nifa1d(k) = max(nifa_default, min(aero_max, (nifa1d(k)+nifaten(k)*dt)))
             endif
-            if (qc1d(k) .le. r1) then
+            if (qc1d(k) .le. R1) then
                 qc1d(k) = 0.0
                 nc1d(k) = 0.0
             else
-                if (nc1d(k)*rho(k).gt.10000.E6) then
+                if (nc1d(k)*rho(k).gt.10000.e6) then
                     nu_c = 2
                 elseif (nc1d(k)*rho(k).lt.100.) then
                     nu_c = 15
                 else
-                    nu_c = NINT(1000.E6/(nc1d(k)*rho(k))) + 2
-                    nu_c = MAX(2, MIN(nu_c+NINT(rand2), 15))
+                    nu_c = nint(nu_c_scale/(nc1d(k)*rho(k))) + 2
+                    nu_c = max(2, min(nu_c+nint(rand2), 15))
                 endif
 
                 lamc = (am_r*ccg(2,nu_c)*ocg1(nu_c)*nc1d(k)/qc1d(k))**obmr
@@ -2875,8 +2843,6 @@ contains
 #endif
 
     end subroutine mp_thompson_main
-    !=================================================================================================================
-
     !=================================================================================================================
     !..Function to compute collision efficiency of collector species (rain,
     !.. snow, graupel) of aerosols.  Follows Wang et al, 2010, ACP, which

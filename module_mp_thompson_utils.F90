@@ -10,55 +10,110 @@ module module_mp_thompson_utils
     use machine, only: wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
 #endif
 
-    !    use mp_radar
+    ! use mp_radar
 
     implicit none
 
 contains
     !=================================================================================================================
-    ! Calculates gamma(xx), the gamma function.
+    ! Normalized lower gamma function calculated either with a series expansion or continued fraction method
     ! Input:
-    !   xx
+    !   a = gamma function argument, x = upper limit of integration
     ! Output:
-    !   wgamma = gamma(xx)
+    !   gamma_p = gamma(a, x) / Gamma(a)
 
-    real function wgamma(xx)
+    real function gamma_p(a, x)
 
-        real(wp), intent(in) :: xx
+        real(wp), intent(in) :: a, x
 
-        wgamma = exp(gammln(xx))
+        if ((x < 0.0) .or. (a <= 0.0)) stop "Invalid arguments for function gamma_p"
 
-    end function wgamma
+        if (x < (a+1.0)) then
+            gamma_p = gamma_series(a, x)
+        else
+            ! gammma_cf computes the upper series
+            gamma_p = 1.0 - gamma_cf(a, x)
+        endif
+
+    end function gamma_p
 
     !=================================================================================================================
-    ! Calculates log(gamma(xx)) using a fast iterative calculation.
+    ! https://dlmf.nist.gov/8.7 (Equation 8.7.1)
+    ! Solves the normalized lower gamma function: gamma(a,x) / Gamma(a) = x**a * gamma*(a,x)
+    ! Where gamma*(a,x) = exp(-x) * sum (x**k / Gamma(a+k+1))
     ! Input:
-    !   xx
+    !   a = gamma function argument, x = upper limit of integration
     ! Output:
-    !   gammln = log(gamma(xx))
+    !   Normalized LOWER gamma function: gamma(a, x) / Gamma(a)
 
-    real function gammln(xx)
+    real function gamma_series(a, x)
 
-        real(wp), intent(in) :: xx
-        real(dp), parameter :: stp = 2.5066282746310005d0
-        real(dp), dimension(6), parameter :: &
-            cof = (/76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, &
-            .1208650973866179e-2, -.5395239384953e-5/)
-        real(dp) :: ser, tmp, x, y
-        integer :: j
+        real(wp), intent(in) :: a, x
+        integer :: k
+        integer, parameter :: it_max = 100
+        real(wp), parameter :: smallvalue = 1.e-7
+        real(wp) :: ap1, sum_term, sum
+      
+        if (x <= 0.0) stop "Invalid arguments for function gamma_series"
 
-        x = xx
-        y = x
-        tmp = x + 5.5_dp
-        tmp = (x+0.5_dp) * log(tmp) - tmp
-        ser = 1.000000000190015
-        do j = 1, 6
-            y = y + 1.0_dp
-            ser = ser + cof(j) / y
+        ! k = 0 summation term is 1 / Gamma(a+1)
+        ap1 = a
+        sum_term = 1.0 / gamma(ap1+1.0)
+        sum = sum_term
+        do k = 1, it_max
+           ap1 = ap1 + 1.0
+           sum_term = sum_term * x / ap1
+           sum = sum + sum_term
+           if (abs(sum_term) < (abs(sum) * smallvalue)) exit
         enddo
-        gammln = tmp + log(stp*ser/x)
+        if (k == it_max) stop "gamma_series solution did not converge"
 
-    end function gammln
+        gamma_series = sum * x**a * exp(-x)
+
+    end function gamma_series
+
+    !=================================================================================================================
+    ! http://functions.wolfram.com/06.06.10.0003.01
+    ! Solves the normalized upper gamma function: gamma(a,x) / Gamma(a)
+    ! Using a continued fractions method (modifed Lentz Algorithm)
+    ! Input:
+    !   a = gamma function argument, x = lower limit of integration
+    ! Output:
+    !   Normalized UPPER gamma function: gamma(a, x) / Gamma(a)
+
+    real function gamma_cf(a, x)
+
+        real(wp), intent(in) :: a, x
+        integer :: k
+        integer, parameter :: it_max = 100
+        real(wp), parameter :: smallvalue = 1.e-7
+        real(wp), parameter :: offset = 1.e-30
+        real(wp) :: b, d, h0, c, delta, h, aj
+
+        b = 1.0 - a + x
+        d = 1.0 / b
+        h0 = offset
+        c = b + (1.0/offset)
+        delta = c * d
+        h = h0 * delta
+
+        do k = 1, it_max
+            aj = k * (a-k)
+            b = b + 2.0
+            d = b + aj*d
+            if(abs(d) < offset) d = offset
+            c = b + aj/c
+            if(abs(c) < offset) c = offset
+            d = 1.0 / d
+            delta = c * d
+            h = h * delta
+            if (abs(delta-1.0) < smallvalue) exit
+        enddo
+        if (k == it_max) stop "gamma_cf solution did not converge"
+
+        gamma_cf = exp(-x+a*log(x)) * h / gamma(a)
+
+    end function gamma_cf   
 
     !=================================================================================================================
     ! Calculates log-spaced bins for hydrometer sizes to simplify calculations later
@@ -116,7 +171,7 @@ contains
                 if (Dr(i) < 50.e-6 .or. Dc(j) < 3.e-6) then
                     t_Efrw(i,j) = 0.0
                 elseif (p > 0.25) then
-                    X = Dc(j) * 1.D6
+                    X = Dc(j) * 1.e6_dp
                     if (Dr(i) < 75.e-6) then
                         Ef_rw = 0.026794*X - 0.20604
                     elseif (Dr(i) < 125.e-6) then
@@ -230,14 +285,7 @@ contains
     end subroutine table_dropEvap
 
     !=================================================================================================================
-
-    !+---+-----------------------------------------------------------------+
-    ! !ctrlL
-    !+---+-----------------------------------------------------------------+
-    !..Creation of the lookup tables and support functions found below here.
-    !+---+-----------------------------------------------------------------+
-    !..Rain collecting graupel (and inverse).  Explicit CE integration.
-    !+---+-----------------------------------------------------------------+
+    ! Rain collecting graupel (and inverse).  Explicit CE integration.
 
     subroutine qr_acr_qg(NRHGtable)
         implicit none
@@ -338,11 +386,9 @@ contains
         enddo
 
     end subroutine qr_acr_qg
-    !+---+-----------------------------------------------------------------+
-    !ctrlL
-    !+---+-----------------------------------------------------------------+
-    !..Rain collecting snow (and inverse).  Explicit CE integration.
-    !+---+-----------------------------------------------------------------+
+
+    !=================================================================================================================
+    ! Rain collecting snow (and inverse).  Explicit CE integration.
 
     subroutine qr_acr_qs
 
@@ -505,13 +551,10 @@ contains
         enddo
 
     end subroutine qr_acr_qs
-    !+---+-----------------------------------------------------------------+
-    !ctrlL
-    !+---+-----------------------------------------------------------------+
-    !..This is a literal adaptation of Bigg (1954) probability of drops of
-    !..a particular volume freezing.  Given this probability, simply freeze
-    !..the proportion of drops summing their masses.
-    !+---+-----------------------------------------------------------------+
+
+    !=================================================================================================================
+    ! This is a literal adaptation of Bigg (1954) probability of drops of a particular volume freezing.
+    ! Given this probability, simply freeze the proportion of drops summing their masses.
 
     subroutine freezeH2O
 
@@ -528,8 +571,6 @@ contains
         INTEGER:: nu_c
         REAL:: T_adjust
 
-        !+---+
-
         orho_w = 1./rho_w2
 
         do n2 = 1, nbr
@@ -539,7 +580,6 @@ contains
             massc(n) = am_r*Dc(n)**bm_r
         enddo
 
-        !TODO: Fix
         !..Freeze water (smallest drops become cloud ice, otherwise graupel).
         do m = 1, ntb_IN
             T_adjust = MAX(-3.0, MIN(3.0 - ALOG10(Nt_IN(m)), 3.0))
@@ -598,18 +638,13 @@ contains
         enddo
 
     end subroutine freezeH2O
-    !+---+-----------------------------------------------------------------+
-    !ctrlL
-    !+---+-----------------------------------------------------------------+
-    !..Cloud ice converting to snow since portion greater than min snow
-    !.. size.  Given cloud ice content (kg/m**3), number concentration
-    !.. (#/m**3) and gamma shape parameter, mu_i, break the distrib into
-    !.. bins and figure out the mass/number of ice with sizes larger than
-    !.. D0s.  Also, compute incomplete gamma function for the integration
-    !.. of ice depositional growth from diameter=0 to D0s.  Amount of
-    !.. ice depositional growth is this portion of distrib while larger
-    !.. diameters contribute to snow growth (as in Harrington et al. 1995).
-    !+---+-----------------------------------------------------------------+
+
+    !=================================================================================================================
+    ! Cloud ice converting to snow since portion greater than min snow size.  Given cloud ice content (kg/m**3),
+    ! number concentration (#/m**3) and gamma shape parameter, mu_i, break the distrib into bins and figure out
+    ! the mass/number of ice with sizes larger than D0s.  Also, compute incomplete gamma function for the
+    ! integration of ice depositional growth from diameter=0 to D0s.  Amount of ice depositional growth is this
+    ! portion of distrib while larger diameters contribute to snow growth (as in Harrington et al. 1995).
 
     subroutine qi_aut_qs
 
@@ -620,8 +655,6 @@ contains
         DOUBLE PRECISION, DIMENSION(nbi):: N_i
         DOUBLE PRECISION:: N0_i, lami, Di_mean, t1, t2
         REAL:: xlimit_intg
-
-        !+---+
 
         do j = 1, ntb_i1
             do i = 1, ntb_i
@@ -640,7 +673,7 @@ contains
                     tpi_ide(i,j) = 1.0D0
                 else
                     xlimit_intg = lami*D0s
-                    tpi_ide(i,j) = GAMMP(mu_i+2.0, xlimit_intg) * 1.0D0
+                    tpi_ide(i,j) = gamma_p(mu_i+2.0, xlimit_intg) * 1.0D0
                     do n2 = 1, nbi
                         N_i(n2) = N0_i*Di(n2)**mu_i * DEXP(-lami*Di(n2))*dti(n2)
                         if (Di(n2).ge.D0s) then
@@ -657,7 +690,7 @@ contains
     end subroutine qi_aut_qs
 
 #if !defined (mpas)
-    !+---+-----------------------------------------------------------------+
+    !=================================================================================================================
     !..Fill the table of CCN activation data created from parcel model run
     !.. by Trude Eidhammer with inputs of aerosol number concentration,
     !.. vertical velocity, temperature, lognormal mean aerosol radius, and
@@ -671,6 +704,7 @@ contains
     !! vertical velocity, temperature, lognormal mean aerosol radius, and
     !! hygroscopicity, kappa.  The data are read from external file and
     !! contain activated fraction of CCN for given conditions.
+
     subroutine table_ccnAct(errmess,errflag)
 
         implicit none
@@ -718,15 +752,8 @@ contains
 
     end subroutine table_ccnAct
 
-    !+---+-----------------------------------------------------------------+
-    !+---+-----------------------------------------------------------------+
-    !+---+-----------------------------------------------------------------+
-    !ctrlL
-    !+---+-----------------------------------------------------------------+
-    !..Creation of the lookup tables and support functions found below here.
-    !+---+-----------------------------------------------------------------+
-    !>\ingroup aathompson
-    !! Rain collecting graupel (and inverse).  Explicit CE integration.
+    !=================================================================================================================
+    ! Rain collecting graupel (and inverse).  Explicit CE integration.
     subroutine qr_acr_qg_par
 
         implicit none
@@ -903,11 +930,10 @@ contains
         ENDIF
 
     end subroutine qr_acr_qg_par
-    !+---+-----------------------------------------------------------------+
-    !ctrlL
-    !+---+-----------------------------------------------------------------+
-    !>\ingroup aathompson
-    !!Rain collecting snow (and inverse).  Explicit CE integration.
+
+    !=================================================================================================================
+    ! Rain collecting snow (and inverse).  Explicit CE integration.
+
     subroutine qr_acr_qs_par
 
         implicit none
@@ -1160,13 +1186,12 @@ contains
         ENDIF
 
     end subroutine qr_acr_qs_par
-    !+---+-----------------------------------------------------------------+
-    !ctrlL
-    !+---+-----------------------------------------------------------------+
-    !>\ingroup aathompson
+
+    !=================================================================================================================
     !! This is a literal adaptation of Bigg (1954) probability of drops of
     !! a particular volume freezing.  Given this probability, simply freeze
     !! the proportion of drops summing their masses.
+
     subroutine freezeH2O_par(threads)
 
         implicit none
@@ -1335,14 +1360,14 @@ contains
     end subroutine freezeH2O_par
 
 #endif
-    !+---+-----------------------------------------------------------------+
+
+    !=================================================================================================================
     !..Compute _radiation_ effective radii of cloud water, ice, and snow.
     !.. These are entirely consistent with microphysics assumptions, not
     !.. constant or otherwise ad hoc as is internal to most radiation
     !.. schemes.  Since only the smallest snowflakes should impact
     !.. radiation, compute from first portion of complicated Field number
     !.. distribution, not the second part, which is the larger sizes.
-    !+---+-----------------------------------------------------------------+
 
     subroutine calc_effectRad (t1d, p1d, qv1d, qc1d, nc1d, qi1d, ni1d, qs1d,   &
     &                re_qc1d, re_qi1d, re_qs1d, kts, kte, configs)
@@ -1449,14 +1474,13 @@ contains
 
     end subroutine calc_effectRad
 
-    !+---+-----------------------------------------------------------------+
+    !=================================================================================================================
     !..Compute radar reflectivity assuming 10 cm wavelength radar and using
     !.. Rayleigh approximation.  Only complication is melted snow/graupel
     !.. which we treat as water-coated ice spheres and use Uli Blahak's
     !.. library of routines.  The meltwater fraction is simply the amount
     !.. of frozen species remaining from what initially existed at the
     !.. melting level interface.
-    !+---+-----------------------------------------------------------------+
 
     subroutine calc_refl10cm (qv1d, qc1d, qr1d, nr1d, qs1d, qg1d, ng1d, qb1d, &
         t1d, p1d, dBZ, kts, kte, ii, jj, configs, rand1, melti, &
@@ -1797,17 +1821,17 @@ contains
 
     end subroutine calc_refl10cm
 
+    !=================================================================================================================
+
     elemental subroutine make_hydrometeor_number_concentrations(qc, qr, qi, nwfa, temp, rhoa, nc, nr, ni)
         implicit none
 
         real, intent(in) :: qc, qr, qi, nwfa, temp, rhoa
         real, intent(out) :: nc, nr, ni
 
-        nc = 0.
-        nr = 0.
-        ni = 0.
-
     end subroutine make_hydrometeor_number_concentrations
+
+    !=================================================================================================================
 
     !>\ingroup aathompson
     !!Table of lookup values of radiative effective radius of ice crystals
@@ -1909,11 +1933,7 @@ contains
         return
     end function make_IceNumber
 
-    !+---+-----------------------------------------------------------------+
-    !+---+-----------------------------------------------------------------+
-
-    !>\ingroup aathompson
-    !!
+    !=================================================================================================================
     elemental real function make_DropletNumber (Q_cloud, qnwfa)
 
         !IMPLICIT NONE
@@ -1948,11 +1968,7 @@ contains
         return
     end function make_DropletNumber
 
-    !+---+-----------------------------------------------------------------+
-    !+---+-----------------------------------------------------------------+
-
-    !>\ingroup aathompson
-    !!
+    !=================================================================================================================
     elemental real function make_RainNumber (Q_rain, temp)
 
         IMPLICIT NONE
@@ -1991,105 +2007,6 @@ contains
         return
     end function make_RainNumber
 
-
-    !>\ingroup aathompson
-    REAL FUNCTION GAMMP(A,X)
-        !     --- COMPUTES THE INCOMPLETE GAMMA FUNCTION P(A,X)
-        !     --- SEE ABRAMOWITZ AND STEGUN 6.5.1
-        !     --- USES GCF,GSER
-        IMPLICIT NONE
-        REAL, INTENT(IN):: A,X
-        REAL:: GAMMCF,GAMSER,GLN
-        GAMMP = 0.
-        IF((X.LT.0.) .OR. (A.LE.0.)) THEN
-            PRINT *, 'BAD ARGUMENTS IN GAMMP'
-            RETURN
-        ELSEIF(X.LT.A+1.)THEN
-            CALL GSER(GAMSER,A,X,GLN)
-            GAMMP=GAMSER
-        ELSE
-            CALL GCF(GAMMCF,A,X,GLN)
-            GAMMP=1.-GAMMCF
-        ENDIF
-    END FUNCTION GAMMP
-    !  (C) Copr. 1986-92 Numerical Recipes Software 2.02
-    !+---+-----------------------------------------------------------------+
-
-    !+---+-----------------------------------------------------------------+
-    !>\ingroup aathompson
-    !! Returns the incomplete gamma function q(a,x) evaluated by its
-    !! continued fraction representation as gammcf.
-    SUBROUTINE GCF(GAMMCF,A,X,GLN)
-        ! RETURNS THE INCOMPLETE GAMMA FUNCTION Q(A,X) EVALUATED BY ITS
-        ! CONTINUED FRACTION REPRESENTATION AS GAMMCF.  ALSO RETURNS
-        !     --- LN(GAMMA(A)) AS GLN.  THE CONTINUED FRACTION IS EVALUATED BY
-        !     --- A MODIFIED LENTZ METHOD.
-        !     --- USES GAMMLN
-        IMPLICIT NONE
-        INTEGER, PARAMETER:: ITMAX=100
-        REAL, PARAMETER:: gEPS=3.E-7
-        REAL, PARAMETER:: FPMIN=1.E-30
-        REAL, INTENT(IN):: A, X
-        REAL:: GAMMCF,GLN
-        INTEGER:: I
-        REAL:: AN,B,C,D,DEL,H
-        GLN=GAMMLN(A)
-        B=X+1.-A
-        C=1./FPMIN
-        D=1./B
-        H=D
-        DO 11 I=1,ITMAX
-            AN=-I*(I-A)
-            B=B+2.
-            D=AN*D+B
-            IF(ABS(D).LT.FPMIN)D=FPMIN
-            C=B+AN/C
-            IF(ABS(C).LT.FPMIN)C=FPMIN
-            D=1./D
-            DEL=D*C
-            H=H*DEL
-            IF(ABS(DEL-1.).LT.gEPS)GOTO 1
-11      CONTINUE
-        PRINT *, 'A TOO LARGE, ITMAX TOO SMALL IN GCF'
-1       GAMMCF=EXP(-X+A*LOG(X)-GLN)*H
-    END SUBROUTINE GCF
-    !  (C) Copr. 1986-92 Numerical Recipes Software 2.02
-
-    !>\ingroup aathompson
-    !! Returns the incomplete gamma function p(a,x) evaluated by
-    !! its series representation as gamser.
-    SUBROUTINE GSER(GAMSER,A,X,GLN)
-        !     --- RETURNS THE INCOMPLETE GAMMA FUNCTION P(A,X) EVALUATED BY ITS
-        !     --- ITS SERIES REPRESENTATION AS GAMSER.  ALSO RETURNS LN(GAMMA(A))
-        !     --- AS GLN.
-        !     --- USES GAMMLN
-        IMPLICIT NONE
-        INTEGER, PARAMETER:: ITMAX=100
-        REAL, PARAMETER:: gEPS=3.E-7
-        REAL, INTENT(IN):: A, X
-        REAL:: GAMSER,GLN
-        INTEGER:: N
-        REAL:: AP,DEL,SUM
-        GLN=GAMMLN(A)
-        IF(X.LE.0.)THEN
-            IF(X.LT.0.) PRINT *, 'X < 0 IN GSER'
-            GAMSER=0.
-            RETURN
-        ENDIF
-        AP=A
-        SUM=1./A
-        DEL=SUM
-        DO 11 N=1,ITMAX
-            AP=AP+1.
-            DEL=DEL*X/AP
-            SUM=SUM+DEL
-            IF(ABS(DEL).LT.ABS(SUM)*gEPS)GOTO 1
-11      CONTINUE
-        PRINT *,'A TOO LARGE, ITMAX TOO SMALL IN GSER'
-1       GAMSER=SUM*EXP(-X+A*LOG(X)-GLN)
-    END SUBROUTINE GSER
-    !  (C) Copr. 1986-92 Numerical Recipes Software 2.02
-    !+---+-----------------------------------------------------------------+
-    !====================================================================
+!=================================================================================================================
 
 end module module_mp_thompson_utils

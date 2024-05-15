@@ -1,12 +1,11 @@
-! 3D TEMPO Driver for MPASA
+! 3D TEMPO Driver for MPAS
 !=================================================================================================================
 module module_mp_thompson
 
     use mpas_kind_types, only: wp => RKIND, sp => R4KIND, dp => R8KIND
     use module_mp_thompson_params
-    use module_mp_thompson_utils, only : wgamma, create_bins, table_Efrw, table_Efsw, table_dropEvap
+    use module_mp_thompson_utils, only : create_bins, table_Efrw, table_Efsw, table_dropEvap
     use module_mp_thompson_main, only : mp_thompson_main
-    ! use mpas_atmphys_functions, only: gammp, rslf, rsif
     use mpas_atmphys_utilities, only : physics_message, physics_error_fatal
     use mpas_io_units, only : mpas_new_unit, mpas_release_unit
     use mp_radar, only : radar_init
@@ -83,6 +82,7 @@ contains
                     using_hail_aware_table = .false.
                     call physics_message('--- thompson_init() ' // &
                         'Lookup table for qr_acr_qg is not hail aware.')
+                    dimNRHG = NRHG1
                     if (hail_aware_flag) then
                         call physics_error_fatal('--- thompson_init() Cannot use hail-aware microphysics ' // &
                             'with non hail-aware qr_acr_qg lookup table. ' // &
@@ -92,6 +92,7 @@ contains
                     using_hail_aware_table = .true.
                     call physics_message('--- thompson_init() ' // &
                         'Lookup table for qr_acr_qg is hail aware.')
+                    dimNRHG = NRHG
                 else
                     using_hail_aware_table = .false.
                     if (hail_aware_flag) using_hail_aware_table = .true.
@@ -173,11 +174,11 @@ contains
                 cce(3,n) = bm_r + n + 4.
                 cce(4,n) = n + bv_c + 1.
                 cce(5,n) = bm_r + n + bv_c + 1.
-                ccg(1,n) = wgamma(cce(1,n))
-                ccg(2,n) = wgamma(cce(2,n))
-                ccg(3,n) = wgamma(cce(3,n))
-                ccg(4,n) = wgamma(cce(4,n))
-                ccg(5,n) = wgamma(cce(5,n))
+                ccg(1,n) = gamma(cce(1,n))
+                ccg(2,n) = gamma(cce(2,n))
+                ccg(3,n) = gamma(cce(3,n))
+                ccg(4,n) = gamma(cce(4,n))
+                ccg(5,n) = gamma(cce(5,n))
                 ocg1(n) = 1.0 / ccg(1,n)
                 ocg2(n) = 1.0 / ccg(2,n)
             enddo
@@ -189,13 +190,13 @@ contains
             cie(5) = mu_i + 2.
             cie(6) = bm_i*0.5 + mu_i + bv_i + 1.
             cie(7) = bm_i*0.5 + mu_i + 1.
-            cig(1) = wgamma(cie(1))
-            cig(2) = wgamma(cie(2))
-            cig(3) = wgamma(cie(3))
-            cig(4) = wgamma(cie(4))
-            cig(5) = wgamma(cie(5))
-            cig(6) = wgamma(cie(6))
-            cig(7) = wgamma(cie(7))
+            cig(1) = gamma(cie(1))
+            cig(2) = gamma(cie(2))
+            cig(3) = gamma(cie(3))
+            cig(4) = gamma(cie(4))
+            cig(5) = gamma(cie(5))
+            cig(6) = gamma(cie(6))
+            cig(7) = gamma(cie(7))
             oig1 = 1.0 / cig(1)
             oig2 = 1.0 / cig(2)
             obmi = 1.0 / bm_i
@@ -215,7 +216,7 @@ contains
             cre(13) = bm_r*2. + mu_r + bv_r + 1.
 
             do n = 1, 13
-                crg(n) = WGAMMA(cre(n))
+                crg(n) = gamma(cre(n))
             enddo
 
             obmr = 1.0 / bm_r
@@ -243,7 +244,7 @@ contains
             cse(17) = bm_s + bv_s + 2.
 
             do n = 1, 17
-                csg(n) = WGAMMA(cse(n))
+                csg(n) = gamma(cse(n))
             enddo
 
             oams = 1.0 / am_s
@@ -268,7 +269,7 @@ contains
 
             do m = 1, NRHG
                 do n = 1, 12
-                    cgg(n,m) = wgamma(cge(n,m))
+                    cgg(n,m) = gamma(cge(n,m))
                 enddo
             enddo
 
@@ -320,17 +321,19 @@ contains
 
             ! Melting of graupel
             t1_qg_me = PI * 4. * C_cube * olfus * 0.86 * cgg(10,1)
+            !     t2_qg_me = PI*4.*C_cube*olfus * 0.28*Sc3*SQRT(av_g) * cgg(11)
+
 
             ! Constants for helping find lookup table indexes.
-            nic2 = nint(alog10(r_c(1)))
-            nii2 = nint(alog10(r_i(1)))
-            nii3 = nint(alog10(Nt_i(1)))
-            nir2 = nint(alog10(r_r(1)))
-            nir3 = nint(alog10(N0r_exp(1)))
-            nis2 = nint(alog10(r_s(1)))
-            nig2 = nint(alog10(r_g(1)))
-            nig3 = nint(alog10(N0g_exp(1)))
-            niIN2 = nint(alog10(Nt_IN(1)))
+            nic2 = nint(log10(r_c(1)))
+            nii2 = nint(log10(r_i(1)))
+            nii3 = nint(log10(Nt_i(1)))
+            nir2 = nint(log10(r_r(1)))
+            nir3 = nint(log10(N0r_exp(1)))
+            nis2 = nint(log10(r_s(1)))
+            nig2 = nint(log10(r_g(1)))
+            nig3 = nint(log10(N0g_exp(1)))
+            niIN2 = nint(log10(Nt_IN(1)))
 
             ! Create bins of cloud water (from minimum diameter to 100 microns).
             Dc(1) = D0c*1.0_dp
