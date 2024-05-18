@@ -311,7 +311,7 @@ module module_mp_thompson_params
 
     ! Declaration of precomputed constants in various rate eqns.
     real(wp) :: t1_qr_qc, t1_qr_qi, t2_qr_qi, t1_qs_qc, t1_qs_qi
-    real(wp) :: t1_qr_ev, t2_qr_ev
+    real(wp) :: t1_qr_ev, t2_qr_ev, t1_qg_qc, t2_qg_sd, t2_qg_me
     real(wp) :: t1_qs_sd, t2_qs_sd, t1_qs_me, t2_qs_me, t1_qg_sd, t1_qg_me
 
     !=================================================================================================================

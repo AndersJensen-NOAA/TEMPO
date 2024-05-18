@@ -26,10 +26,9 @@ contains
 #endif
 
 #if !defined(mpas)
-        rand1, rand2, rand3, &
     ! Extended diagnostics, most arrays only
     ! allocated if ext_diag flag is .true.
-        ext_diag, sedi_semi, decfl, &
+        ext_diag, sedi_semi, &
         prw_vcdc1, prw_vcde1, &
         tpri_inu1, tpri_ide1_d, tpri_ide1_s, tprs_ide1, &
         tprs_sde1_d, tprs_sde1_s, &
@@ -41,8 +40,9 @@ contains
         tprr_rcs1, tprv_rev1, &
         tten1, qvten1, qrten1, qsten1, &
         qgten1, qiten1, niten1, nrten1, ncten1, qcten1, &
-        pfil1, pfll1, lsml, &
 #endif
+        decfl, pfil1, pfll1, &
+        lsml, rand1, rand2, rand3, &
         kts, kte, dt, ii, jj, &
         configs)
 
@@ -61,14 +61,14 @@ contains
 
         type(config_flags), intent(in) :: configs
 
-#if !defined(mpas)
-        real(wp), dimension(kts:kte), intent(out) :: pfil1, pfll1
         integer, intent(in), optional :: lsml
-        real(wp), intent(in) :: rand1, rand2, rand3
+        real(wp), intent(in), optional :: rand1, rand2, rand3
+        real(wp), dimension(kts:kte), intent(out), optional :: pfil1, pfll1
+        integer, intent(in), optional :: decfl
+#if !defined(mpas)
         ! Extended diagnostics, most arrays only allocated if ext_diag is true
         logical, intent(in) :: ext_diag
         logical, intent(in) :: sedi_semi
-        integer, intent(in) :: decfl
         real(wp), dimension(:), intent(out) :: &
             prw_vcdc1, &
             prw_vcde1, tpri_inu1, tpri_ide1_d, &
@@ -122,12 +122,12 @@ contains
             pbg_sml, pbg_gml
 
         real(dp), parameter :: zerod0 = 0.0d0
-#if !defined (mpas)
+
         real(wp), dimension(kts:kte) :: pfll, pfil, pdummy
-        ! real(wp) :: dtcfl, rainsfc, graulsfc, orhodt
-        ! integer :: niter
-        ! real(wp), dimension(kts:kte) :: rr_tmp, nr_tmp, rg_tmp
-#endif
+        real(wp) :: dtcfl, rainsfc, graulsfc, orhodt
+        integer :: niter
+        real(wp), dimension(kts:kte) :: rr_tmp, nr_tmp, rg_tmp
+
         real(wp), dimension(kts:kte) :: temp, twet, pres, qv
         real(wp), dimension(kts:kte) :: rc, ri, rr, rs, rg, rb
         real(wp), dimension(kts:kte) :: ni, nr, nc, ns, ng, nwfa, nifa
@@ -172,7 +172,7 @@ contains
         real(wp) :: Ef_ra, Ef_sa, Ef_ga
         real(wp) :: dtsave, odts, odt, odzq, hgt_agl, SR
         real(wp) :: xslw1, ygra1, zans1, eva_factor
-        real(wp) :: melt_f
+        real(wp) :: melt_f, rand
         integer :: i, k, k2, n, nn, nstep, k_0, kbot, IT, iexfrq, k_melting
         integer, dimension(5) :: ksed1
         integer :: nir, nis, nig, nii, nic, niin
@@ -184,7 +184,7 @@ contains
         logical, dimension(kts:kte) :: l_qc, l_qi, l_qr, l_qs, l_qg
         logical :: debug_flag
         character*256 :: mp_debug
-        integer :: nu_c
+        integer :: nu_c, decfl_
 
         !=================================================================================================================
 
@@ -195,7 +195,10 @@ contains
         odt = 1./dt
         odts = 1./dtsave
         iexfrq = 1
-
+        rand = 0.0
+        decfl_ = 10
+        if (present(decfl)) decfl_ = decfl
+        
 #if !defined(mpas)
         ! Transition value of coefficient matching at crossover from cloud ice to snow
         av_i = av_s * D0s ** (bv_s - bv_i)
@@ -313,13 +316,12 @@ contains
             pnd_rcd(k) = 0.
             pnd_scd(k) = 0.
             pnd_gcd(k) = 0.
-#if !defined(mpas)
-            pfil1(k) = 0.
-            pfll1(k) = 0.
+
+            if (present(pfil1)) pfil1(k) = 0.
+            if (present(pfll1)) pfll1(k) = 0.
             pfil(k) = 0.
             pfll(k) = 0.
             pdummy(k) = 0.
-#endif
         enddo
 #if defined(mpas)
         do k = kts, kte
@@ -420,7 +422,11 @@ contains
                     nu_c = 15
                 else
                     nu_c = nint(nu_c_scale/nc(k)) + 2
-                    nu_c = max(2, min(nu_c+nint(rand2), 15))
+                    rand = 0.0
+                    if (present(rand2)) then
+                        rand = rand2
+                    endif
+                    nu_c = max(2, min(nu_c+nint(rand), 15))
                 endif
                 lamc = (nc(k)*am_r*ccg(2,nu_c)*ocg1(nu_c)/rc(k))**obmr
                 xDc = (bm_r + nu_c + 1.) / lamc
@@ -769,7 +775,11 @@ contains
                     nu_c = 15
                 else
                     nu_c = nint(nu_c_scale/nc(k)) + 2
-                    nu_c = max(2, min(nu_c+nint(rand2), 15))
+                    rand = 0.0
+                    if (present(rand2)) then
+                        rand = rand2
+                    endif
+                    nu_c = max(2, min(nu_c+nint(rand), 15))
                 endif
                 xdc = max(D0c*1.e6, ((rc(k)/(am_r*nc(k)))**obmr) * 1.e6)
                 lamc = (nc(k)*am_r* ccg(2,nu_c) * ocg1(nu_c) / rc(k))**obmr
@@ -1187,7 +1197,11 @@ contains
 
                         if (dustyIce) then
                             xnc = iceDeMott(tempc,qv(k),qvs(k),qvsi(k),rho(k),nifa(k))
-                            xnc = xnc*(1.0 + 50.*rand3)
+                            rand = 0.0
+                            if (present(rand3)) then
+                                rand = rand3
+                            endif
+                            xnc = xnc*(1.0 + 50.*rand)
                         else
                             xnc = min(icenuc_max, tno*exp(ato*(t_0-temp(k))))
                         endif
@@ -1325,7 +1339,7 @@ contains
                     !.. be revisited.
                     if (prs_scw(k).gt.rime_threshold*prs_sde(k) .and. prs_sde(k).gt.eps) then
                         r_frac = min(30.0_dp, prs_scw(k)/prs_sde(k))
-                        g_frac = min(rime_conversion), 0.15 + (r_frac-2.)*.028)
+                        g_frac = min(rime_conversion, 0.15 + (r_frac-2.)*.028)
                         vts_boost(k) = min(1.5, 1.1 + (r_frac-2.)*.016)
                         prg_scw(k) = g_frac*prs_scw(k)
                         png_scw(k) = prg_scw(k)*smo0(k)/rs(k)
@@ -1563,7 +1577,11 @@ contains
                     nu_c = 15
                 else
                     nu_c = nint(nu_c_scale/xnc) + 2
-                    nu_c = max(2, min(nu_c+nint(rand2), 15))
+                    rand = 0.0
+                    if (present(rand2)) then
+                        rand = rand2
+                    endif
+                    nu_c = max(2, min(nu_c+nint(rand), 15))
                 endif
                 lamc = (xnc*am_r*ccg(2,nu_c)*ocg1(nu_c)/rc(k))**obmr
                 xDc = (bm_r + nu_c + 1.) / lamc
@@ -1768,7 +1786,7 @@ contains
                 nc(k) = max(2., min((nc1d(k)+ncten(k)*dt)*rho(k), nt_c_max))
                 if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
                     nc(k) = Nt_c
-                    if(present(lsml)) then
+                    if (present(lsml)) then
                         if(lsml == 1) then
                             nc(k) = Nt_c_l
                         else
@@ -1971,10 +1989,14 @@ contains
                     !+---+-----------------------------------------------------------------+ !  DROPLET NUCLEATION
                     if (clap .gt. eps) then
                         if (configs%aerosol_aware .or. merra2_aerosol_aware) then
-                            xnc = max(2., activ_ncloud(temp(k), w1d(k)+rand3, nwfa(k), lsml))
+                            rand = 0.0
+                            if (present(rand3)) then
+                                rand = rand3
+                            endif
+                            xnc = max(2., activ_ncloud(temp(k), w1d(k)+rand, nwfa(k), lsml))
                         else
                             xnc = Nt_c
-                            if(present(lsml)) then
+                            if (present(lsml)) then
                                 if(lsml == 1) then
                                     xnc = Nt_c_l
                                 else
@@ -2055,11 +2077,13 @@ contains
                 if (rc(k).eq.R1) l_qc(k) = .false.
                 nc(k) = max(2., min((nc1d(k)+ncten(k)*dt)*rho(k), nt_c_max))
                 if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
-                    if present(lsml) then
-                    if(lsml == 1) then
-                        nc(k) = Nt_c_l
-                    else
-                        nc(k) = Nt_c_o
+                    nc(k) = Nt_c
+                    if (present(lsml)) then
+                        if(lsml == 1) then
+                            nc(k) = Nt_c_l
+                        else
+                            nc(k) = Nt_c_o
+                        endif
                     endif
                 endif                   
                 qv(k) = max(min_qv, qv1d(k) + DT*qvten(k))
@@ -2234,7 +2258,11 @@ contains
                         nu_c = 15
                     else
                         nu_c = nint(nu_c_scale/nc(k)) + 2
-                        nu_c = max(2, min(nu_c+nint(rand2), 15))
+                        rand = 0.0
+                        if (present(rand2)) then
+                            rand = rand2
+                        endif
+                        nu_c = max(2, min(nu_c+nint(rand), 15))
                     endif
                     lamc = (nc(k)*am_r*ccg(2,nu_c)*ocg1(nu_c)/rc(k))**obmr
                     ilamc = 1./lamc
@@ -2345,11 +2373,14 @@ contains
                         else
                             vtg = rhof(k)*afall*cgg(8,idx_bg(k))*ogg2 * ilamg(k)**bfall
                         endif
+                        vtngk(k) = vtg
+#if !defined(mpas)
                         if (temp(k).gt. T_0) then
                             vtgk(k) = MAX(vtg, vtrk(k))
                         else
-                            vtngk(k) = vtg
+                            vtgk(k) = vtg
                         endif
+#endif                         
                     else
                         vtgk(k) = vtgk(k+1)
                         vtngk(k) = vtngk(k+1)
@@ -2416,7 +2447,7 @@ contains
             else !if(.not. sedi_semi)
                 niter = 1
                 dtcfl = dt
-                niter = int(nstep/max(decfl,1)) + 1
+                niter = int(nstep/max(decfl_,1)) + 1
                 dtcfl = dt/niter
                 do n = 1, niter
                     rr_tmp(:) = rr(:)
@@ -2598,7 +2629,7 @@ contains
             else ! if(.not. sedi_semi) then
                 niter = 1
                 dtcfl = dt
-                niter = int(nstep/max(decfl,1)) + 1
+                niter = int(nstep/max(decfl_,1)) + 1
                 dtcfl = dt/niter
 
                 do n = 1, niter
@@ -2617,13 +2648,23 @@ contains
                         vtg = 0.
                         if (rg(k).gt. R1) then
                             ygra1 = alog10(max(1.E-9, rg(k)))
-                            zans1 = 3.4 + 2./7.*(ygra1+8.) + rand1
-                            N0_exp = 10.**(zans1)
-                            N0_exp = MAX(DBLE(gonv_min), MIN(N0_exp, DBLE(gonv_max)))
-                            lam_exp = (N0_exp*am_g*cgg(1)/rg(k))**oge1
-                            lamg = lam_exp * (cgg(3)*ogg2*ogg1)**obmg
+                            rand = 0.0
+                            if (present(rand1)) then
+                                rand = rand1
+                            endif
+                            lamg = (am_g(idx_bg(k))*cgg(3,1)*ogg2*ng(k)/rg(k))**obmg
 
-                            vtg = rhof(k)*av_g*cgg(6)*ogg3 * (1./lamg)**bv_g
+                            ! zans1 = 3.4 + 2./7.*(ygra1+8.) + rand
+                            ! ilamg(k) = 1./lamg
+                            ! N0_g(k) = ng(k)*ogg2*lamg**cge(2,1)
+                
+                            ! N0_exp = 10.**(zans1)
+                            ! N0_exp = MAX(DBLE(gonv_min), MIN(N0_exp, DBLE(gonv_max)))
+                            ! lam_exp = (N0_exp*am_g*cgg(1)/rg(k))**oge1
+                            ! lamg = lam_exp * (cgg(3)*ogg2*ogg1)**obmg
+
+                            vtg = rhof(k)*afall*cgg(6,idx_bg(k))*ogg3 * ilamg(k)**bfall
+                            ! vtg = rhof(k)*av_g*cgg(6)*ogg3 * (1./lamg)**bv_g
                             if (temp(k).gt. T_0) then
                                 vtgk(k) = MAX(vtg, vtrk(k))
                             else
@@ -2685,7 +2726,11 @@ contains
                     nu_c = 15
                 else
                     nu_c = nint(nu_c_scale/(nc1d(k)*rho(k))) + 2
-                    nu_c = max(2, min(nu_c+nint(rand2), 15))
+                    rand = 0.0
+                    if (present(rand2)) then
+                        rand = rand2
+                    endif
+                    nu_c = max(2, min(nu_c+nint(rand), 15))
                 endif
 
                 lamc = (am_r*ccg(2,nu_c)*ocg1(nu_c)*nc1d(k)/qc1d(k))**obmr
@@ -2953,14 +2998,18 @@ contains
         !.. sea salts.
         l = 3
         m = 2
-        if (lsm_in .eq. 1) then       ! land
-            lower_lim_nuc_frac = 0.
-        else if (lsm_in .eq. 0) then  ! water
-            lower_lim_nuc_frac = 0.15
-        else
-            lower_lim_nuc_frac = 0.15  ! catch-all for anything else
-        endif
 
+        lower_lim_nuc_frac = 0.
+        if (present(lsm_in)) then
+            if (lsm_in .eq. 1) then       ! land
+                lower_lim_nuc_frac = 0.
+            else if (lsm_in .eq. 0) then  ! water
+                lower_lim_nuc_frac = 0.15
+            else
+                lower_lim_nuc_frac = 0.15  ! catch-all for anything else
+            endif
+        endif
+        
         A = tnccn_act(i-1,j-1,k,l,m)
         B = tnccn_act(i,j-1,k,l,m)
         C = tnccn_act(i,j,k,l,m)
@@ -3192,5 +3241,240 @@ contains
     END FUNCTION delta_p
 
     !+---+-----------------------------------------------------------------+
+!-------------------------------------------------------------------
+      SUBROUTINE semi_lagrange_sedim(km,dzl,wwl,rql,precip,pfsan,dt,R1)
+!-------------------------------------------------------------------
+!
+! This routine is a semi-Lagrangain forward advection for hydrometeors
+! with mass conservation and positive definite advection
+! 2nd order interpolation with monotonic piecewise parabolic method is used.
+! This routine is under assumption of decfl < 1 for semi_Lagrangian
+!
+! dzl    depth of model layer in meter
+! wwl    terminal velocity at model layer m/s
+! rql    dry air density*mixing ratio
+! precip precipitation at surface 
+! dt     time step
+!
+! author: hann-ming henry juang <henry.juang@noaa.gov>
+!         implemented by song-you hong
+! reference: Juang, H.-M., and S.-Y. Hong, 2010: Forward semi-Lagrangian advection
+!         with mass conservation and positive definiteness for falling
+!         hydrometeors. *Mon.  Wea. Rev.*, *138*, 1778-1791
+!
+      implicit none
 
+      integer, intent(in) :: km
+      real, intent(in) ::  dt, R1
+      real, intent(in) :: dzl(km),wwl(km)
+      real, intent(out) :: precip
+      real, intent(inout) :: rql(km)
+      real, intent(out)  :: pfsan(km)
+      integer  k,m,kk,kb,kt
+      real  tl,tl2,qql,dql,qqd
+      real  th,th2,qqh,dqh
+      real  zsum,qsum,dim,dip,con1,fa1,fa2
+      real  allold, decfl
+      real  dz(km), ww(km), qq(km)
+      real  wi(km+1), zi(km+1), za(km+2)
+      real  qn(km)
+      real  dza(km+1), qa(km+1), qmi(km+1), qpi(km+1)
+      real  net_flx(km)
+!
+      precip = 0.0
+      qa(:) = 0.0
+      qq(:) = 0.0
+      dz(:) = dzl(:)
+      ww(:) = wwl(:)
+      do k = 1,km
+        if(rql(k).gt.R1) then 
+          qq(k) = rql(k) 
+        else 
+          ww(k) = 0.0 
+        endif
+        pfsan(k) = 0.0
+        net_flx(k) = 0.0
+      enddo
+! skip for no precipitation for all layers
+      allold = 0.0
+      do k=1,km
+        allold = allold + qq(k)
+      enddo
+      if(allold.le.0.0) then
+         return 
+      endif
+!
+! compute interface values
+      zi(1)=0.0
+      do k=1,km
+        zi(k+1) = zi(k)+dz(k)
+      enddo
+!     n=1
+! plm is 2nd order, we can use 2nd order wi or 3rd order wi
+! 2nd order interpolation to get wi
+      wi(1) = ww(1)
+      wi(km+1) = ww(km)
+      do k=2,km
+        wi(k) = (ww(k)*dz(k-1)+ww(k-1)*dz(k))/(dz(k-1)+dz(k))
+      enddo
+! 3rd order interpolation to get wi
+      fa1 = 9./16.
+      fa2 = 1./16.
+      wi(1) = ww(1)
+      wi(2) = 0.5*(ww(2)+ww(1))
+      do k=3,km-1
+        wi(k) = fa1*(ww(k)+ww(k-1))-fa2*(ww(k+1)+ww(k-2))
+      enddo
+      wi(km) = 0.5*(ww(km)+ww(km-1))
+      wi(km+1) = ww(km)
+
+! terminate of top of raingroup
+      do k=2,km
+        if( ww(k).eq.0.0 ) wi(k)=ww(k-1)
+      enddo
+
+! diffusivity of wi
+      con1 = 0.05
+      do k=km,1,-1
+        decfl = (wi(k+1)-wi(k))*dt/dz(k)
+        if( decfl .gt. con1 ) then
+          wi(k) = wi(k+1) - con1*dz(k)/dt
+        endif
+      enddo
+! compute arrival point
+      do k=1,km+1
+        za(k) = zi(k) - wi(k)*dt
+      enddo
+      za(km+2) = zi(km+1)
+
+      do k=1,km+1
+        dza(k) = za(k+1)-za(k)
+      enddo
+
+! computer deformation at arrival point
+      do k=1,km
+        qa(k) = qq(k)*dz(k)/dza(k)
+      enddo
+      qa(km+1) = 0.0
+
+! estimate values at arrival cell interface with monotone
+      do k=2,km
+        dip=(qa(k+1)-qa(k))/(dza(k+1)+dza(k))
+        dim=(qa(k)-qa(k-1))/(dza(k-1)+dza(k))
+        if( dip*dim.le.0.0 ) then
+          qmi(k)=qa(k)
+          qpi(k)=qa(k)
+        else
+          qpi(k)=qa(k)+0.5*(dip+dim)*dza(k)
+          qmi(k)=2.0*qa(k)-qpi(k)
+          if( qpi(k).lt.0.0 .or. qmi(k).lt.0.0 ) then
+            qpi(k) = qa(k)
+            qmi(k) = qa(k)
+          endif
+        endif
+      enddo
+      qpi(1)=qa(1)
+      qmi(1)=qa(1)
+      qmi(km+1)=qa(km+1)
+      qpi(km+1)=qa(km+1)
+
+! interpolation to regular point
+      qn = 0.0
+      kb=1
+      kt=1
+      intp : do k=1,km
+             kb=max(kb-1,1)
+             kt=max(kt-1,1)
+! find kb and kt
+             if( zi(k).ge.za(km+1) ) then
+               exit intp
+             else
+               find_kb : do kk=kb,km
+                         if( zi(k).le.za(kk+1) ) then
+                           kb = kk
+                           exit find_kb
+                         else
+                           cycle find_kb
+                         endif
+               enddo find_kb
+               find_kt : do kk=kt,km+2
+                         if( zi(k+1).le.za(kk) ) then
+                           kt = kk
+                           exit find_kt
+                         else
+                           cycle find_kt
+                         endif
+               enddo find_kt
+               kt = kt - 1
+! compute q with piecewise constant method
+               if( kt.eq.kb ) then
+                 tl=(zi(k)-za(kb))/dza(kb)
+                 th=(zi(k+1)-za(kb))/dza(kb)
+                 tl2=tl*tl
+                 th2=th*th
+                 qqd=0.5*(qpi(kb)-qmi(kb))
+                 qqh=qqd*th2+qmi(kb)*th
+                 qql=qqd*tl2+qmi(kb)*tl
+                 qn(k) = (qqh-qql)/(th-tl)
+               else if( kt.gt.kb ) then
+                 tl=(zi(k)-za(kb))/dza(kb)
+                 tl2=tl*tl
+                 qqd=0.5*(qpi(kb)-qmi(kb))
+                 qql=qqd*tl2+qmi(kb)*tl
+                 dql = qa(kb)-qql
+                 zsum  = (1.-tl)*dza(kb)
+                 qsum  = dql*dza(kb)
+                 if( kt-kb.gt.1 ) then
+                 do m=kb+1,kt-1
+                   zsum = zsum + dza(m)
+                   qsum = qsum + qa(m) * dza(m)
+                 enddo
+                 endif
+                 th=(zi(k+1)-za(kt))/dza(kt)
+                 th2=th*th
+                 qqd=0.5*(qpi(kt)-qmi(kt))
+                 dqh=qqd*th2+qmi(kt)*th
+                 zsum  = zsum + th*dza(kt)
+                 qsum  = qsum + dqh*dza(kt)
+                 qn(k) = qsum/zsum
+               endif
+               cycle intp
+             endif
+
+       enddo intp
+
+! rain out
+      sum_precip: do k=1,km
+                    if( za(k).lt.0.0 .and. za(k+1).le.0.0 ) then
+                      precip = precip + qa(k)*dza(k)
+                      net_flx(k) =  qa(k)*dza(k)
+                      cycle sum_precip
+                    else if ( za(k).lt.0.0 .and. za(k+1).gt.0.0 ) then
+                      th = (0.0-za(k))/dza(k)
+                      th2 = th*th
+                      qqd = 0.5*(qpi(k)-qmi(k))
+                      qqh = qqd*th2+qmi(k)*th
+                      precip = precip + qqh*dza(k)
+                      net_flx(k) = qqh*dza(k)
+                      exit sum_precip
+                    endif
+                    exit sum_precip
+      enddo sum_precip
+
+! calculating precipitation fluxes
+      do k=km,1,-1
+         if(k == km) then
+           pfsan(k) = net_flx(k)
+         else
+           pfsan(k) = pfsan(k+1) + net_flx(k)
+         end if
+      enddo
+!
+! replace the new values
+      rql(:) = max(qn(:),R1)
+
+  END SUBROUTINE semi_lagrange_sedim
+
+  !------------------
+  
 end module module_mp_thompson_main

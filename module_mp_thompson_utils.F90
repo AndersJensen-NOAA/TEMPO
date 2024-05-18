@@ -10,7 +10,7 @@ module module_mp_thompson_utils
     use machine, only: wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
 #endif
 
-    ! use mp_radar
+    use mp_radar
 
     implicit none
 
@@ -1827,7 +1827,7 @@ contains
         implicit none
 
         real, intent(in) :: qc, qr, qi, nwfa, temp, rhoa
-        real, intent(out) :: nc, nr, ni
+        real, intent(inout) :: nc, nr, ni
 
     end subroutine make_hydrometeor_number_concentrations
 
