@@ -1,6 +1,6 @@
 program driver
-  use module_mp_thompson
   use machine
+  use module_mp_thompson_params
   implicit none
 contains
 

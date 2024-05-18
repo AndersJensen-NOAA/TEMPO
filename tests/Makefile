@@ -1,20 +1,14 @@
-cldmp_path = ..
-VPATH = ${cldmp_path}
-
-FC      = gfortran
+FC = gfortran
 FCFLAGS = -fdefault-real-8 -fdefault-double-8
-SRC     = machine.F90,${cldmp_path}/module_mp_thompson.F90,${cldmp_path}/module_mp_radar.F90
-OBJS    = machine.o,module_mp_thompson.o,module_mp_radar.o
 
-clean:
-	rm -f *.o *.mod driver
+SRC=machine.F90 ../module_mp_thompson_params.F90 driver.F90
+OBJ=machine.o module_mp_thompson_params.o driver.o
 
 %.o: %.F90
-	$(FC) $(FCFLAGS) -c $<
+	$(FC) $(FFLAGS) -c $(SRC)
 
-%: %.o
-	$(FC) $(FCFLAGS) -o $@ $^
+driver: $(OBJ)
+	$(FC) $(FFLAGS) -o $@ $(OBJ) 
 
-driver.o:             machine.o module_mp_thompson.o
-module_mp_thompson.o: machine.o module_mp_radar.o
-module_mp_radar.o:    machine.o
+clean: 
+	@rm -f *.mod *.o driver
