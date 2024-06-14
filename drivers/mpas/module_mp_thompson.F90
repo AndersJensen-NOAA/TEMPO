@@ -573,7 +573,7 @@ contains
     ! Optional microphysics variables are aerosol aware (nc, nwfa, nifa, nwfa2d, nifa2d), and hail aware (ng, qg)
 
     subroutine thompson_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, &
-        nwfa, nifa, nwfa2d, nifa2d, th, pii, p, w, dz, dt_in, itimestep, &
+        nwfa, nifa, nwfa2d, qaprog, nifa2d, th, pii, p, w, dz, dt_in, itimestep, &
         rainnc, rainncv, snownc, snowncv, graupelnc, graupelncv, sr, &
         refl_10cm, diagflag, do_radar_ref, re_cloud, re_ice, re_snow, &
         has_reqc, has_reqi, has_reqs, ntc, muc, rainprod, evapprod, &
@@ -588,7 +588,7 @@ contains
         real, dimension(ims:ime, jms:jme), intent(inout) :: rainnc, rainncv, sr
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: rainprod, evapprod
         real, dimension(ims:ime, jms:jme), intent(in), optional :: ntc, muc
-        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng
+        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng, qaprog
         real, dimension(ims:ime, jms:jme), intent(in), optional :: nwfa2d, nifa2d
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: refl_10cm
         real, dimension(ims:ime, jms:jme), intent(inout), optional :: snownc, snowncv, graupelnc, graupelncv
@@ -597,7 +597,7 @@ contains
 
         ! Local (1d) variables
         real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
-            nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz
+            nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qaprog1d
         real, dimension(kts:kte) :: re_qc1d, re_qi1d, re_qs1d
         real, dimension(kts:kte):: rainprod1d, evapprod1d
         real, dimension(its:ite, jts:jte) :: pcp_ra, pcp_sn, pcp_gr, pcp_ic
@@ -694,6 +694,10 @@ contains
                     nr1d(k) = nr(i,k,j)
                     rho(k) = RoverRv * p1d(k) / (R * t1d(k) * (qv1d(k)+RoverRv))
 
+                    if (present(qaprog)) then
+                       qaprog1d(k) = qaprog(i,k,j)
+                    endif
+                    
                     ! nwfa, nifa, and nc are optional aerosol-aware variables
                     if (present(nwfa)) then
                         if (present(nwfa2d)) then
