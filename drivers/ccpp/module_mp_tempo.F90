@@ -1,6 +1,6 @@
 ! 3D TEMPO Driver for CCPP
 !=================================================================================================================
-module module_mp_thompson
+module module_mp_tempo
 
     use machine, only: wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
     use module_mp_thompson_params
@@ -1382,7 +1382,7 @@ contains
     !> @}
 
     !>\ingroup aathompson
-    SUBROUTINE thompson_finalize()
+    SUBROUTINE tempo_finalize()
 
         IMPLICIT NONE
 
@@ -1426,9 +1426,9 @@ contains
 
         if (ALLOCATED(tnccn_act)) DEALLOCATE(tnccn_act)
 
-    END SUBROUTINE thompson_finalize
+    END SUBROUTINE tempo_finalize
 
-end module module_mp_thompson
+end module module_mp_tempo
  !+---+-----------------------------------------------------------------+
  !ctrlL
  !+---+-----------------------------------------------------------------+
