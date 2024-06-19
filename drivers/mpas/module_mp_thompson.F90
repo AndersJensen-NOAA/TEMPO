@@ -4,6 +4,7 @@ module module_mp_thompson
 
     use mpas_kind_types, only: wp => RKIND, sp => R4KIND, dp => R8KIND
     use module_mp_thompson_params
+    use module_mp_thompson_cloud_fraction
     use module_mp_thompson_utils, only : create_bins, table_Efrw, table_Efsw, table_dropEvap, &
          calc_refl10cm, calc_effectRad
     use module_mp_thompson_main, only : mp_thompson_main
@@ -765,7 +766,7 @@ contains
 
                 !=================================================================================================================
                 ! Main call to the 1D microphysics
-                call mp_thompson_main(qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
+                call mp_thompson_main(qv1d=qv1d, qa1d=qa1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
                            ni1d=ni1d, nr1d=nr1d, nc1d=nc1d, ng1d=ng1d, nwfa1d=nwfa1d, nifa1d=nifa1d, t1d=t1d, p1d=p1d, &
                            w1d=w1d, dzq=dz1d, pptrain=pptrain, pptsnow=pptsnow, pptgraul=pptgraul, pptice=pptice, &
                            rainprod=rainprod1d, evapprod=evapprod1d, kts=kts, kte=kte, dt=dt, ii=i, jj=j, configs=configs)
@@ -793,6 +794,12 @@ contains
                         ng(i,k,j) = ng1d(k)
                         qb(i,k,j) = qb1d(k)
                     enddo
+                endif
+
+                if (present(qaprog)) then
+                   do k = kts, kte
+                      qaprog(i,k,j) = qaprog1d(k)
+                   enddo
                 endif
 
                 do k = kts, kte

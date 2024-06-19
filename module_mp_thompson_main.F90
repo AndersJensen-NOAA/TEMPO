@@ -23,7 +23,7 @@ contains
     ! A complete description is now found in Thompson et al. (2004, 2008), Thompson and Eidhammer (2014),
     ! and Jensen et al. (2023).
 
-    subroutine mp_thompson_main(qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
+    subroutine mp_thompson_main(qv1d, qa1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
         nwfa1d, nifa1d, t1d, p1d, w1d, dzq, pptrain, pptsnow, pptgraul, pptice, &
 #if defined(mpas)
         rainprod, evapprod, &
@@ -58,7 +58,7 @@ contains
         ! Subroutine arguments
         integer, intent(in) :: kts, kte, ii, jj
         real(wp), dimension(kts:kte), intent(inout) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, &
-            ni1d, nr1d, nc1d, ng1d, nwfa1d, nifa1d, t1d
+            ni1d, nr1d, nc1d, ng1d, nwfa1d, nifa1d, t1d, qa1d
         real(wp), dimension(kts:kte), intent(in) :: p1d, w1d, dzq
         real(wp), intent(inout) :: pptrain, pptsnow, pptgraul, pptice
         real(wp), intent(in) :: dt
@@ -185,7 +185,7 @@ contains
         integer, dimension(kts:kte) :: idx_bg, idx_table
 
         logical :: melti, no_micro
-        logical, dimension(kts:kte) :: l_qc, l_qi, l_qr, l_qs, l_qg
+        logical, dimension(kts:kte) :: l_qc, l_qi, l_qr, l_qs, l_qg, no_micro_grid
         logical :: debug_flag
         character*256 :: mp_debug
         integer :: nu_c, decfl_
@@ -405,6 +405,27 @@ contains
             pres(k) = p1d(k)
             rho(k) = RoverRv*pres(k)/(r*temp(k)*(qv(k)+RoverRv))
 
+            no_micro_grid(k) = .true.
+            ! Bound cloud fraction
+            ! Cloud fraction can't be greater than 1
+            if (qa1d(k) .gt. 1.0) then
+               qa1d(k) = 1.0
+            endif
+            ! Currently low-limit for cloud fraction is 5%
+            ! For cloud ice mass > 1.e-12
+            if (qa1d(k) .lt. 0.05) then
+               if (qi1d(k) .gt. R1) then
+                  qa1d(k) = 0.05
+               else
+                  qa1d(k) = 0.0
+               endif
+            endif
+            ! Convert to in-cloud value at beginning of microphysics
+            if (qad(k) .ge. 0.05) then
+               qi1d(k) = qi1d(k) / qa1d(k)
+               ni1d(k) = ni1d(k) / qa1d(k)
+            endif
+            
             ! CCPP version has rho(k) multiplier for min and max
             ! nwfa(k) = max(11.1e6, min(9999.e6, nwfa1d(k)*rho(k)))
             ! nifa(k) = max(nain1*0.01, min(9999.e6, nifa1d(k)*rho(k)))
@@ -417,6 +438,7 @@ contains
 
             if (qc1d(k) .gt. R1) then
                 no_micro = .false.
+                no_micro_grid(k) = .false.
                 rc(k) = qc1d(k)*rho(k)
                 nc(k) = max(2., min(nc1d(k)*rho(k), nt_c_max))
                 l_qc(k) = .true.
@@ -461,6 +483,7 @@ contains
 
             if (qi1d(k) .gt. R1) then
                 no_micro = .false.
+                no_micro_grid(k) = .false.
                 ri(k) = qi1d(k)*rho(k)
                 ni(k) = max(r2, ni1d(k)*rho(k))
                 if (ni(k).le. r2) then
@@ -478,7 +501,8 @@ contains
                     lami = cie(2)/300.E-6
                     ni(k) = cig(1)*oig2*ri(k)/am_i*lami**bm_i
                 endif
-            else
+             else
+                qa1d(k) = 0.0
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
                 ri(k) = R1
@@ -488,6 +512,7 @@ contains
 
             if (qr1d(k) .gt. R1) then
                 no_micro = .false.
+                no_micro_grid(k) = .false.
                 rr(k) = qr1d(k)*rho(k)
                 nr(k) = max(R2, nr1d(k)*rho(k))
                 if (nr(k).le. R2) then
@@ -525,6 +550,7 @@ contains
             endif
             if (qg1d(k) .gt. R1) then
                 no_micro = .false.
+                no_micro_grid(k) = .false.
                 L_qg(k) = .true.
                 rg(k) = qg1d(k)*rho(k)
                 ng(k) = max(r2, ng1d(k)*rho(k))
@@ -603,7 +629,13 @@ contains
             ssati(k) = sati(k) - 1.
             if (abs(ssatw(k)).lt. eps) ssatw(k) = 0.0
             if (abs(ssati(k)).lt. eps) ssati(k) = 0.0
-            if (no_micro .and. ssati(k).gt. 0.0) no_micro = .false.
+!!            if (no_micro .and. ssati(k).gt. 0.0) no_micro = .false.
+
+            if (no_micro .and. ssati(k).gt. 0.0) then
+               no_micro = .false.
+               no_micro_grid(k) = .false.
+            endif
+         
             diffu(k) = 2.11e-5*(temp(k)/273.15)**1.94 * (101325./pres(k))
             if (tempc .ge. 0.0) then
                 visco(k) = (1.718+0.0049*tempc)*1.0e-5
@@ -619,6 +651,42 @@ contains
         !=================================================================================================================
         !..If no existing hydrometeor species and no chance to initiate ice or
         !.. condense cloud water, just exit quickly!
+
+        ! Call subgrid cloud scheme right before `if (no_micro) return`
+        call subgrid_scale_ice_clouds(kts, kte, dtsave, rho, pres, lsub, ocp, qvsi, w1d, &
+             no_micro_grid, qa1d, qv, ri, ni, temp)
+        
+        ! If we made subgrid ice clouds, we need to check that
+        ! ice number concentration is is bounds and set no_micro to false
+        do k = kts, kte
+           if (ri(k) .gt. R1) then
+              no_micro = .false.
+              ni(k) = max(R2, ni1d(k)*rho(k))
+              if (ni(k).le. R2) then
+                 lami = cie(2)/5.E-6
+                 ni(k) = min(4999.d3, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
+              endif
+              L_qi(k) = .true.
+              lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
+              ilami = 1./lami
+              xDi = (bm_i + mu_i + 1.) * ilami
+              if (xDi.lt. 5.E-6) then
+                 lami = cie(2)/5.E-6
+                 ni(k) = min(4999.d3, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
+              elseif (xDi.gt. 300.E-6) then
+                 lami = cie(2)/300.E-6
+                 ni(k) = cig(1)*oig2*ri(k)/am_i*lami**bm_i
+              endif
+           else
+              qi1d(k) = 0.0
+              ni1d(k) = 0.0
+              ri(k) = R1
+              ni(k) = R2
+              L_qi(k) = .false.
+              qa1d(k) = 0.0
+           endif
+        enddo
+        
         if (no_micro) return
 
         !..Calculate y-intercept, slope, and useful moments for snow.
@@ -1239,13 +1307,31 @@ contains
                             *oig1*cig(5)*ni(k)*ilami
 
                         if (pri_ide(k) .lt. 0.0) then
-                            pri_ide(k) = max(real(-ri(k)*odts, kind=dp), pri_ide(k), real(rate_max, kind=dp))
-                            pni_ide(k) = pri_ide(k)*oxmi
-                            pni_ide(k) = max(real(-ni(k)*odts, kind=dp), pni_ide(k))
+                            ! pri_ide(k) = max(real(-ri(k)*odts, kind=dp), pri_ide(k), real(rate_max, kind=dp))
+                            ! pni_ide(k) = pri_ide(k)*oxmi
+                            ! pni_ide(k) = max(real(-ni(k)*odts, kind=dp), pni_ide(k))
+
+                            ! Only sublimate if there is explicit ice
+                            ! if (.not. no_micro_grid(k)) then
+                            if (qa1d(k) .gt. 0.99) then
+                               pri_ide(k) = MAX(DBLE(-ri(k)*odts), pri_ide(k), DBLE(rate_max))
+                               pni_ide(k) = pri_ide(k)*oxmi
+                               pni_ide(k) = MAX(DBLE(-ni(k)*odts), pni_ide(k))
+                            else
+                               pri_ide(k) = 0.0
+                               pni_ide(k) = 0.0
+                            endif
+                            
                         else
                             pri_ide(k) = min(pri_ide(k), real(rate_max, kind=dp))
                             prs_ide(k) = (1.0_dp-tpi_ide(idx_i,idx_i1))*pri_ide(k)
                             pri_ide(k) = tpi_ide(idx_i,idx_i1)*pri_ide(k)
+
+                            ! If grid-scale saturation and deposition, cloud fraction = 1
+                            if (ssati(k) .gt. 0.0 .and. pri_ide(k) .gt. R1) then
+                               qa1d(k) = 1.0
+                            endif
+                            
                         endif
 
                         !..Some cloud ice needs to move into the snow category.  Use lookup
@@ -2541,7 +2627,10 @@ contains
                     ri(k) = max(r1, ri(k) + (sed_i(k+1)-sed_i(k)) &
                         *odzq*dt*onstep(2))
                     ni(k) = max(r2, ni(k) + (sed_n(k+1)-sed_n(k)) &
-                        *odzq*DT*onstep(2))
+                         *odzq*DT*onstep(2))
+
+                    qa1d(k) = max(qa1d(k+1), qa1d(k))
+
 #if defined(ccpp_default)
                     pfil1(k) = pfil1(k) + sed_i(k)*DT*onstep(2)
 #endif
@@ -2575,7 +2664,9 @@ contains
                     qsten(k) = qsten(k) + (sed_s(k+1)-sed_s(k)) &
                         *odzq*onstep(3)*orho
                     rs(k) = max(r1, rs(k) + (sed_s(k+1)-sed_s(k)) &
-                        *odzq*DT*onstep(3))
+                         *odzq*DT*onstep(3))
+                    qa1d(k) = max(qa1d(k+1), qa1d(k))
+                    
 #if defined(ccpp_default)
                     pfil1(k) = pfil1(k) + sed_s(k)*DT*onstep(3)
 #endif
@@ -2714,6 +2805,22 @@ contains
             qv1d(k) = max(min_qv, qv1d(k) + qvten(k)*dt)
             qc1d(k) = qc1d(k) + qcten(k)*dt
             nc1d(k) = max(2./rho(k), min(nc1d(k) + ncten(k)*dt, nt_c_max))
+
+            ! Bound cloud fraction
+            ! Cloud fraction can't be greater than 1                     
+            if (qa1d(k) .gt. 1.0) then
+               qa1d(k) = 1.0
+            endif
+            ! Currently low-limit for cloud fraction is 5%
+            ! For cloud ice mass > 1.e-12
+            if (qa1d(k) .lt. 0.05) then
+               if(qi1d(k) .gt. R1) then
+                  qa1d(k) = 0.05
+               else
+                  qa1d(k) = 0.0
+               endif
+            endif
+         
             if (configs%aerosol_aware) then
                 nwfa1d(k) = max(nwfa_default, min(aero_max, (nwfa1d(k)+nwfaten(k)*dt)))
                 nifa1d(k) = max(nifa_default, min(aero_max, (nifa1d(k)+nifaten(k)*dt)))
@@ -2748,9 +2855,17 @@ contains
 
             qi1d(k) = qi1d(k) + qiten(k)*DT
             ni1d(k) = max(R2/rho(k), ni1d(k) + niten(k)*DT)
+
+            ! Convert to grid-mean value for advection
+            if (qa1d(k) .ge. 0.05) then
+               qi1d(k) = qi1d(k) * qa1d(k)
+               ni1d(k) = ni1d(k) * qa1d(k)
+            endif
+         
             if (qi1d(k) .le. R1) then
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
+                qa1d(k) = 0.0
             else
                 lami = (am_i*cig(2)*oig1*ni1d(k)/qi1d(k))**obmi
                 ilami = 1./lami
