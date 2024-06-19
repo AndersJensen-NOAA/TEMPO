@@ -3,6 +3,7 @@
 module module_mp_thompson_main
 
     use module_mp_thompson_params
+    use module_mp_thompson_cloud_fraction
     use module_mp_thompson_utils, only: rslf, rsif
     
 #if defined(mpas)
@@ -421,7 +422,7 @@ contains
                endif
             endif
             ! Convert to in-cloud value at beginning of microphysics
-            if (qad(k) .ge. 0.05) then
+            if (qa1d(k) .ge. 0.05) then
                qi1d(k) = qi1d(k) / qa1d(k)
                ni1d(k) = ni1d(k) / qa1d(k)
             endif

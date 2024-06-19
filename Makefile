@@ -1,3 +1,4 @@
+
 .SUFFIXES: .F90 .o
 
 all: dummy microphysics
@@ -8,6 +9,7 @@ dummy:
 OBJS = \
 	module_mp_thompson_params.o    \
 	module_mp_thompson_utils.o     \
+	module_mp_thompson_cloud_fraction.o      \
 	module_mp_thompson_main.o      \
 	module_mp_thompson.o
 
@@ -18,6 +20,7 @@ microphysics: $(OBJS)
 module_mp_thompson.o: \
 	module_mp_thompson_params.o \
 	module_mp_thompson_utils.o \
+	module_mp_thompson_cloud_fraction.o \
 	module_mp_thompson_main.o
 
 clean:

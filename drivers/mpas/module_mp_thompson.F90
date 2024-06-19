@@ -598,7 +598,7 @@ contains
 
         ! Local (1d) variables
         real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
-            nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qaprog1d
+            nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qa1d
         real, dimension(kts:kte) :: re_qc1d, re_qi1d, re_qs1d
         real, dimension(kts:kte):: rainprod1d, evapprod1d
         real, dimension(its:ite, jts:jte) :: pcp_ra, pcp_sn, pcp_gr, pcp_ic
@@ -696,7 +696,7 @@ contains
                     rho(k) = RoverRv * p1d(k) / (R * t1d(k) * (qv1d(k)+RoverRv))
 
                     if (present(qaprog)) then
-                       qaprog1d(k) = qaprog(i,k,j)
+                       qa1d(k) = qaprog(i,k,j)
                     endif
                     
                     ! nwfa, nifa, and nc are optional aerosol-aware variables
@@ -798,7 +798,7 @@ contains
 
                 if (present(qaprog)) then
                    do k = kts, kte
-                      qaprog(i,k,j) = qaprog1d(k)
+                      qaprog(i,k,j) = qa1d(k)
                    enddo
                 endif
 
