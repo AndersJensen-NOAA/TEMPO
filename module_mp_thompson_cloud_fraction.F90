@@ -29,9 +29,9 @@ contains
     real :: dcond_ls(kts:kte), qa_tend(kts:kte)
 
     real :: dqsdT(kts:kte), gamm(kts:kte), U(kts:kte), U00(kts:kte), omega(kts:kte)
-    real :: dqs_ls(kts:kte), tmp1(kts:kte), tmp2(kts:kte), A_dt(kts:kte)
+    real :: dqs_ls(kts:kte), tmp1(kts:kte), tmp2(kts:kte), A_dt(kts:kte), B_dt(kts:kte)
     real :: qa0(kts:kte), qaeq(kts:kte), qa1(kts:kte), qabar(kts:kte), da_ls(kts:kte)
-    real :: cooling_terms(kts:kte)
+    real :: cooling_terms(kts:kte), eros(kts:kte)
     real :: term1, term2, term3, term4, sink, ratio, pressure_threshold
     logical :: do_subgrid_clouds(kts:kte)
 
@@ -46,6 +46,7 @@ contains
        gamm(k) = dqsdT(k) * lsub  * ocp(k)
        U(k) = qv(k) / qvsi(k)
        U00(k) = 0.85
+
        omega(k) = -grav * w1d(k) * rho(k)
 
        ! Conditions to create sub-grid-scale clouds
@@ -104,14 +105,29 @@ contains
              da_ls(k) = 0.0
           endif
 
-          ! Integration with no erosion
-          A_dt(k) = 1.0 * da_ls(k) / max(1.0-qa(k), 1.e-12)
+          ! Erosion
+          if (ri(k) .gt. 1.e-12) then
+             ! 1.e-6 is background erosion (should be scale aware)
+             eros(k) = qa(k) * 1.e-6 * dt * qvsi(k) * (1.-U(k)) / ri(k)
+          else
+             eros(k) = 0.
+          endif
 
-          if (A_dt(k) .gt. 1.e-12) then
+          A_dt(k) = 1.0 * da_ls(k) / max(1.0-qa(k), 1.e-12)
+          B_dt(k) = eros(k)
+
+          ! Integration with erosion
+          if (A_dt(k) .gt. 1.e-12 .or. B_dt(k) .gt. 1.e-12) then
              qa0(k) = qa(k)
-             qaeq(k) = 1.0
-             qa1(k) = 1.0 - (1.0 - qa(k)) * exp(-1.0*A_dt(k))
-             qabar(k) = 1.0 - (qa1(k) - qa(k)) / A_dt(k)
+             qaeq(k) = A_dt(k) / (A_dt(k) + B_dt(k))
+             qa1(k) = qaeq(k) - (qaeq(k) - qa0(k)) * exp(-1.*(A_dt(k)+B_dt(k)))
+             qabar(k) = qaeq(k) - ((qa1(k) - qa0(k)) / (A_dt(k) + B_dt(k)))
+
+             ! No erosion
+!             qa0(k) = qa(k)
+!             qaeq(k) = 1.0
+!             qa1(k) = 1.0 - (1.0 - qa(k)) * exp(-1.0*A_dt(k))
+!             qabar(k) = 1.0 - (qa1(k) - qa(k)) / A_dt(k)
           else
              qa0(k)   = qa(k)
              qaeq(k)  = qa(k)
@@ -124,7 +140,7 @@ contains
           dcond_ls(k) = -1.0 * qabar(k) * dqs_ls(k)
           sink = dcond_ls(k)
 
-          ! Erosions terms
+          ! Erosions terms (to be implemented later)
           ! dqi/dt = alpha*K*qa*(1-qa)*(qsat-qv)
           ! dqa/dt = -G(-Qc)Qc / (qi-qa*qc)  * dqi/dt
           ! Qc = al * (qt-qsat)
