@@ -10,7 +10,8 @@ module module_mp_thompson
     use mpas_atmphys_utilities, only : physics_message, physics_error_fatal
     use mpas_io_units, only : mpas_new_unit, mpas_release_unit
     use mp_radar
-
+    use module_ml_driver, only : ml_driver
+    
     implicit none
 
 contains
@@ -616,6 +617,11 @@ contains
         integer, optional, intent(in) :: do_radar_ref
         character(len=132) :: message
 
+        ! Neural Net
+        integer, parameter :: num_inputs = 6
+        real, dimension(kts:kte, num_inputs) :: nn_input
+        real, dimension(kts:kte) :: nn_output
+  
         !=================================================================================================================
         i_start = its
         j_start = jts
@@ -693,7 +699,18 @@ contains
                     ni1d(k) = ni(i,k,j)
                     nr1d(k) = nr(i,k,j)
                     rho(k) = RoverRv * p1d(k) / (R * t1d(k) * (qv1d(k)+RoverRv))
+                 enddo
 
+                 ! (qc1d, qr1d, qi1d, qs1d, p1d, t1d, nc1d)
+                 nn_input(:,1) = qc1d
+                 nn_input(:,2) = qr1d
+                 nn_input(:,3) = qi1d
+                 nn_input(:,4) = qs1d
+                 nn_input(:,5) = p1d
+                 nn_input(:,6) = t1d
+                 call ml_driver(nn_input, nn_output)
+
+                 do k = kts, kte
                     ! nwfa, nifa, and nc are optional aerosol-aware variables
                     if (present(nwfa)) then
                         if (present(nwfa2d)) then
@@ -715,12 +732,17 @@ contains
                         configs%aerosol_aware = .false.
                     endif
 
-                    if (present(nc)) then
-                        nc1d(k) = nc(i,k,j)
-                    else
-                        nc1d(k) = Nt_c / rho(k)
-                        configs%aerosol_aware = .false.
-                    endif
+                    ! NN TESTING (AERO-AWARE TO FALSE) / NC from NN
+                    nc1d(k) = nn_output(k)
+                    configs%aerosol_aware = .false.
+!AAJ TESTING ONLY                    
+!                    if (present(nc)) then
+!                        nc1d(k) = nc(i,k,j)
+!                    else
+!                        nc1d(k) = Nt_c / rho(k)
+!                        configs%aerosol_aware = .false.
+!                     endif
+                     
                 enddo
 
                 ! ng and qb are optional hail-aware variables
