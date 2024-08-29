@@ -25,7 +25,7 @@ contains
     ! and Jensen et al. (2023).
 
     subroutine mp_thompson_main(qv1d, qa1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
-        nwfa1d, nifa1d, t1d, p1d, w1d, dzq, pptrain, pptsnow, pptgraul, pptice, &
+        nwfa1d, nifa1d, t1d, p1d, w1d, lw1d, dzq, pptrain, pptsnow, pptgraul, pptice, &
 #if defined(mpas)
         rainprod, evapprod, &
 #endif
@@ -60,7 +60,7 @@ contains
         integer, intent(in) :: kts, kte, ii, jj
         real(wp), dimension(kts:kte), intent(inout) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, &
             ni1d, nr1d, nc1d, ng1d, nwfa1d, nifa1d, t1d, qa1d
-        real(wp), dimension(kts:kte), intent(in) :: p1d, w1d, dzq
+        real(wp), dimension(kts:kte), intent(in) :: p1d, w1d, dzq, lw1d
         real(wp), intent(inout) :: pptrain, pptsnow, pptgraul, pptice
         real(wp), intent(in) :: dt
 
@@ -100,6 +100,7 @@ contains
             qsten, qgten, qbten, niten, nrten, ncten, ngten, nwfaten, nifaten
 
         real(dp), dimension(kts:kte) :: prw_vcd
+        real(dp), dimension(kts:kte) :: prw_sgi, prw_sgb, prw_sge
 
         real(dp), dimension(kts:kte) :: pnc_wcd, pnc_wau, pnc_rcw, pnc_scw, pnc_gcw
 
@@ -186,11 +187,12 @@ contains
         integer, dimension(kts:kte) :: idx_bg, idx_table
 
         logical :: melti, no_micro
-        logical, dimension(kts:kte) :: l_qc, l_qi, l_qr, l_qs, l_qg, no_micro_grid
+        logical, dimension(kts:kte) :: l_qc, l_qi, l_qr, l_qs, l_qg
         logical :: debug_flag
         character*256 :: mp_debug
         integer :: nu_c, decfl_
 
+!        real(wp), dimension(1,1) :: xland, gridkm
         !=================================================================================================================
 
         debug_flag = .false.
@@ -241,6 +243,10 @@ contains
             nifaten(k) = 0.
 
             prw_vcd(k) = 0.
+
+            prw_sgi(k) = 0.
+            prw_sgb(k) = 0.
+            prw_sge(k) = 0.
 
             pnc_wcd(k) = 0.
             pnc_wau(k) = 0.
@@ -406,26 +412,31 @@ contains
             pres(k) = p1d(k)
             rho(k) = RoverRv*pres(k)/(r*temp(k)*(qv(k)+RoverRv))
 
-            no_micro_grid(k) = .true.
             ! Bound cloud fraction
+            qa1d(k) = min(qa1d(k), 1.0)
+            qa1d(k) = max(qa1d(k), 0.01)
+            
             ! Cloud fraction can't be greater than 1
-            if (qa1d(k) .gt. 1.0) then
-               qa1d(k) = 1.0
-            endif
+!            if (qa1d(k) .gt. 1.0) then
+!               qa1d(k) = 1.0
+!            endif
             ! Currently low-limit for cloud fraction is 5%
             ! For cloud ice mass > 1.e-12
-            if (qa1d(k) .lt. 0.05) then
-               if (qi1d(k) .gt. R1) then
-                  qa1d(k) = 0.05
-               else
-                  qa1d(k) = 0.0
-               endif
-            endif
+!            if (qa1d(k) .lt. 0.05) then
+!               if (qi1d(k) .gt. R1 .or. qc1d(k) .gt. R1) then
+!                  qa1d(k) = 0.05
+!               else
+!                  qa1d(k) = 0.0
+!               endif
+!            endif
+            
             ! Convert to in-cloud value at beginning of microphysics
-            if (qa1d(k) .ge. 0.05) then
-               qi1d(k) = qi1d(k) / qa1d(k)
-               ni1d(k) = ni1d(k) / qa1d(k)
-            endif
+!            if (qa1d(k) .ge. 0.05) then
+!               qi1d(k) = qi1d(k) / qa1d(k)
+!               ni1d(k) = ni1d(k) / qa1d(k)
+!               qc1d(k) = qc1d(k) / qa1d(k)
+!               nc1d(k) = nc1d(k) / qa1d(k)
+!            endif
             
             ! CCPP version has rho(k) multiplier for min and max
             ! nwfa(k) = max(11.1e6, min(9999.e6, nwfa1d(k)*rho(k)))
@@ -439,7 +450,9 @@ contains
 
             if (qc1d(k) .gt. R1) then
                 no_micro = .false.
-                no_micro_grid(k) = .false.
+                qc1d(k) = qc1d(k) / qa1d(k)
+                nc1d(k) = nc1d(k) / qa1d(k)
+                
                 rc(k) = qc1d(k)*rho(k)
                 nc(k) = max(2., min(nc1d(k)*rho(k), nt_c_max))
                 l_qc(k) = .true.
@@ -474,7 +487,8 @@ contains
                         endif
                     endif
                 endif
-            else
+             else
+                qa1d(k) = 0.0
                 qc1d(k) = 0.0
                 nc1d(k) = 0.0
                 rc(k) = R1
@@ -484,7 +498,6 @@ contains
 
             if (qi1d(k) .gt. R1) then
                 no_micro = .false.
-                no_micro_grid(k) = .false.
                 ri(k) = qi1d(k)*rho(k)
                 ni(k) = max(r2, ni1d(k)*rho(k))
                 if (ni(k).le. r2) then
@@ -503,7 +516,9 @@ contains
                     ni(k) = cig(1)*oig2*ri(k)/am_i*lami**bm_i
                 endif
              else
-                qa1d(k) = 0.0
+!                if (qc1d(k) <= R1) then
+!                   qa1d(k) = 0.0
+!                endif
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
                 ri(k) = R1
@@ -513,7 +528,6 @@ contains
 
             if (qr1d(k) .gt. R1) then
                 no_micro = .false.
-                no_micro_grid(k) = .false.
                 rr(k) = qr1d(k)*rho(k)
                 nr(k) = max(R2, nr1d(k)*rho(k))
                 if (nr(k).le. R2) then
@@ -551,7 +565,6 @@ contains
             endif
             if (qg1d(k) .gt. R1) then
                 no_micro = .false.
-                no_micro_grid(k) = .false.
                 L_qg(k) = .true.
                 rg(k) = qg1d(k)*rho(k)
                 ng(k) = max(r2, ng1d(k)*rho(k))
@@ -630,12 +643,12 @@ contains
             ssati(k) = sati(k) - 1.
             if (abs(ssatw(k)).lt. eps) ssatw(k) = 0.0
             if (abs(ssati(k)).lt. eps) ssati(k) = 0.0
-!!            if (no_micro .and. ssati(k).gt. 0.0) no_micro = .false.
+            if (no_micro .and. ssati(k).gt. 0.0) no_micro = .false.
 
-            if (no_micro .and. ssati(k).gt. 0.0) then
-               no_micro = .false.
-               no_micro_grid(k) = .false.
-            endif
+!            if (no_micro .and. ssati(k).gt. 0.0) then
+!               no_micro = .false.
+!               no_micro_grid(k) = .false.
+!            endif
          
             diffu(k) = 2.11e-5*(temp(k)/273.15)**1.94 * (101325./pres(k))
             if (tempc .ge. 0.0) then
@@ -653,43 +666,84 @@ contains
         !..If no existing hydrometeor species and no chance to initiate ice or
         !.. condense cloud water, just exit quickly!
 
+!        xland(1,1) = 1
+!        gridkm(1,1) = 0.5
+!        call cal_cldfra3(qa1d, qv, rc, ri, rs, pres, temp, rho, XLAND, gridkm, 1, 1, 1, 1, 1, 1, &
+!             1,1, 1,1, 1,1, 1,1, 1,1, kts,kte)
+
+!        if (ii == 1 and jj == 1) then
+!           do k = kts, kte
+!              write(*,*) k, qa1d(k)
+!           enddo
+!        endif
+        
         ! Call subgrid cloud scheme right before `if (no_micro) return`
-        call subgrid_scale_ice_clouds(kts, kte, dtsave, rho, pres, lsub, ocp, qvsi, w1d, &
-             no_micro_grid, qa1d, qv, ri, ni, temp)
-        
-        ! If we made subgrid ice clouds, we need to check that
-        ! ice number concentration is is bounds and set no_micro to false
-        do k = kts, kte
-           if (ri(k) .gt. R1) then
-              no_micro = .false.
-              ni(k) = max(R2, ni1d(k)*rho(k))
-              if (ni(k).le. R2) then
-                 lami = cie(2)/5.E-6
-                 ni(k) = min(4999.d3, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
-              endif
-              L_qi(k) = .true.
-              lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
-              ilami = 1./lami
-              xDi = (bm_i + mu_i + 1.) * ilami
-              if (xDi.lt. 5.E-6) then
-                 lami = cie(2)/5.E-6
-                 ni(k) = min(4999.d3, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
-              elseif (xDi.gt. 300.E-6) then
-                 lami = cie(2)/300.E-6
-                 ni(k) = cig(1)*oig2*ri(k)/am_i*lami**bm_i
-              endif
-           else
-              qi1d(k) = 0.0
-              ni1d(k) = 0.0
-              ri(k) = R1
-              ni(k) = R2
-              L_qi(k) = .false.
-              qa1d(k) = 0.0
-           endif
-        enddo
-        
+!        call subgrid_scale_ice_clouds(kts, kte, dtsave, rho, pres, lsub, ocp, qvsi, w1d, &
+!             no_micro_grid, qa1d, qv, ri, ni, temp)
+
+!        call subgrid_scale_ice_clouds(kts, kte, dtsave, rho, pres, lvap, lsub, ocp, qvs, qvsi, w1d, &
+!             no_micro_grid, qa1d, qv, rc, nc, ri, ni, temp)
+
+        !        write(*,*) 'HERE 1'
+!        if (no_micro) then
+        call subgrid_scale_liquid_clouds(kts, kte, no_micro, l_qc, dtsave, temp, rho, pres, lvap, ocp, qvs, w1d, lw1d, &
+             qa1d, qv, rc, nc, rr, prw_sgi, prw_sgb, prw_sge)
+!        endif
+!        write(*,*) 'HERE 2'
+
         if (no_micro) return
 
+        ! do k = kts, kte
+        !    ! If we made subgrid ice clouds, we need to check that
+        !    if (rc(k) .gt. R1) then
+        !       ! no_micro = .false.
+        !       qc1d(k) = rc(k) / rho(k)
+        !       nc(k) = max(2., min(nc(k), nt_c_max))
+        !       nc1d(k) = nc(k) / rho(k)
+              
+        !       l_qc(k) = .true.
+        !       if (nc(k).gt.10000.e6) then
+        !          nu_c = 2
+        !       elseif (nc(k).lt.100.) then
+        !          nu_c = 15
+        !       else
+        !          nu_c = nint(nu_c_scale/nc(k)) + 2
+        !          rand = 0.0
+        !          if (present(rand2)) then
+        !             rand = rand2
+        !          endif
+        !          nu_c = max(2, min(nu_c+nint(rand), 15))
+        !       endif
+        !       lamc = (nc(k)*am_r*ccg(2,nu_c)*ocg1(nu_c)/rc(k))**obmr
+        !       xDc = (bm_r + nu_c + 1.) / lamc
+        !       if (xDc.lt. D0c) then
+        !          lamc = cce(2,nu_c)/D0c
+        !       elseif (xDc.gt. D0r*2.) then
+        !          lamc = cce(2,nu_c)/(D0r*2.)
+        !       endif
+        !       nc(k) = min(real(nt_c_max, kind=dp), ccg(1,nu_c)*ocg2(nu_c)*rc(k) / am_r*lamc**bm_r)
+        !       ! CCPP version has different values of Nt_c for land/ocean
+        !       if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
+        !          nc(k) = Nt_c
+        !          if (present(lsml)) then
+        !             if (lsml == 1) then
+        !                nc(k) = Nt_c_l
+        !             else
+        !                nc(k) = Nt_c_o
+        !             endif
+        !          endif
+        !       endif
+        !    else
+        !       qa1d(k) = 0.0
+        !       qc1d(k) = 0.0
+        !       nc1d(k) = 0.0
+        !       rc(k) = R1
+        !       nc(k) = 2.
+        !       L_qc(k) = .false.
+        !    endif
+        ! enddo
+
+        ! write(*,*) 'HERE 3'
         !..Calculate y-intercept, slope, and useful moments for snow.
         if (.not. iiwarm) then
             do k = kts, kte
@@ -862,7 +916,7 @@ contains
 
             !..Autoconversion follows Berry & Reinhardt (1974) with characteristic
             !.. diameters correctly computed from gamma distrib of cloud droplets.
-            if (rc(k).gt. 0.01e-3) then
+            if (rc(k).gt. 0.01e-3 .and. qa1d(k) > 0.95) then
                 Dc_g = ((ccg(3,nu_c)*ocg2(nu_c))**obmr / lamc) * 1.E6
                 Dc_b = (xDc*xDc*xDc*Dc_g*Dc_g*Dc_g - xDc*xDc*xDc*xDc*xDc*xDc) &
                     **(1./6.)
@@ -878,7 +932,7 @@ contains
             endif
 
             !>  - Rain collecting cloud water.  In CE, assume Dc<<Dr and vtc=~0.
-            if (L_qr(k) .and. mvd_r(k).gt. D0r .and. mvd_c(k).gt. D0c) then
+            if (L_qr(k) .and. mvd_r(k).gt. D0r .and. mvd_c(k).gt. D0c .and. qa1d(k) > 0.95) then
                 lamr = 1./ilamr(k)
                 idx = 1 + int(nbr*log(real(mvd_r(k)/Dr(1), kind=dp)) / log(real(Dr(nbr)/Dr(1), kind=dp)))
                 idx = min(idx, nbr)
@@ -1314,14 +1368,14 @@ contains
 
                             ! Only sublimate if there is explicit ice
                             ! if (.not. no_micro_grid(k)) then
-                            if (qa1d(k) .gt. 0.99) then
+!                            if (qa1d(k) .gt. 0.99) then
                                pri_ide(k) = MAX(DBLE(-ri(k)*odts), pri_ide(k), DBLE(rate_max))
                                pni_ide(k) = pri_ide(k)*oxmi
                                pni_ide(k) = MAX(DBLE(-ni(k)*odts), pni_ide(k))
-                            else
-                               pri_ide(k) = 0.0
-                               pni_ide(k) = 0.0
-                            endif
+!                            else
+!                               pri_ide(k) = 0.0
+!                               pni_ide(k) = 0.0
+!                            endif
                             
                         else
                             pri_ide(k) = min(pri_ide(k), real(rate_max, kind=dp))
@@ -1329,9 +1383,9 @@ contains
                             pri_ide(k) = tpi_ide(idx_i,idx_i1)*pri_ide(k)
 
                             ! If grid-scale saturation and deposition, cloud fraction = 1
-                            if (ssati(k) .gt. 0.0 .and. pri_ide(k) .gt. R1) then
-                               qa1d(k) = 1.0
-                            endif
+                           ! if (ssati(k) .gt. 0.0 .and. pri_ide(k) .gt. R1) then
+                           !    qa1d(k) = 1.0
+                           ! endif
                             
                         endif
 
@@ -2154,10 +2208,26 @@ contains
                 else
                     prw_vcd(k) = -rc(k)*orho*odt
                     pnc_wcd(k) = -nc(k)*orho*odt
+!!                    qa1d(k) = 0.0
                 endif
 
                 !+---+-----------------------------------------------------------------+
 
+!!                if (prw_vcd(k) > 0.) qa1d(k) = 1.
+                if (ssatw(k) > eps) qa1d(k) = 1.0
+                
+!                if ((k == 2) .and. qa1d(k) > 0.) then
+!                   write(*,*) 'IN CODE', k, qa1d(k), rc(k), prw_sge(k), prw_sgb(k), prw_sgi(k), ssatw(k), prw_vcd(k), qcten(k), rho(k), rc(k)*orho*odt
+!                endif
+                
+!!                qcten(k) = qcten(k) + prw_sgi(k) + prw_sgb(k) + prw_sge(k)
+!!                qvten(k) = qvten(k) - prw_sgi(k) - prw_sgb(k) - prw_sge(k)
+!!                tten(k) = tten(k) + lvap(k)*ocp(k)*(prw_sgi(k) + prw_sgb(k) + prw_sge(k))
+!!                ncten(k) = ncten(k) + (prw_sgi(k) + prw_sgb(k) + prw_sge(k))/(3.14159*1000./6.*((10.e-6)**3.0))
+
+                
+                if ((prw_vcd(k) >= 0.0) .or. (prw_vcd(k) < 0.0 .and. qa1d(k) > 0.95) .or. (qa1d(k) == 0.0)) then
+                   
                 qvten(k) = qvten(k) - prw_vcd(k)
                 qcten(k) = qcten(k) + prw_vcd(k)
                 ncten(k) = ncten(k) + pnc_wcd(k)
@@ -2184,7 +2254,36 @@ contains
                 rho(k) = RoverRv*pres(k)/(R*temp(k)*(qv(k)+RoverRv))
                 qvs(k) = rslf(pres(k), temp(k))
                 ssatw(k) = qv(k)/qvs(k) - 1.
-            endif
+
+             else
+                                    
+                qcten(k) = qcten(k) + prw_sgi(k) + prw_sgb(k) + prw_sge(k)
+                qvten(k) = qvten(k) - (prw_sgi(k) - prw_sgb(k) - prw_sge(k))*qa1d(k)
+                tten(k) = tten(k) + lvap(k)*ocp(k)*(prw_sgi(k) + prw_sgb(k) + prw_sge(k))*qa1d(k)
+                ncten(k) = ncten(k) + (prw_sgi(k) + prw_sgb(k) + prw_sge(k))/(3.14159*1000./6.*((10.e-6)**3.0))
+
+                rc(k) = max(R1, (qc1d(k) + dt*qcten(k))*rho(k))
+                if (rc(k).eq.R1) l_qc(k) = .false.
+                nc(k) = max(2., min((nc1d(k)+ncten(k)*dt)*rho(k), nt_c_max))
+                if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
+                    nc(k) = Nt_c
+                    if (present(lsml)) then
+                        if(lsml == 1) then
+                            nc(k) = Nt_c_l
+                        else
+                            nc(k) = Nt_c_o
+                        endif
+                    endif
+                endif                   
+                qv(k) = max(min_qv, qv1d(k) + DT*qvten(k))
+                temp(k) = t1d(k) + DT*tten(k)
+                rho(k) = RoverRv*pres(k)/(R*temp(k)*(qv(k)+RoverRv))
+                qvs(k) = rslf(pres(k), temp(k))
+                ssatw(k) = qv(k)/qvs(k) - 1.
+                
+             endif
+             
+          endif
         enddo
 
         !=================================================================================================================
@@ -2595,6 +2694,8 @@ contains
                 ncten(k) = ncten(k) + (sed_n(k+1)-sed_n(k)) *odzq*orho
                 rc(k) = max(r1, rc(k) + (sed_c(k+1)-sed_c(k)) *odzq*dt)
                 nc(k) = max(10., nc(k) + (sed_n(k+1)-sed_n(k)) *odzq*dt)
+
+!                qa1d(k) = max(qa1d(k+1), qa1d(k))
             enddo
         endif
 
@@ -2630,7 +2731,7 @@ contains
                     ni(k) = max(r2, ni(k) + (sed_n(k+1)-sed_n(k)) &
                          *odzq*DT*onstep(2))
 
-                    qa1d(k) = max(qa1d(k+1), qa1d(k))
+!                    qa1d(k) = max(qa1d(k+1), qa1d(k))
 
 #if defined(ccpp_default)
                     pfil1(k) = pfil1(k) + sed_i(k)*DT*onstep(2)
@@ -2666,7 +2767,7 @@ contains
                         *odzq*onstep(3)*orho
                     rs(k) = max(r1, rs(k) + (sed_s(k+1)-sed_s(k)) &
                          *odzq*DT*onstep(3))
-                    qa1d(k) = max(qa1d(k+1), qa1d(k))
+!                    qa1d(k) = max(qa1d(k+1), qa1d(k))
                     
 #if defined(ccpp_default)
                     pfil1(k) = pfil1(k) + sed_s(k)*DT*onstep(3)
@@ -2807,20 +2908,52 @@ contains
             qc1d(k) = qc1d(k) + qcten(k)*dt
             nc1d(k) = max(2./rho(k), min(nc1d(k) + ncten(k)*dt, nt_c_max))
 
+            ! Secondary clean up
+!            if ((qa1d(k) <= 0.05) .and. (qc1d(k) < 1.e-7)) then
+!               qa1d(k) = 0.0
+!            endif
+
+            ! THIS WORKS BELOW
+            !if (qa1d(k) <= 0.01) then
+            !   qa1d(k) = 0.
+            !endif
+
+            ! This WORKS and adds cloud top CF
+            !if ((qa1d(k) <= 0.01) .and. (rc(k) <= 1.e-5)) then
+            !   qa1d(k) = 0.
+            !endif
+
+            ! If CF was eroded to the minimum value (0.01)
+            ! and final RH < RH_crit, then set CF to zero
+            ! regardless of cloud water content
+            if ((qa1d(k) <= 0.05) .and. prw_sge(k) < 0.) then
+               qa1d(k) = 0.
+            endif
+            
+!            if (qa1d(k) <= 0.05) then
+!               qa1d(k) = 0.
+!            endif
+            
+            qc1d(k) = qc1d(k) * qa1d(k)
+            nc1d(k) = nc1d(k) * qa1d(k)
+            
+!            qc1d(k) = qc1d(k) * qa1d(k)
+!            nc1d(k) = max(2./rho(k), min(nc1d(k) * qa1d(k), nt_c_max))
+            
             ! Bound cloud fraction
             ! Cloud fraction can't be greater than 1                     
-            if (qa1d(k) .gt. 1.0) then
-               qa1d(k) = 1.0
-            endif
+!            if (qa1d(k) .gt. 1.0) then
+!               qa1d(k) = 1.0
+!            endif
             ! Currently low-limit for cloud fraction is 5%
             ! For cloud ice mass > 1.e-12
-            if (qa1d(k) .lt. 0.05) then
-               if(qi1d(k) .gt. R1) then
-                  qa1d(k) = 0.05
-               else
-                  qa1d(k) = 0.0
-               endif
-            endif
+!            if (qa1d(k) .lt. 0.05) then
+!               if(qi1d(k) .gt. R1 .or. qc1d(k) .gt. R1) then
+!                  qa1d(k) = 0.05
+!               else
+!                  qa1d(k) = 0.0
+!               endif
+!            endif
          
             if (configs%aerosol_aware) then
                 nwfa1d(k) = max(nwfa_default, min(aero_max, (nwfa1d(k)+nwfaten(k)*dt)))
@@ -2829,6 +2962,7 @@ contains
             if (qc1d(k) .le. R1) then
                 qc1d(k) = 0.0
                 nc1d(k) = 0.0
+                qa1d(k) = 0.0
             else
                 if (nc1d(k)*rho(k).gt.10000.e6) then
                     nu_c = 2
@@ -2851,22 +2985,22 @@ contains
                     lamc = cce(2,nu_c)/(D0r*2.)
                 endif
                 nc1d(k) = min(ccg(1,nu_c)*ocg2(nu_c)*qc1d(k)/am_r*lamc**bm_r,&
-                    real(Nt_c_max, kind=dp)/rho(k))
+                     real(Nt_c_max, kind=dp)/rho(k))
+
+!                qc1d(k) = qc1d(k) * qa1d(k)
+!                nc1d(k) = nc1d(k) * qa1d(k)
             endif
 
             qi1d(k) = qi1d(k) + qiten(k)*DT
             ni1d(k) = max(R2/rho(k), ni1d(k) + niten(k)*DT)
 
-            ! Convert to grid-mean value for advection
-            if (qa1d(k) .ge. 0.05) then
-               qi1d(k) = qi1d(k) * qa1d(k)
-               ni1d(k) = ni1d(k) * qa1d(k)
-            endif
          
             if (qi1d(k) .le. R1) then
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
-                qa1d(k) = 0.0
+!                if (qc1d(k) .le. R1) then
+!                   qa1d(k) = 0.0
+!                endif
             else
                 lami = (am_i*cig(2)*oig1*ni1d(k)/qi1d(k))**obmi
                 ilami = 1./lami
@@ -2917,6 +3051,15 @@ contains
                 lamg = (3.0 + mu_g + 0.672) / mvd_g(k)
                 ng1d(k) = cgg(2,1)*ogg3*qg1d(k)*lamg**bm_g / am_g(idx_bg(k))
             endif
+
+            ! Convert to grid-mean value for advection
+!            if (qa1d(k) .ge. 0.05) then
+!               qc1d(k) = qc1d(k) * qa1d(k)
+!               nc1d(k) = nc1d(k) * qa1d(k)
+
+!               qi1d(k) = qi1d(k) * qa1d(k)
+!               ni1d(k) = ni1d(k) * qa1d(k)
+!            endif
 
         enddo
 
