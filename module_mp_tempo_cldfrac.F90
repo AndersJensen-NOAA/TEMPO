@@ -42,13 +42,16 @@ module module_mp_tempo_cldfrac
     real, parameter :: ls_w_limit = 0.1 ! Move params to params module
     real, parameter :: grav = 9.8 ! Move params to params module
     real :: al, bs, sd, qc_calc
+    real :: term1, term2, term3, gterm, eros_term
 
     real, dimension(kts:kte) :: qvs, U, U00, lvap, ocp, dqsdT, omega
     real, dimension(kts:kte) :: cooling_ls
-    logical, dimension(kts:kte) :: create_sgs_clouds
+    logical, dimension(kts:kte) :: create_sgs_clouds, erode_sgs_clouds, evolve_sgs_clouds
 
     do k = kts, kte
        create_sgs_clouds(k) = .false.
+       erode_sgs_clouds(k) = .false.
+       evolve_sgs_clouds(k) = .false.
        qaten(k) = 0.
        qcten(k) = 0.
        thten(k) = 0.
@@ -64,7 +67,8 @@ module module_mp_tempo_cldfrac
        dqsdT(k) = lvap(k) * qvs(k) / (Rv*temp(k)**2)
 
        ! Limits on cloud fraction based on qc and qi
-       if ((qc(k) <= R1) .and. (qi(k) <= R1)) then
+!       if ((qc(k) <= R1) .and. (qi(k) <= R1)) then
+       if ((qc(k) <= R1)) then
           qa(k) = 0.0
        else
           qa(k) = min(qa(k), 1.0)
@@ -75,8 +79,19 @@ module module_mp_tempo_cldfrac
        ! Only make SGS clouds if cloud water or ice does not already exist
        ! Limit large-scale SGS cloud creation to w < 0.1 m/s
        if((qa(k) < 1.0) .and. (w(k) < ls_w_limit) .and. (U(k) < 1.0) .and. (U(k) > (U00(k) + 0.01)) .and. &
-            (qc(k) <= R1) .and. (qi(k) <= R1)) then
+            (qc(k) <= R1)) then
+!            (qc(k) <= R1) .and. (qi(k) <= R1)) then
           create_sgs_clouds(k) = .true.
+       endif
+
+       ! if(qa(k) < 1.0 .and. qc(k) > R1 .and. (U(k) < 1.) .and. w(k) < ls_w_limit .and. (U(k) > (U00(k) + 0.01))) then
+       !    evolve_sgs_clouds(k) = .true.
+       ! endif
+
+       ! Erosion condition
+!       if(qa(k) < 1.0 .and. ((qc(k) > R1) .or. (qi(k) > R1)) .and. U(k) < 1.) then
+       if(qa(k) < 1.0 .and. ((qc(k) > R1)) .and. U(k) < 1.) then
+          erode_sgs_clouds(k) = .true.
        endif
 
        ! Varibles used in cloud fraction scheme
@@ -98,16 +113,50 @@ module module_mp_tempo_cldfrac
              thten(k) = 0.
           endif
 
-          ! ! Update the state
-          ! if ((rc(k)*qa(k)/rho(k)+dcond_ls(k)*dt) > 1.e-12) then
-          !    qa(k) = qa(k) + qa_tend_ls(k)*dt
-          !    qa(k) = min(qa(k), 1.0)
-          !    qa(k) = max(qa(k), 0.01)
-          !    prw_sgi(k) = dcond_ls(k)/qa(k)
-          ! endif
+!       elseif (evolve_sgs_clouds(k)) then
+!          dcond_ls(k) = -al * dqsdT(k) * (omega(k)/rho(k)*ocp(k) + lw1d(k)*(pres(k)/100000.)**0.286 ) * qa(k)
+!          if ((abs(sd) > 1.e-12) .and. (dcond_ls(k) > 0.)) then
+!             term1 = (1.-qa(k))**2*qa(k)/(rc(k)/rho(k)) + qa(k)**2*(1-qa(k))**2/sd
+!             term2 = (1.-qa(k))**2 + qa(k)**2
+!             gterm = 0.5*term1/term2
+!             qa_tend_ls(k) = gterm/qa(k)*dcond_ls(k)
+!          else
+!             dcond_ls(k) = 0.
+!             qa_tend_ls(k) = 0.
+!          endif
        endif
+
+       if (erode_sgs_clouds(k)) then
+          if ((abs(sd) > 1.e-12)) then
+             term1 = (1.-qa(k))**2*qa(k)**2/(qc(k)) + qa(k)**2*(1-qa(k))**2/sd
+          else
+             term1 = 0.
+          endif
+
+          term2 = (1.-qa(k))**2 + qa(k)**2
+          gterm = 0.5*term1/term2
+
+          ! Erosion
+          term3 = -3.1*qc_calc/(al*qvs(k))
+          eros_term = -2.25e-5 * exp(term3)
+
+          qcten(k) = min(0., (qc(k) - qc_calc*qa(k))*eros_term)
+          qaten(k) = min(0., -gterm*qc_calc*eros_term)
+          thten(k) = ((p0/pres(k))**(R/cp2))*lvap(k)*ocp(k)*qcten(k)
+
+          if (((qa(k) + qaten(k)*dt) < 0.01) .and. (qaten(k) < 0.)) then
+             qaten(k) = -qa(k)/dt
+             qcten(k) = -qc(k)/dt
+             thten(k) = ((p0/pres(k))**(R/cp2))*lvap(k)*ocp(k)*qcten(k)
+          endif
+
+       endif
+
+       !! ALL CF controls need to be here and in the interface
+       !! Need to send values from 0.01 to 1 to MP
+       !! MP will only set to 1 or 0
     enddo
-    
+
   end subroutine tempo_cldfrac_driver
   
 !=================================================================================================================    
