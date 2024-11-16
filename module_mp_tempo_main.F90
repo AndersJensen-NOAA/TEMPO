@@ -23,7 +23,7 @@ contains
     ! A complete description is now found in Thompson et al. (2004, 2008), Thompson and Eidhammer (2014),
     ! and Jensen et al. (2023).
 
-    subroutine mp_tempo_main(qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
+    subroutine mp_tempo_main(qv1d, qa1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
         nwfa1d, nifa1d, t1d, p1d, w1d, dzq, pptrain, pptsnow, pptgraul, pptice, &
 #if defined(mpas)
         rainprod, evapprod, &
@@ -56,7 +56,7 @@ contains
 
         ! Subroutine arguments
         integer, intent(in) :: kts, kte, ii, jj
-        real(wp), dimension(kts:kte), intent(inout) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, &
+        real(wp), dimension(kts:kte), intent(inout) :: qv1d, qa1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, &
             ni1d, nr1d, nc1d, ng1d, nwfa1d, nifa1d, t1d
         real(wp), dimension(kts:kte), intent(in) :: p1d, w1d, dzq
         real(wp), intent(inout) :: pptrain, pptsnow, pptgraul, pptice
@@ -404,6 +404,10 @@ contains
             pres(k) = p1d(k)
             rho(k) = RoverRv*pres(k)/(r*temp(k)*(qv(k)+RoverRv))
 
+            ! Bound cloud fraction
+            qa1d(k) = min(qa1d(k), 1.0)
+            qa1d(k) = max(qa1d(k), 0.01)
+
             ! CCPP version has rho(k) multiplier for min and max
             ! nwfa(k) = max(11.1e6, min(9999.e6, nwfa1d(k)*rho(k)))
             ! nifa(k) = max(nain1*0.01, min(9999.e6, nifa1d(k)*rho(k)))
@@ -416,6 +420,10 @@ contains
 
             if (qc1d(k) .gt. R1) then
                 no_micro = .false.
+
+                qc1d(k) = qc1d(k) / qa1d(k)
+                nc1d(k) = nc1d(k) / qa1d(k)
+
                 rc(k) = qc1d(k)*rho(k)
                 nc(k) = max(2., min(nc1d(k)*rho(k), nt_c_max))
                 l_qc(k) = .true.
@@ -451,6 +459,7 @@ contains
                     endif
                 endif
             else
+                qa1d(k) = 0.0
                 qc1d(k) = 0.0
                 nc1d(k) = 0.0
                 rc(k) = R1
@@ -459,7 +468,11 @@ contains
             endif
 
             if (qi1d(k) .gt. R1) then
-                no_micro = .false.
+               no_micro = .false.
+
+!               qi1d(k) = qi1d(k) / qa1d(k)
+!               ni1d(k) = ni1d(k) / qa1d(k)
+
                 ri(k) = qi1d(k)*rho(k)
                 ni(k) = max(r2, ni1d(k)*rho(k))
                 if (ni(k).le. r2) then
@@ -478,6 +491,9 @@ contains
                     ni(k) = cig(1)*oig2*ri(k)/am_i*lami**bm_i
                 endif
             else
+!                if (qc1d(k) <= R1) then
+!                   qa1d(k) = 0.0
+!                endif
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
                 ri(k) = R1
@@ -792,6 +808,7 @@ contains
 
             !..Autoconversion follows Berry & Reinhardt (1974) with characteristic
             !.. diameters correctly computed from gamma distrib of cloud droplets.
+            !.. AAJ consider adding qa(k) > 0.95 for autoconversion and collection
             if (rc(k).gt. 0.01e-3) then
                 Dc_g = ((ccg(3,nu_c)*ocg2(nu_c))**obmr / lamc) * 1.E6
                 Dc_b = (xDc*xDc*xDc*Dc_g*Dc_g*Dc_g - xDc*xDc*xDc*xDc*xDc*xDc) &
@@ -1238,9 +1255,11 @@ contains
                             *oig1*cig(5)*ni(k)*ilami
 
                         if (pri_ide(k) .lt. 0.0) then
-                            pri_ide(k) = max(real(-ri(k)*odts, kind=dp), pri_ide(k), real(rate_max, kind=dp))
-                            pni_ide(k) = pri_ide(k)*oxmi
-                            pni_ide(k) = max(real(-ni(k)*odts, kind=dp), pni_ide(k))
+!                           if (qa1d(k) > 0.99) then
+                              pri_ide(k) = max(real(-ri(k)*odts, kind=dp), pri_ide(k), real(rate_max, kind=dp))
+                              pni_ide(k) = pri_ide(k)*oxmi
+                              pni_ide(k) = max(real(-ni(k)*odts, kind=dp), pni_ide(k))
+!                           endif
                         else
                             pri_ide(k) = min(pri_ide(k), real(rate_max, kind=dp))
                             prs_ide(k) = (1.0_dp-tpi_ide(idx_i,idx_i1))*pri_ide(k)
@@ -2071,6 +2090,10 @@ contains
                 endif
 
                 !+---+-----------------------------------------------------------------+
+                if (ssatw(k) > eps) qa1d(k) = 1.0
+!                if (ssati(k) > eps .and. pri_ide(k) > 0.) qa1d(k) = 1.0
+
+                if ((prw_vcd(k) >= 0.0) .or. (prw_vcd(k) < 0.0 .and. qa1d(k) > 0.95) .or. (qa1d(k) == 0.0)) then
 
                 qvten(k) = qvten(k) - prw_vcd(k)
                 qcten(k) = qcten(k) + prw_vcd(k)
@@ -2098,6 +2121,8 @@ contains
                 rho(k) = RoverRv*pres(k)/(R*temp(k)*(qv(k)+RoverRv))
                 qvs(k) = rslf(pres(k), temp(k))
                 ssatw(k) = qv(k)/qvs(k) - 1.
+                endif
+
             endif
         enddo
 
@@ -2715,11 +2740,16 @@ contains
             qv1d(k) = max(min_qv, qv1d(k) + qvten(k)*dt)
             qc1d(k) = qc1d(k) + qcten(k)*dt
             nc1d(k) = max(2./rho(k), min(nc1d(k) + ncten(k)*dt, nt_c_max))
+
+            qc1d(k) = qc1d(k) * qa1d(k)
+            nc1d(k) = nc1d(k) * qa1d(k)
+
             if (configs%aerosol_aware) then
                 nwfa1d(k) = max(nwfa_default, min(aero_max, (nwfa1d(k)+nwfaten(k)*dt)))
                 nifa1d(k) = max(nifa_default, min(aero_max, (nifa1d(k)+nifaten(k)*dt)))
             endif
             if (qc1d(k) .le. R1) then
+                qa1d(k) = 0.0
                 qc1d(k) = 0.0
                 nc1d(k) = 0.0
             else
@@ -2749,7 +2779,14 @@ contains
 
             qi1d(k) = qi1d(k) + qiten(k)*DT
             ni1d(k) = max(R2/rho(k), ni1d(k) + niten(k)*DT)
+
+!            qi1d(k) = qi1d(k) * qa1d(k)
+!            ni1d(k) = ni1d(k) * qa1d(k)
+
             if (qi1d(k) .le. R1) then
+!               if (qc1d(k) <= R1) then
+!                  qa1d(k) = 0.0
+!               endif
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
             else
