@@ -421,6 +421,10 @@ contains
             if (qc1d(k) .gt. R1) then
                 no_micro = .false.
 
+                ! Ad hoc but needed to control excessive cloud water
+                ! when sgs clouds transition to explicit clouds
+                if (qc1d(k) > 0.1e-3) qa1d(k) = 1.
+
                 qc1d(k) = qc1d(k) / qa1d(k)
                 nc1d(k) = nc1d(k) / qa1d(k)
 
@@ -808,8 +812,7 @@ contains
 
             !..Autoconversion follows Berry & Reinhardt (1974) with characteristic
             !.. diameters correctly computed from gamma distrib of cloud droplets.
-            !.. AAJ consider adding qa(k) > 0.95 for autoconversion and collection
-            if (rc(k).gt. 0.01e-3) then
+            if (rc(k).gt. 0.01e-3 .and. qa1d(k) > 0.95) then
                 Dc_g = ((ccg(3,nu_c)*ocg2(nu_c))**obmr / lamc) * 1.E6
                 Dc_b = (xDc*xDc*xDc*Dc_g*Dc_g*Dc_g - xDc*xDc*xDc*xDc*xDc*xDc) &
                     **(1./6.)
@@ -825,7 +828,7 @@ contains
             endif
 
             !>  - Rain collecting cloud water.  In CE, assume Dc<<Dr and vtc=~0.
-            if (L_qr(k) .and. mvd_r(k).gt. D0r .and. mvd_c(k).gt. D0c) then
+            if (L_qr(k) .and. mvd_r(k).gt. D0r .and. mvd_c(k).gt. D0c .and. qa1d(k) > 0.95) then
                 lamr = 1./ilamr(k)
                 idx = 1 + int(nbr*log(real(mvd_r(k)/Dr(1), kind=dp)) / log(real(Dr(nbr)/Dr(1), kind=dp)))
                 idx = min(idx, nbr)
@@ -2090,10 +2093,12 @@ contains
                 endif
 
                 !+---+-----------------------------------------------------------------+
-                if (ssatw(k) > eps) qa1d(k) = 1.0
-!                if (ssati(k) > eps .and. pri_ide(k) > 0.) qa1d(k) = 1.0
+                ! If condensation, assume it is grid-scale
+                if (prw_vcd(k) > 0.) qa1d(k) = 1.0
 
-                if ((prw_vcd(k) >= 0.0) .or. (prw_vcd(k) < 0.0 .and. qa1d(k) > 0.95) .or. (qa1d(k) == 0.0)) then
+                ! Don't evaporate SGS clouds because they will just be recreated
+                ! Only evaporate when cloud fraction is > 95% (explicit clouds)
+                if ((prw_vcd(k) > 0.0) .or. (prw_vcd(k) < 0.0 .and. qa1d(k) > 0.95) .or. (qa1d(k) == 0.0)) then
 
                 qvten(k) = qvten(k) - prw_vcd(k)
                 qcten(k) = qcten(k) + prw_vcd(k)
@@ -2121,7 +2126,7 @@ contains
                 rho(k) = RoverRv*pres(k)/(R*temp(k)*(qv(k)+RoverRv))
                 qvs(k) = rslf(pres(k), temp(k))
                 ssatw(k) = qv(k)/qvs(k) - 1.
-                endif
+                endif ! Don't evaporate SGS clouds
 
             endif
         enddo
@@ -2534,6 +2539,7 @@ contains
                 ncten(k) = ncten(k) + (sed_n(k+1)-sed_n(k)) *odzq*orho
                 rc(k) = max(r1, rc(k) + (sed_c(k+1)-sed_c(k)) *odzq*dt)
                 nc(k) = max(10., nc(k) + (sed_n(k+1)-sed_n(k)) *odzq*dt)
+!                qa1d(k) = max(qa1d(k), qa1d(k+1))
             enddo
         endif
 
