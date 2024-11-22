@@ -689,11 +689,6 @@ contains
         kmax_ni = 0
         kmax_nr = 0
 
-        if (present(qa)) then
-           write(*,*) 'AAJ DEBUG TEMPO qa present'
-        else
-           write(*,*) 'AAJ DEBUG TEMPO qa NOT present'
-        endif
         !=================================================================================================================
         j_loop:  do j = j_start, j_end
             i_loop:  do i = i_start, i_end
