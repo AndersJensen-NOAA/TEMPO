@@ -1,7 +1,7 @@
 ! Cloud fraction module for TEMPO Microphysics
 !=================================================================================================================
 module module_mp_tempo_cldfrac
-    use module_mp_tempo_params, only : lvap0, lsub, cp2, R, Rv, R1
+    use module_mp_tempo_params, only : lvap0, lsub, cp2, R, Rv, R1, critical_rh, cf_low
     use module_mp_tempo_utils, only : rslf, rsif
     
 #if defined(mpas)
@@ -35,7 +35,6 @@ module module_mp_tempo_cldfrac
     integer :: k
     real :: tempc
     real, parameter :: p0 = 100000.
-    real, parameter :: critical_rh = 0.90
     real, parameter :: ls_w_limit = 0.1
     real, parameter :: grav = 9.8
     real :: al, ali, bs, bsi, sd, sdi, qc_calc
@@ -86,7 +85,7 @@ module module_mp_tempo_cldfrac
           qa(k) = 0.0
        else
           qa(k) = min(qa(k), 1.0)
-          qa(k) = max(qa(k), 0.01)
+          qa(k) = max(qa(k), cf_low)
        endif
 
        ! Create SGS clouds if no cloud water present

@@ -406,7 +406,7 @@ contains
 
             ! Bound cloud fraction
             qa1d(k) = min(qa1d(k), 1.0)
-            qa1d(k) = max(qa1d(k), 0.01)
+            qa1d(k) = max(qa1d(k), cf_low)
 
             ! CCPP version has rho(k) multiplier for min and max
             ! nwfa(k) = max(11.1e6, min(9999.e6, nwfa1d(k)*rho(k)))
@@ -421,13 +421,8 @@ contains
             if (qc1d(k) .gt. R1) then
                 no_micro = .false.
 
-                ! Ad hoc but needed to control excessive cloud water
-                ! when sgs clouds transition to explicit clouds
-                if (qc1d(k) > 0.1e-3) qa1d(k) = 1.
-
                 qc1d(k) = qc1d(k) / qa1d(k)
                 nc1d(k) = nc1d(k) / qa1d(k)
-
                 rc(k) = qc1d(k)*rho(k)
                 nc(k) = max(2., min(nc1d(k)*rho(k), nt_c_max))
                 l_qc(k) = .true.
@@ -2093,12 +2088,38 @@ contains
                 endif
 
                 !+---+-----------------------------------------------------------------+
-                ! If condensation, assume it is grid-scale
-                if (prw_vcd(k) > 0.) qa1d(k) = 1.0
+                ! Mass-weighting of cloud fraction with new condensation
+                if (prw_vcd(k) > 0.) then
+                   if (rc(k) > R1) then
+                      qa1d(k) = (qa1d(k)*rc(k) + 1.0*prw_vcd(k)*dt*rho(k)) / (rc(k) + prw_vcd(k)*dt*rho(k))
+                      qa1d(k) = min(qa1d(k), 1.0)
+                      qa1d(k) = max(qa1d(k), cf_low)
+                   else
+                      qa1d(k) = 1.0
+                   endif
+                endif
 
-                ! Don't evaporate SGS clouds because they will just be recreated
-                ! Only evaporate when cloud fraction is > 95% (explicit clouds)
+                ! This worked well
+!                if (prw_vcd(k) > 0.) then
+!                   if (qc1d(k) > R1) then
+!                      qa1d(k) = qa1d(k) + prw_vcd(k)*dt/qc1d(k)
+!                      qa1d(k) = min(qa1d(k), 1.0)
+!                      qa1d(k) = max(qa1d(k), cf_low)
+!                   else
+!                      qa1d(k) = 1.0
+!                   endif
+!                endif
+
+                ! Only evaporate explicit clouds (Not evaporating clouds if CF < 95%)
                 if ((prw_vcd(k) > 0.0) .or. (prw_vcd(k) < 0.0 .and. qa1d(k) > 0.95) .or. (qa1d(k) == 0.0)) then
+
+                ! Turn off back conversion for now? Not consisitent with sgs clouds false
+                ! Convert explicit clouds to sgs clouds if rh < critical rh
+!                if ((prw_vcd(k) < 0.0) .and. (qv(k)/qvs(k) < critical_rh)) then
+!                   qa1d(k) = min(qa1d(k), (qv(k)/qvs(k))*(1./(1.+2.*(1.-critical_rh))))
+!                   qa1d(k) = min(qa1d(k), 1.0)
+!                   qa1d(k) = max(qa1d(k), 0.01)
+!                endif
 
                 qvten(k) = qvten(k) - prw_vcd(k)
                 qcten(k) = qcten(k) + prw_vcd(k)
@@ -2539,7 +2560,7 @@ contains
                 ncten(k) = ncten(k) + (sed_n(k+1)-sed_n(k)) *odzq*orho
                 rc(k) = max(r1, rc(k) + (sed_c(k+1)-sed_c(k)) *odzq*dt)
                 nc(k) = max(10., nc(k) + (sed_n(k+1)-sed_n(k)) *odzq*dt)
-!                qa1d(k) = max(qa1d(k), qa1d(k+1))
+!!!                qa1d(k) = max(qa1d(k), qa1d(k+1))
             enddo
         endif
 
