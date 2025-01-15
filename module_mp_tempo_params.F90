@@ -122,6 +122,10 @@ module module_mp_tempo_params
     real(wp), parameter :: av_g_old = 442.0
     real(wp), parameter :: bv_g_old = 0.89
 
+    ! For cloud fraction scheme
+    real(wp), parameter :: critical_rh = 0.9
+    real(wp), parameter :: cf_low = 0.05
+
     ! Variable graupel density av_g and bv_g values
     ! Computed from A. Heymsfield: Best - Reynolds relationship
     real(wp), dimension(NRHG) :: av_g = (/45.9173813, 67.0867386, 98.0158463, 122.353378, &

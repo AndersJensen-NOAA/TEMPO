@@ -176,6 +176,7 @@ contains
         real(wp) :: dtsave, odts, odt, odzq, hgt_agl, SR
         real(wp) :: xslw1, ygra1, zans1, eva_factor
         real(wp) :: melt_f, rand
+        real(wp) :: cf_check
         integer :: i, k, k2, n, nn, nstep, k_0, kbot, IT, iexfrq, k_melting
         integer, dimension(5) :: ksed1
         integer :: nir, nis, nig, nii, nic, niin
@@ -406,7 +407,7 @@ contains
 
             ! Bound cloud fraction
             qa1d(k) = min(qa1d(k), 1.0)
-            qa1d(k) = max(qa1d(k), 0.01)
+            qa1d(k) = max(qa1d(k), cf_low)
 
             ! CCPP version has rho(k) multiplier for min and max
             ! nwfa(k) = max(11.1e6, min(9999.e6, nwfa1d(k)*rho(k)))
@@ -421,9 +422,15 @@ contains
             if (qc1d(k) .gt. R1) then
                 no_micro = .false.
 
-                ! Ad hoc but needed to control excessive cloud water
-                ! when sgs clouds transition to explicit clouds
-                if (qc1d(k) > 0.1e-3) qa1d(k) = 1.
+                ! Low-limit check based on observations
+                ! cf = 5.57 * qc [g/kg] ** 0.78
+                cf_check = 5.57 * ((qc1d(k)*1000.)**0.78)
+                cf_check = cf_check - (0.5*cf_check)
+                cf_check = max(cf_low, min(1., cf_check))
+
+                if (qc1d(k) >= 2.37e-6) then
+                   qa1d(k) = max(qa1d(k), cf_check)
+                endif
 
                 qc1d(k) = qc1d(k) / qa1d(k)
                 nc1d(k) = nc1d(k) / qa1d(k)
@@ -2093,8 +2100,16 @@ contains
                 endif
 
                 !+---+-----------------------------------------------------------------+
-                ! If condensation, assume it is grid-scale
-                if (prw_vcd(k) > 0.) qa1d(k) = 1.0
+                ! Mass-weighting of cloud fraction with new condensation
+                if (prw_vcd(k) > 0.) then
+                   if (rc(k) > R1) then
+                      qa1d(k) = (qa1d(k)*rc(k) + 1.0*prw_vcd(k)*dt*rho(k)) / (rc(k) + prw_vcd(k)*dt*rho(k))
+                      qa1d(k) = min(qa1d(k), 1.0)
+                      qa1d(k) = max(qa1d(k), cf_low)
+                   else
+                      qa1d(k) = 1.0
+                   endif
+                endif
 
                 ! Don't evaporate SGS clouds because they will just be recreated
                 ! Only evaporate when cloud fraction is > 95% (explicit clouds)

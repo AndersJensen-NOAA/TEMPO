@@ -6,6 +6,7 @@ module module_mp_tempo
     use module_mp_tempo_params
     use module_mp_tempo_utils, only : create_bins, table_Efrw, table_Efsw, table_dropEvap, &
          calc_refl10cm, calc_effectRad
+    use module_mp_tempo_cldfrac , only : tempo_cldfrac_driver
     use module_mp_tempo_main, only : mp_tempo_main
     use mpas_atmphys_utilities, only : physics_message, physics_error_fatal
     use mpas_io_units, only : mpas_new_unit, mpas_release_unit
@@ -803,6 +804,12 @@ contains
                 !endif
 
                 !=================================================================================================================
+                ! Cloud Fraction
+                if (itimestep > 1) then
+                   call tempo_cldfrac_driver(i=i, j=j, kts=kts, kte=kte, dt=dt, temp=t1d, pres=p1d, rho=rho, w=w1d, &
+                        qa=qa1d, qv=qv1d, qc=qc1d, qi=qi1d, nc=nc1d)
+                endif
+
                 ! Main call to the 1D microphysics
                 call mp_tempo_main(qv1d=qv1d, qa1d=qa1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
                            ni1d=ni1d, nr1d=nr1d, nc1d=nc1d, ng1d=ng1d, nwfa1d=nwfa1d, nifa1d=nifa1d, t1d=t1d, p1d=p1d, &

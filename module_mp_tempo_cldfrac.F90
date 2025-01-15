@@ -1,7 +1,7 @@
 ! Cloud fraction module for TEMPO Microphysics
 !=================================================================================================================
 module module_mp_tempo_cldfrac
-    use module_mp_tempo_params, only : lvap0, lsub, cp2, R, Rv, R1
+    use module_mp_tempo_params, only : lvap0, lsub, cp2, R, Rv, R1, critical_rh, cf_low
     use module_mp_tempo_utils, only : rslf, rsif
     
 #if defined(mpas)
@@ -22,25 +22,23 @@ module module_mp_tempo_cldfrac
     
   contains
 !=================================================================================================================    
-  subroutine tempo_cldfrac_driver(i,j,kts,kte,dt,temp,pres,rho,w,qa,qv,qc,qi,qaten,qcten,qiten,thten)
+  subroutine tempo_cldfrac_driver(i,j,kts,kte,dt,temp,pres,rho,w,qa,qv,qc,qi,nc)
 !=================================================================================================================
     
     integer, intent(in) :: i, j, kts, kte
     real, intent(in) :: dt
-    real, intent(in) :: temp(:), pres(:), rho(:), w(:)
-    real, intent(in) :: qv(:), qc(:), qi(:)
-    real, intent(in) :: qiten(:)
-    real, intent(inout) :: qa(:), qaten(:), qcten(:), thten(:)
+    real, intent(in) :: pres(:), rho(:), w(:)
+    real, intent(inout) :: qa(:), qv(:), qc(:), qi(:), nc(:), temp(:)
     
     integer :: k
     real :: tempc
     real, parameter :: p0 = 100000.
-    real, parameter :: critical_rh = 0.90
     real, parameter :: ls_w_limit = 0.1
     real, parameter :: grav = 9.8
     real :: al, ali, bs, bsi, sd, sdi, qc_calc
     real :: term1, term2, term3, gterm, eros_term
-
+    real :: cf_check
+    real, dimension(kts:kte) :: qaten, qcten, thten, qiten
     real, dimension(kts:kte) :: qvs, qvi, U, Ui, U00, U00i, lvap, ocp, dqsdT, dqidT, omega
     real, dimension(kts:kte) :: qcten_create, qcten_evolve, qcten_erode
     real, dimension(kts:kte) :: qaten_create, qaten_evolve, qaten_erode
@@ -86,7 +84,7 @@ module module_mp_tempo_cldfrac
           qa(k) = 0.0
        else
           qa(k) = min(qa(k), 1.0)
-          qa(k) = max(qa(k), 0.01)
+          qa(k) = max(qa(k), cf_low)
        endif
 
        ! Create SGS clouds if no cloud water present
@@ -173,6 +171,23 @@ module module_mp_tempo_cldfrac
           qaten(k) = -qa(k)/dt
           qcten(k) = -qc(k)/dt
           thten(k) = ((p0/pres(k))**(R/cp2))*lvap(k)*ocp(k)*qcten(k)
+       endif
+
+       ! Update variables
+       qc(k) = qc(k) + qcten(k)*dt
+       nc(k) = nc(k) + qcten(k)*dt / (3.14159*1000./6.*((10.e-6)**3.0))
+       qv(k) = qv(k) - qcten(k)*dt
+       qa(k) = qa(k) + qaten(k)*dt
+       temp(k) = temp(k) + (thten(k) / ((p0/pres(k))**(R/cp2)))*dt
+
+       ! Low-limit check on cloud fraction based on observations
+       ! cf = 5.57 * qc [g/kg] ** 0.78
+       cf_check = 5.57 * ((qc(k)*1000.)**0.78)
+       cf_check = cf_check - (0.5*cf_check)
+       cf_check = max(cf_low, min(1., cf_check))
+
+       if (qc(k) >= 2.37e-6) then
+          qa(k) = max(qa(k), cf_check)
        endif
     enddo
 
