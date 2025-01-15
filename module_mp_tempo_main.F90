@@ -176,6 +176,7 @@ contains
         real(wp) :: dtsave, odts, odt, odzq, hgt_agl, SR
         real(wp) :: xslw1, ygra1, zans1, eva_factor
         real(wp) :: melt_f, rand
+        real(wp) :: cf_check
         integer :: i, k, k2, n, nn, nstep, k_0, kbot, IT, iexfrq, k_melting
         integer, dimension(5) :: ksed1
         integer :: nir, nis, nig, nii, nic, niin
@@ -420,6 +421,16 @@ contains
 
             if (qc1d(k) .gt. R1) then
                 no_micro = .false.
+
+                ! Low-limit check based on observations
+                ! cf = 5.57 * qc [g/kg] ** 0.78
+                cf_check = 5.57 * ((qc1d(k)*1000.)**0.78)
+                cf_check = cf_check - (0.5*cf_check)
+                cf_check = max(cf_low, min(1., cf_check))
+
+                if (qc1d(k) >= 2.37e-6) then
+                   qa1d(k) = max(qa1d(k), cf_check)
+                endif
 
                 qc1d(k) = qc1d(k) / qa1d(k)
                 nc1d(k) = nc1d(k) / qa1d(k)
