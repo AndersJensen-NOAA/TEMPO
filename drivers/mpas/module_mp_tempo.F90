@@ -807,7 +807,7 @@ contains
                 ! Cloud Fraction
                 if (itimestep > 1) then
                    call tempo_cldfrac_driver(i=i, j=j, kts=kts, kte=kte, dt=dt, temp=t1d, pres=p1d, rho=rho, w=w1d, &
-                        qa=qa1d, qv=qv1d, qc=qc1d, qi=qi1d, nc=nc1d)
+                        qa=qa1d, qv=qv1d, qc=qc1d, qi=qi1d, nc=nc1d, ni=ni1d)
                 endif
 
                 ! Main call to the 1D microphysics

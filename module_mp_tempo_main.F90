@@ -146,7 +146,7 @@ contains
         real(wp), dimension(kts:kte) :: smob, smo2, smo1, smo0, &
             smoc, smod, smoe, smof, smog
 
-        real(wp), dimension(kts:kte) :: sed_r, sed_s, sed_g, sed_i, sed_n, sed_c, sed_b
+        real(wp), dimension(kts:kte) :: sed_r, sed_s, sed_g, sed_i, sed_n, sed_c, sed_b, sed_a
 
         real(wp) :: rgvm, delta_tp, orho, lfus2
         real(wp), dimension(5):: onstep
@@ -424,7 +424,7 @@ contains
 
                 ! Low-limit check based on observations
                 ! cf = 5.57 * qc [g/kg] ** 0.78
-                cf_check = 5.57 * ((qc1d(k)*1000.)**0.78)
+                cf_check = 5.57 * (((qc1d(k)+qi1d(k))*1000.)**0.78)
                 cf_check = cf_check - (0.5*cf_check)
                 cf_check = max(cf_low, min(1., cf_check))
 
@@ -469,7 +469,6 @@ contains
                     endif
                 endif
             else
-                qa1d(k) = 0.0
                 qc1d(k) = 0.0
                 nc1d(k) = 0.0
                 rc(k) = R1
@@ -480,8 +479,20 @@ contains
             if (qi1d(k) .gt. R1) then
                no_micro = .false.
 
-!               qi1d(k) = qi1d(k) / qa1d(k)
-!               ni1d(k) = ni1d(k) / qa1d(k)
+               if (qc1d(k) <= R1) then
+                  ! Low-limit check based on observations
+                  ! cf = 5.57 * qc [g/kg] ** 0.78
+                  cf_check = 5.57 * ((qi1d(k)*10.*1000.)**0.78)
+                  cf_check = cf_check - (0.5*cf_check)
+                  cf_check = max(cf_low, min(1., cf_check))
+
+                  if (qi1d(k)*10. >= 2.37e-6) then
+                     qa1d(k) = max(qa1d(k), cf_check)
+                  endif
+               endif
+
+               qi1d(k) = qi1d(k) / qa1d(k)
+               ni1d(k) = ni1d(k) / qa1d(k)
 
                 ri(k) = qi1d(k)*rho(k)
                 ni(k) = max(r2, ni1d(k)*rho(k))
@@ -501,9 +512,9 @@ contains
                     ni(k) = cig(1)*oig2*ri(k)/am_i*lami**bm_i
                 endif
             else
-!                if (qc1d(k) <= R1) then
-!                   qa1d(k) = 0.0
-!                endif
+               if (qc1d(k) <= R1) then
+                  qa1d(k) = 0.0
+               endif
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
                 ri(k) = R1
@@ -1206,6 +1217,7 @@ contains
                     elseif (rr(k).gt. R1 .and. temp(k).lt.HGFR) then
                         pri_rfz(k) = rr(k)*odts
                         pni_rfz(k) = nr(k)*odts
+                        qa1d(k) = 1.
                     endif
                     pbg_rfz(k) = prg_rfz(k)/rho_i
 
@@ -1213,10 +1225,12 @@ contains
                         pri_wfz(k) = tpi_qcfz(idx_c,idx_n,idx_tc,idx_IN)*odts
                         pri_wfz(k) = min(real(rc(k)*odts, kind=dp), pri_wfz(k))
                         pni_wfz(k) = tni_qcfz(idx_c,idx_n,idx_tc,idx_IN)*odts
-                        pni_wfz(k) = min(real(nc(k)*odts, kind=dp), pri_wfz(k)/(2.0_dp*xm0i), pni_wfz(k))
+!!AAJ                        pni_wfz(k) = min(real(nc(k)*odts, kind=dp), pri_wfz(k)/(2.0_dp*xm0i), pni_wfz(k))
+                        pni_wfz(k) = min(real(nc(k)*odts, kind=dp), pri_wfz(k)/(1.0_dp*xm0i), pni_wfz(k))
                     elseif (rc(k).gt. R1 .and. temp(k).lt.HGFR) then
                         pri_wfz(k) = rc(k)*odts
                         pni_wfz(k) = nc(k)*odts
+                        qa1d(k) = 1.
                     endif
 
                     !..Deposition nucleation of dust/mineral from DeMott et al (2010)
@@ -1264,11 +1278,11 @@ contains
                             *oig1*cig(5)*ni(k)*ilami
 
                         if (pri_ide(k) .lt. 0.0) then
-!                           if (qa1d(k) > 0.99) then
+!!                           if ((qa1d(k) > 0.95) .or. (ssati(k) <= critical_rh)) then
                               pri_ide(k) = max(real(-ri(k)*odts, kind=dp), pri_ide(k), real(rate_max, kind=dp))
                               pni_ide(k) = pri_ide(k)*oxmi
                               pni_ide(k) = max(real(-ni(k)*odts, kind=dp), pni_ide(k))
-!                           endif
+!!                           endif
                         else
                             pri_ide(k) = min(pri_ide(k), real(rate_max, kind=dp))
                             prs_ide(k) = (1.0_dp-tpi_ide(idx_i,idx_i1))*pri_ide(k)
@@ -1288,7 +1302,7 @@ contains
                             prs_iau(k) = min(real(ri(k)*.99*odts, kind=dp), prs_iau(k))
                             pni_iau(k) = tni_iaus(idx_i,idx_i1)*odts
                             pni_iau(k) = min(real(ni(k)*.95*odts, kind=dp), pni_iau(k))
-                        endif
+                         endif
                     endif
 
                     !..Deposition/sublimation of snow/graupel follows Srivastava & Coen
@@ -1646,6 +1660,11 @@ contains
                 + pri_wfz(k) + pri_rfz(k) + pri_ide(k) &
                 - prs_iau(k) - prs_sci(k) - pri_rci(k)) &
                 * orho
+
+            if ((pri_ide(k) < 0.) .and. (ri(k) > R1)) then
+               qa1d(k) = qa1d(k) * (1 + pri_ide(k)*rho(k)*dt/ri(k))**0.5
+               qa1d(k) = min(1., max(qa1d(k), cf_low))
+            endif
 
             !..Cloud ice number tendency.
             niten(k) = niten(k) + (pni_inu(k) + pni_iha(k) + pni_ihm(k)    &
@@ -2110,7 +2129,7 @@ contains
                    endif
                 endif
 
-                ! This worked well
+                ! This also worked well
 !                if (prw_vcd(k) > 0.) then
 !                   if (qc1d(k) > R1) then
 !                      qa1d(k) = qa1d(k) + prw_vcd(k)*dt/qc1d(k)
@@ -2563,6 +2582,7 @@ contains
             do k = kte, kts, -1
                 sed_c(k) = vtck(k)*rc(k)
                 sed_n(k) = vtnck(k)*nc(k)
+                sed_a(k) = vtck(k)*qa1d(k)
             enddo
             do k = ksed1(5), kts, -1
                 odzq = 1./dzq(k)
@@ -2571,7 +2591,10 @@ contains
                 ncten(k) = ncten(k) + (sed_n(k+1)-sed_n(k)) *odzq*orho
                 rc(k) = max(r1, rc(k) + (sed_c(k+1)-sed_c(k)) *odzq*dt)
                 nc(k) = max(10., nc(k) + (sed_n(k+1)-sed_n(k)) *odzq*dt)
-!!!                qa1d(k) = max(qa1d(k), qa1d(k+1))
+
+!                qa1d(k) = max(cf_low, qa1d(k) + (sed_a(k+1)-sed_a(k)) *odzq*dt)
+!                qa1d(k) = min(qa1d(k), 1.0)
+! AAJ NO CLOUD SEDI                qa1d(k) = max(qa1d(k), qa1d(k+1))
             enddo
         endif
 
@@ -2584,6 +2607,7 @@ contains
                 do k = kte, kts, -1
                     sed_i(k) = vtik(k)*ri(k)
                     sed_n(k) = vtnik(k)*ni(k)
+                    sed_a(k) = vtik(k)*qa1d(k)
                 enddo
                 k = kte
                 odzq = 1./dzq(k)
@@ -2592,6 +2616,9 @@ contains
                 niten(k) = niten(k) - sed_n(k)*odzq*onstep(2)*orho
                 ri(k) = max(r1, ri(k) - sed_i(k)*odzq*dt*onstep(2))
                 ni(k) = max(r2, ni(k) - sed_n(k)*odzq*dt*onstep(2))
+!                qa1d(k) = max(cf_low, qa1d(k) - sed_a(k)*odzq*dt*onstep(2))
+!                qa1d(k) = min(qa1d(k), 1.0)
+!                qa1d(k) = max(qa1d(k), qa1d(k+1))
 #if defined(ccpp_default)
                 pfil1(k) = pfil1(k) + sed_i(k)*DT*onstep(2)
 #endif
@@ -2603,9 +2630,13 @@ contains
                     niten(k) = niten(k) + (sed_n(k+1)-sed_n(k)) &
                         *odzq*onstep(2)*orho
                     ri(k) = max(r1, ri(k) + (sed_i(k+1)-sed_i(k)) &
-                        *odzq*dt*onstep(2))
+                         *odzq*dt*onstep(2))
                     ni(k) = max(r2, ni(k) + (sed_n(k+1)-sed_n(k)) &
-                        *odzq*DT*onstep(2))
+                         *odzq*DT*onstep(2))
+                    qa1d(k) = max(qa1d(k), qa1d(k+1))
+!                    qa1d(k) = max(cf_low, qa1d(k) + (sed_a(k+1)-sed_a(k)) &
+!                         *odzq*dt*onstep(2))
+!                    qa1d(k) = min(qa1d(k), 1.0)
 #if defined(ccpp_default)
                     pfil1(k) = pfil1(k) + sed_i(k)*DT*onstep(2)
 #endif
@@ -2787,7 +2818,6 @@ contains
                 nifa1d(k) = max(nifa_default, min(aero_max, (nifa1d(k)+nifaten(k)*dt)))
             endif
             if (qc1d(k) .le. R1) then
-                qa1d(k) = 0.0
                 qc1d(k) = 0.0
                 nc1d(k) = 0.0
             else
@@ -2818,13 +2848,13 @@ contains
             qi1d(k) = qi1d(k) + qiten(k)*DT
             ni1d(k) = max(R2/rho(k), ni1d(k) + niten(k)*DT)
 
-!            qi1d(k) = qi1d(k) * qa1d(k)
-!            ni1d(k) = ni1d(k) * qa1d(k)
+            qi1d(k) = qi1d(k) * qa1d(k)
+            ni1d(k) = ni1d(k) * qa1d(k)
 
             if (qi1d(k) .le. R1) then
-!               if (qc1d(k) <= R1) then
-!                  qa1d(k) = 0.0
-!               endif
+               if (qc1d(k) <= R1) then
+                  qa1d(k) = 0.0
+               endif
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
             else
