@@ -7,6 +7,7 @@ module module_mp_tempo
     use module_mp_tempo_utils, only : create_bins, table_Efrw, table_Efsw, table_dropEvap, &
          calc_refl10cm, calc_effectRad
     use module_mp_tempo_main, only : mp_tempo_main
+    use module_mp_tempo_ml, only : predict_nc
     use mpas_atmphys_utilities, only : physics_message, physics_error_fatal
     use mpas_io_units, only : mpas_new_unit, mpas_release_unit
     use mp_radar
@@ -611,7 +612,7 @@ contains
     subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, &
         nwfa, nifa, nwfa2d, nifa2d, th, pii, p, w, dz, dt_in, itimestep, &
         rainnc, rainncv, snownc, snowncv, graupelnc, graupelncv, sr, &
-        refl_10cm, diagflag, do_radar_ref, re_cloud, re_ice, re_snow, &
+        refl_10cm, diagflag, do_radar_ref, re_cloud, re_ice, re_snow, qcbl, qibl, &
         has_reqc, has_reqi, has_reqs, ntc, muc, rainprod, evapprod, &
         ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
 
@@ -626,7 +627,7 @@ contains
         real, dimension(ims:ime, jms:jme), intent(in), optional :: ntc, muc
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng
         real, dimension(ims:ime, jms:jme), intent(in), optional :: nwfa2d, nifa2d
-        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: refl_10cm
+        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: refl_10cm, qcbl, qibl
         real, dimension(ims:ime, jms:jme), intent(inout), optional :: snownc, snowncv, graupelnc, graupelncv
         real, intent(in) :: dt_in
         integer, intent(in) :: itimestep
@@ -637,6 +638,7 @@ contains
         real, dimension(kts:kte) :: re_qc1d, re_qi1d, re_qs1d
         real, dimension(kts:kte):: rainprod1d, evapprod1d
         real, dimension(its:ite, jts:jte) :: pcp_ra, pcp_sn, pcp_gr, pcp_ic
+        real, dimension(kts:kte) :: ncbl
         real :: dt, pptrain, pptsnow, pptgraul, pptice
         real :: qc_max, qr_max, qs_max, qi_max, qg_max, ni_max, nr_max
         real :: nwfa1
@@ -651,6 +653,8 @@ contains
         logical, optional, intent(in) :: diagflag
         integer, optional, intent(in) :: do_radar_ref
         character(len=132) :: message
+
+        ncbl = 0.
 
         !=================================================================================================================
         i_start = its
@@ -842,6 +846,11 @@ contains
                     th(i,k,j) = t1d(k) / pii(i,k,j)
                     rainprod(i,k,j) = rainprod1d(k)
                     evapprod(i,k,j) = evapprod1d(k)
+
+                    qc1d(k) = qc1d(k) + qcbl(i,k,j)
+                    ncbl(k) = predict_nc(qcbl(i,k,j), qr(i,k,j), qi1d(k)+qibl(i,k,j), qs(i,k,j), p1d(k), t1d(k), w1d(k))
+                    ncbl(k) = max(ncbl(k), 1.e6)
+                    nc1d(k) = nc1d(k) + ncbl(k)
                 enddo
 
                 !=================================================================================================================
@@ -862,12 +871,18 @@ contains
                     call calc_effectRad (t1d=t1d, p1d=p1d, qv1d=qv1d, qc1d=qc1d, nc1d=nc1d, qi1d=qi1d, &
                          ni1d=ni1d, qs1d=qs1d, re_qc1d=re_qc1d, re_qi1d=re_qi1d, re_qs1d=re_qs1d, &
                          kts=kts, kte=kte, configs=configs)
+
                     do k = kts, kte
                         re_cloud(i,k,j) = max(2.49e-6, min(re_qc1d(k), 50.e-6))
                         re_ice(i,k,j)   = max(4.99e-6, min(re_qi1d(k), 125.e-6))
                         re_snow(i,k,j)  = max(9.99e-6, min(re_qs1d(k), 999.e-6))
                     enddo
                 endif
+
+!                do k = kts, kte
+!                   qc(i,k,j) = qc1d(k) - qcbl(i,k,j)
+!                   if (present(nc)) nc(i,k,j) = nc(i,k,j) - ncbl(i,k,j)
+!                enddo
 
             enddo i_loop
         enddo j_loop
