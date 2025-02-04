@@ -131,11 +131,11 @@ module module_mp_tempo_cldfrac
        if((qa(k) < 1.0) .and. (w(k) < ls_w_limit) .and. (Ui(k) < 1.0) .and. (Ui(k) > U00i(k))) then
           if (qi(k) <= R1) then
              if ((w(k) > 0.) .and. (qc(k) <= R1) .and. (tempc <= -20.)) then
-                create_sgs_ice_clouds(k) = .true.
+!!                create_sgs_ice_clouds(k) = .true.
              endif
           else
              ! qc present so evolve qc sgs clouds
-             evolve_sgs_ice_clouds(k) = .true.
+!!             evolve_sgs_ice_clouds(k) = .true.
           endif
        endif
 

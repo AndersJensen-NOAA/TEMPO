@@ -23,11 +23,11 @@ contains
     !   l_mp_tables = .false. to build lookup tables. If l_mp_tables = .true., lookup tables are built.
 
     ! AAJ No support yet for hail_aware in microphysics driver
-    subroutine tempo_init(l_mp_tables, hail_aware_flag, aerosol_aware_flag)
+    subroutine tempo_init(l_mp_tables, hail_aware_flag, aerosol_aware_flag, cloud_fraction_flag)
 
         ! Input arguments:
         logical, intent(in) :: l_mp_tables
-        logical, intent(in), optional :: aerosol_aware_flag, hail_aware_flag
+        logical, intent(in), optional :: aerosol_aware_flag, hail_aware_flag, cloud_fraction_flag
 
         integer, parameter :: open_OK = 0
         integer, parameter :: num_records = 5
@@ -46,6 +46,13 @@ contains
            configs%hail_aware = .false.
         endif
 
+        if (present(cloud_fraction_flag)) then
+           configs%sgscloud_aware = cloud_fraction_flag
+        else
+           call physics_message('--- tempo_init() called without cloud_fraction_flag... setting value to .false.')
+           configs%sgscloud_aware = .false.
+        endif
+
         ! If lookup tables are already built
         if (l_mp_tables) then
             ! configs%hail_aware = hail_aware_flag
@@ -57,6 +64,9 @@ contains
                 write(message, '(L1)') configs%aerosol_aware
                 call physics_message('--- tempo_init() called with aerosol_aware_flag = ' // trim(message))
             endif
+
+            write(message, '(L1)') configs%sgscloud_aware
+            call physics_message('--- tempo_init() called with cloud_fraction_flag = ' // trim(message))
         endif
 
         if (configs%hail_aware) then
@@ -736,6 +746,7 @@ contains
                        qa1d(k) = qa(i,k,j)
                     else
                        qa1d(k) = 1.0
+                       configs%sgscloud_aware = .false.
                     endif
 
                     ! nwfa, nifa, and nc are optional aerosol-aware variables
