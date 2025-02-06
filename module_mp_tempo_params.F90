@@ -129,7 +129,7 @@ module module_mp_tempo_params
     real(wp), parameter :: bv_g_old = 0.89
 
     ! For cloud fraction scheme
-    real(wp), parameter :: critical_rh = 0.85
+    real(wp), parameter :: critical_rh = 0.9
     real(wp), parameter :: cf_low = 0.05
 
     ! Variable graupel density av_g and bv_g values

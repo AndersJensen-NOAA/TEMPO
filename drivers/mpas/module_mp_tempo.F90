@@ -619,7 +619,7 @@ contains
     ! Required microphysics variables are qv, qc, qr, nr, qi, ni, qs, qg
     ! Optional microphysics variables are aerosol aware (nc, nwfa, nifa, nwfa2d, nifa2d), and hail aware (ng, qg)
 
-    subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, qa, &
+    subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, qa, lwin, &
         nwfa, nifa, nwfa2d, nifa2d, th, pii, p, w, dz, dt_in, itimestep, &
         rainnc, rainncv, snownc, snowncv, graupelnc, graupelncv, sr, &
         refl_10cm, diagflag, do_radar_ref, re_cloud, re_ice, re_snow, &
@@ -637,6 +637,7 @@ contains
         real, dimension(ims:ime, jms:jme), intent(in), optional :: ntc, muc
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng
         real, optional, dimension(:,:,:), intent(inout) :: qa
+        real, optional, dimension(:,:,:), intent(in) :: lwin
         real, dimension(ims:ime, jms:jme), intent(in), optional :: nwfa2d, nifa2d
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: refl_10cm
         real, dimension(ims:ime, jms:jme), intent(inout), optional :: snownc, snowncv, graupelnc, graupelncv
@@ -645,7 +646,7 @@ contains
 
         ! Local (1d) variables
         real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
-            nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qa1d
+            nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qa1d, lw1d
         real, dimension(kts:kte) :: re_qc1d, re_qi1d, re_qs1d
         real, dimension(kts:kte):: rainprod1d, evapprod1d
         real, dimension(its:ite, jts:jte) :: pcp_ra, pcp_sn, pcp_gr, pcp_ic
@@ -749,6 +750,12 @@ contains
                        configs%sgscloud_aware = .false.
                     endif
 
+                    if (present(lwin)) then
+                       lw1d(k) = lwin(i,k,j)
+                    else
+                       lw1d(k) = 0.
+                    endif
+
                     ! nwfa, nifa, and nc are optional aerosol-aware variables
                     if (present(nwfa)) then
                         if (present(nwfa2d)) then
@@ -817,7 +824,7 @@ contains
                 !=================================================================================================================
                 ! Cloud Fraction
                 if (itimestep > 1) then
-                   call tempo_cldfrac_driver(i=i, j=j, kts=kts, kte=kte, dt=dt, temp=t1d, pres=p1d, rho=rho, w=w1d, &
+                   call tempo_cldfrac_driver(i=i, j=j, kts=kts, kte=kte, dt=dt, temp=t1d, pres=p1d, rho=rho, w=w1d, lwrad=lw1d, &
                         qa=qa1d, qv=qv1d, qc=qc1d, qi=qi1d, nc=nc1d, ni=ni1d)
                 endif
 

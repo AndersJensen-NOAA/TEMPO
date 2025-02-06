@@ -22,18 +22,18 @@ module module_mp_tempo_cldfrac
     
   contains
 !=================================================================================================================    
-  subroutine tempo_cldfrac_driver(i,j,kts,kte,dt,temp,pres,rho,w,qa,qv,qc,qi,nc,ni)
+  subroutine tempo_cldfrac_driver(i,j,kts,kte,dt,temp,pres,rho,w,lwrad,qa,qv,qc,qi,nc,ni)
 !=================================================================================================================
     
     integer, intent(in) :: i, j, kts, kte
     real, intent(in) :: dt
-    real, intent(in) :: pres(:), rho(:), w(:)
+    real, intent(in) :: pres(:), rho(:), w(:), lwrad(:)
     real, intent(inout) :: qa(:), qv(:), qc(:), qi(:), nc(:), ni(:), temp(:)
     
     integer :: k
     real :: tempc
     real, parameter :: p0 = 100000.
-    real, parameter :: ls_w_limit = 0.2
+    real, parameter :: ls_w_limit = 1.
     real, parameter :: grav = 9.8
     real :: al, ali, bs, bsi, sd, sdi, qc_calc, qi_calc
     real :: term1, term2, term3, gterm, eros_term
@@ -171,7 +171,7 @@ module module_mp_tempo_cldfrac
           endif
        elseif (evolve_sgs_clouds(k)) then
           ! Contains large-scale forcing and LW cooling (not currently used)
-          dcond_ls(k) = -al * dqsdT(k) * (omega(k)/rho(k)*ocp(k) + lw1d(k)*(pres(k)/p0)**(R/cp2))
+          dcond_ls(k) = -al * dqsdT(k) * (omega(k)/rho(k)*ocp(k) + lwrad(k)*(pres(k)/p0)**(R/cp2))
           if ((abs(sd) > R1) .and. (dcond_ls(k) > 0.)) then
              term1 = ((1.-qa(k))**2*qa(k)**2/qc(k)) + (qa(k)**2*(1.-qa(k))**2/sd)
              term2 = (1.-qa(k))**2 + qa(k)**2
