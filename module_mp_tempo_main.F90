@@ -405,7 +405,7 @@ contains
             pres(k) = p1d(k)
             rho(k) = RoverRv*pres(k)/(r*temp(k)*(qv(k)+RoverRv))
 
-            ! Bound cloud fraction
+            ! Cloud fraction check
             qa1d(k) = min(qa1d(k), 1.0)
             qa1d(k) = max(qa1d(k), cf_low)
 
@@ -422,19 +422,15 @@ contains
             if (qc1d(k) .gt. R1) then
                 no_micro = .false.
 
-                ! Low-limit check based on observations
-                ! cf = 5.57 * qc [g/kg] ** 0.78
-                ! check is done on grid-mean values
-                cf_check = 5.57 * (((qc1d(k)+qi1d(k))*1000.)**0.78)
-                cf_check = cf_check - (0.5*cf_check)
+                ! Low-limit check for cloud fraction based on cloud water
+                cf_check = 0.5*((qc1d(k)+qi1d(k))*1000.)**0.5 + 0.01
                 cf_check = max(cf_low, min(1., cf_check))
+                qa1d(k) = max(qa1d(k), cf_check)
 
-                if (qc1d(k) >= 2.37e-6) then
-                   qa1d(k) = max(qa1d(k), cf_check)
-                endif
-
+                ! Convert to in-cloud values
                 qc1d(k) = qc1d(k) / qa1d(k)
                 nc1d(k) = nc1d(k) / qa1d(k)
+
                 rc(k) = qc1d(k)*rho(k)
                 nc(k) = max(2., min(nc1d(k)*rho(k), nt_c_max))
                 l_qc(k) = .true.
@@ -480,20 +476,9 @@ contains
             if (qi1d(k) .gt. R1) then
                no_micro = .false.
 
-               if (qc1d(k) <= R1) then
-                  ! Low-limit check based on observations
-                  ! cf = 5.57 * qc [g/kg] ** 0.78
-                  cf_check = 5.57 * ((qi1d(k)*10.*1000.)**0.78)
-                  cf_check = cf_check - (0.5*cf_check)
-                  cf_check = max(cf_low, min(1., cf_check))
-
-                  if (qi1d(k)*10. >= 2.37e-6) then
-                     qa1d(k) = max(qa1d(k), cf_check)
-                  endif
-               endif
-
-               qi1d(k) = qi1d(k) / qa1d(k)
-               ni1d(k) = ni1d(k) / qa1d(k)
+                ! Convert to in-cloud values
+                qi1d(k) = qi1d(k) / qa1d(k)
+                ni1d(k) = ni1d(k) / qa1d(k)
 
                 ri(k) = qi1d(k)*rho(k)
                 ni(k) = max(r2, ni1d(k)*rho(k))
@@ -850,7 +835,7 @@ contains
                 lamr = 1./ilamr(k)
                 idx = 1 + int(nbr*log(real(mvd_r(k)/Dr(1), kind=dp)) / log(real(Dr(nbr)/Dr(1), kind=dp)))
                 idx = min(idx, nbr)
-                Ef_rw = t_Efrw(idx, int(mvd_c(k)*1.E6)) ! * qa1d(k)
+                Ef_rw = t_Efrw(idx, int(mvd_c(k)*1.E6))
                 prr_rcw(k) = rhof(k)*t1_qr_qc*Ef_rw*rc(k)*N0_r(k) &
                     *((lamr+fv_r)**(-cre(9)))
                 prr_rcw(k) = min(real(rc(k)*odts, kind=dp), prr_rcw(k))
@@ -1032,7 +1017,7 @@ contains
                     if (xDs > d0s) then
                         idx = 1 + int(nbs*log(real(xDs/Ds(1), kind=dp)) / log(real(Ds(nbs)/Ds(1), kind=dp)))
                         idx = min(idx, nbs)
-                        Ef_sw = t_Efsw(idx, int(mvd_c(k)*1.E6)) ! * qa1d(k)
+                        Ef_sw = t_Efsw(idx, int(mvd_c(k)*1.E6))
                         prs_scw(k) = rhof(k)*t1_qs_qc*Ef_sw*rc(k)*smoe(k)
                         prs_scw(k) = min(real(rc(k)*odts, kind=dp), prs_scw(k))
                         pnc_scw(k) = rhof(k)*t1_qs_qc*Ef_sw*nc(k)*smoe(k)                ! Qc2M
@@ -1051,14 +1036,14 @@ contains
                         ! CCPP version has check on xDg > D0g
                         if (xDg > D0g) then
                             if (stoke_g.ge.0.4 .and. stoke_g.le.10.) then
-                                Ef_gw = 0.55*log10(2.51*stoke_g) ! * qa1d(k)
+                                Ef_gw = 0.55*log10(2.51*stoke_g)
                             elseif (stoke_g.lt.0.4) then
                                 Ef_gw = 0.0
                             elseif (stoke_g.gt.10) then
-                                Ef_gw = 0.77 ! * qa1d(k)
+                                Ef_gw = 0.77
                             endif
                             ! Not sure what to do here - hail increases size rapidly here below melting level.
-                            if (temp(k).gt.T_0) Ef_gw = Ef_gw*0.1 ! * qa1d(k)
+                            if (temp(k).gt.T_0) Ef_gw = Ef_gw*0.1
                             t1_qg_qc = PI*.25*av_g(idx_bg(k)) * cgg(9,idx_bg(k))
                             prg_gcw(k) = rhof(k)*t1_qg_qc*Ef_gw*rc(k)*N0_g(k) &
                                  *ilamg(k)**cge(9,idx_bg(k))
@@ -1339,20 +1324,20 @@ contains
                         xmi = am_i*xDi**bm_i
                         oxmi = 1./xmi
                         if (rs(k).ge. r_s(1)) then
-                            prs_sci(k) = t1_qs_qi*rhof(k)*Ef_si*ri(k)*smoe(k) ! * qa1d(k)
+                            prs_sci(k) = t1_qs_qi*rhof(k)*Ef_si*ri(k)*smoe(k)
                             pni_sci(k) = prs_sci(k) * oxmi
                         endif
 
                         !..Rain collecting cloud ice.  In CE, assume Di<<Dr and vti=~0.
                         if (rr(k).ge. r_r(1) .and. mvd_r(k).gt. 4.*xDi) then
                             lamr = 1./ilamr(k)
-                            pri_rci(k) = rhof(k)*t1_qr_qi*Ef_ri*ri(k)*N0_r(k) & !* qa1d(k) &
+                            pri_rci(k) = rhof(k)*t1_qr_qi*Ef_ri*ri(k)*N0_r(k) &
                                 *((lamr+fv_r)**(-cre(9)))
-                            pnr_rci(k) = rhof(k)*t1_qr_qi*Ef_ri*ni(k)*N0_r(k) & !* qa1d(k) &   ! RAIN2M
+                            pnr_rci(k) = rhof(k)*t1_qr_qi*Ef_ri*ni(k)*N0_r(k) &     ! RAIN2M
                                 *((lamr+fv_r)**(-cre(9)))
                             pnr_rci(k) = min(real(nr(k)*odts, kind=dp), pnr_rci(k))
                             pni_rci(k) = pri_rci(k) * oxmi
-                            prr_rci(k) = rhof(k)*t2_qr_qi*Ef_ri*ni(k)*N0_r(k) & !* qa1d(k) &
+                            prr_rci(k) = rhof(k)*t2_qr_qi*Ef_ri*ni(k)*N0_r(k) &
                                 *((lamr+fv_r)**(-cre(8)))
                             prr_rci(k) = min(real(rr(k)*odts, kind=dp), prr_rci(k))
                             prg_rci(k) = pri_rci(k) + prr_rci(k)
@@ -1659,9 +1644,15 @@ contains
                 - prs_iau(k) - prs_sci(k) - pri_rci(k)) &
                 * orho
 
+            ! Cloud fraction decrease from sublimating ice
             if (configs%sgscloud_aware .and. (pri_ide(k) < 0.) .and. (ri(k) > R1)) then
                qa1d(k) = qa1d(k) * (1 + max(-0.9999, (pri_ide(k)*rho(k)*dt/ri(k))))**0.5
-               qa1d(k) = min(1., max(qa1d(k), cf_low))
+               !!               qa1d(k) = min(1., max(qa1d(k), cf_low))
+               if (rc(k) > R1) then
+                  qa1d(k) = min(1., max(qa1d(k), cf_low))
+               else
+                  qa1d(k) = min(1., max(qa1d(k), 0.))
+               endif
             endif
 
             !..Cloud ice number tendency.
@@ -2116,6 +2107,7 @@ contains
                 endif
 
                 !+---+-----------------------------------------------------------------+
+                ! Cloud fraction increase/decrease from condensation/evaporation
                 if (configs%sgscloud_aware) then
                    if (prw_vcd(k) >= 0.) then
                       if (rc(k) > R1) then
@@ -2126,14 +2118,20 @@ contains
                       endif
                    ! Evaporation
                    else
-                      if (rc(k) > R1) then
+                      if ((rc(k) > R1)) then
                          qa1d(k) = qa1d(k) * (1. + max(-0.9999, (prw_vcd(k)*rho(k)*dt/rc(k))))**0.5
-                         qa1d(k) = min(1., max(qa1d(k), cf_low))
+                         if (ri(k) > R1) then
+                            qa1d(k) = min(1., max(qa1d(k), cf_low))
+                         else
+                            qa1d(k) = min(1., max(qa1d(k), 0.))
+                         endif
+!!                         qa1d(k) = min(1., max(qa1d(k), cf_low))
                       endif
                    endif
                 endif
 
-                ! Don't evaporate SGS clouds
+                ! Conditional so that subgrid-scale clouds don't evaporate here
+                ! since that process occurs in the cloud fraction driver
                 if ((.not. configs%sgscloud_aware) .or. (prw_vcd(k) >= 0.0) .or. &
                      (prw_vcd(k) < 0.0 .and. qa1d(k) > 0.99) .or. (qa1d(k) == 0.0) .or. &
                      (ssatw(k) <= (critical_rh - 1.))) then
@@ -2149,6 +2147,7 @@ contains
                 rc(k) = max(R1, (qc1d(k) + dt*qcten(k))*rho(k))
 
                 if (rc(k).eq.R1) l_qc(k) = .false.
+
                 nc(k) = max(2., min((nc1d(k)+ncten(k)*dt)*rho(k), nt_c_max))
                 if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
                     nc(k) = Nt_c
@@ -2790,6 +2789,7 @@ contains
             qc1d(k) = qc1d(k) + qcten(k)*dt
             nc1d(k) = max(2./rho(k), min(nc1d(k) + ncten(k)*dt, nt_c_max))
 
+            ! Convert to grid-mean
             qc1d(k) = qc1d(k) * qa1d(k)
             nc1d(k) = nc1d(k) * qa1d(k)
 
@@ -2828,6 +2828,7 @@ contains
             qi1d(k) = qi1d(k) + qiten(k)*DT
             ni1d(k) = max(R2/rho(k), ni1d(k) + niten(k)*DT)
 
+            ! Convert to grid-mean            
             qi1d(k) = qi1d(k) * qa1d(k)
             ni1d(k) = ni1d(k) * qa1d(k)
 
