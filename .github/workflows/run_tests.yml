@@ -1,4 +1,4 @@
-name: CI test to build and run the unit tests for TEMPO microphysics on ubuntu v22.04.
+name: run_tests
 
 on: [pull_request,workflow_dispatch,push]
 
