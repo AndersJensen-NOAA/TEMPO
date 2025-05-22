@@ -1081,9 +1081,9 @@ contains
                             prs_rcs(k) = max(real(-rs(k)*odts, kind=dp), prs_rcs(k))
                             prg_rcs(k) = min(real((rr(k)+rs(k))*odts, kind=dp), prg_rcs(k))
                             pnr_rcs(k) = tnr_racs1(idx_s,idx_t,idx_r1,idx_r)            &   ! RAIN2M
-                                + tnr_racs2(idx_s,idx_t,idx_r1,idx_r)          &
-                                + tnr_sacr1(idx_s,idx_t,idx_r1,idx_r)          &
-                                + tnr_sacr2(idx_s,idx_t,idx_r1,idx_r)
+                                + tnr_racs2(idx_s,idx_t,idx_r1,idx_r)          ! &
+!AAJ                                + tnr_sacr1(idx_s,idx_t,idx_r1,idx_r)          &
+!AAJ                                + tnr_sacr2(idx_s,idx_t,idx_r1,idx_r)
                             pnr_rcs(k) = min(real(nr(k)*odts, kind=dp), pnr_rcs(k))
                             png_rcs(k) = pnr_rcs(k)
                             !-GT        pbg_rcs(k) = prg_rcs(k)/(0.5*(rho_i+rho_s))
@@ -1177,10 +1177,11 @@ contains
                         prg_rfz(k) = tpg_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts
                         pri_rfz(k) = tpi_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts
                         pni_rfz(k) = tni_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts
-                        pnr_rfz(k) = tnr_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts          ! RAIN2M
+                        pnr_rfz(k) = tnr_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts &
+                             * max(min((10.**(-0.05*w1d(k)) + 0.1), 1.0), 0.1)         ! RAIN2M
                         prg_rfz(k) = min(real(rr(k)*odts, kind=dp), prg_rfz(k))
                         pnr_rfz(k) = min(real(nr(k)*odts, kind=dp), pnr_rfz(k))
-                        png_rfz(k) = pnr_rfz(k) * max(min((10.**(-0.1*w1d(k)) + 0.1), 1.0), 0.1)
+                        png_rfz(k) = pnr_rfz(k) * max(min((10.**(-0.05*w1d(k)) + 0.1), 1.0), 0.1)
                     elseif (rr(k).gt. R1 .and. temp(k).lt.HGFR) then
                         pri_rfz(k) = rr(k)*odts
                         pni_rfz(k) = nr(k)*odts
@@ -1313,9 +1314,10 @@ contains
                             pri_rci(k) = rhof(k)*t1_qr_qi*Ef_ri*ri(k)*N0_r(k) &
                                 *((lamr+fv_r)**(-cre(9)))
                             pnr_rci(k) = rhof(k)*t1_qr_qi*Ef_ri*ni(k)*N0_r(k)           &   ! RAIN2M
-                                *((lamr+fv_r)**(-cre(9)))
+                                *((lamr+fv_r)**(-cre(9))) &
+                                * max(min((10.**(-0.05*w1d(k)) + 0.1), 1.0), 0.1)
                             pnr_rci(k) = min(real(nr(k)*odts, kind=dp), pnr_rci(k))
-                            png_rci(k) = pnr_rci(k) * max(min((10.**(-0.1*w1d(k)) + 0.1), 1.0), 0.1)
+                            png_rci(k) = pnr_rci(k) * max(min((10.**(-0.05*w1d(k)) + 0.1), 1.0), 0.1)
                             pni_rci(k) = pri_rci(k) * oxmi
                             prr_rci(k) = rhof(k)*t2_qr_qi*Ef_ri*ni(k)*N0_r(k) &
                                 *((lamr+fv_r)**(-cre(8)))
