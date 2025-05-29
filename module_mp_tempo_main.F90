@@ -120,7 +120,7 @@ contains
 
         real(dp), dimension(kts:kte) :: prg_scw, prg_rfz, prg_gde, &
             prg_gcw, prg_rci, prg_rcs, prg_rcg, prg_ihm, &
-            png_rcs, png_rcg, png_scw, png_gde, &
+            png_rcs, png_rcg, png_scw, png_gde, png_rfz, png_rci, &
             pbg_scw, pbg_rfz, pbg_gcw, pbg_rci, pbg_rcs, pbg_rcg, &
             pbg_sml, pbg_gml
 
@@ -301,6 +301,8 @@ contains
             png_scw(k) = 0.
             png_rcs(k) = 0.
             png_rcg(k) = 0.
+            png_rfz(k) = 0.
+            png_rci(k) = 0.
             png_gde(k) = 0.
 
             pbg_scw(k) = 0.
@@ -552,7 +554,7 @@ contains
                 qg1d(k) = 0.0
                 ng1d(k) = 0.0
                 qb1d(k) = 0.0
-                idx_bg(k) = idx_bg1
+                idx_bg(k) = nrhg
                 idx_table(k) = idx_bg(k)
                 rg(k) = R1
                 ng(k) = R2
@@ -1079,9 +1081,9 @@ contains
                             prs_rcs(k) = max(real(-rs(k)*odts, kind=dp), prs_rcs(k))
                             prg_rcs(k) = min(real((rr(k)+rs(k))*odts, kind=dp), prg_rcs(k))
                             pnr_rcs(k) = tnr_racs1(idx_s,idx_t,idx_r1,idx_r)            &   ! RAIN2M
-                                + tnr_racs2(idx_s,idx_t,idx_r1,idx_r)          &
-                                + tnr_sacr1(idx_s,idx_t,idx_r1,idx_r)          &
-                                + tnr_sacr2(idx_s,idx_t,idx_r1,idx_r)
+                                + tnr_racs2(idx_s,idx_t,idx_r1,idx_r)          ! &
+!AAJ                                + tnr_sacr1(idx_s,idx_t,idx_r1,idx_r)          &
+!AAJ                                + tnr_sacr2(idx_s,idx_t,idx_r1,idx_r)
                             pnr_rcs(k) = min(real(nr(k)*odts, kind=dp), pnr_rcs(k))
                             png_rcs(k) = pnr_rcs(k)
                             !-GT        pbg_rcs(k) = prg_rcs(k)/(0.5*(rho_i+rho_s))
@@ -1175,8 +1177,11 @@ contains
                         prg_rfz(k) = tpg_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts
                         pri_rfz(k) = tpi_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts
                         pni_rfz(k) = tni_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts
-                        pnr_rfz(k) = tnr_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts          ! RAIN2M
+                        pnr_rfz(k) = tnr_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts &
+                             * max(min((10.**(-0.05*w1d(k)) + 0.1), 1.0), 0.1)         ! RAIN2M
+                        prg_rfz(k) = min(real(rr(k)*odts, kind=dp), prg_rfz(k))
                         pnr_rfz(k) = min(real(nr(k)*odts, kind=dp), pnr_rfz(k))
+                        png_rfz(k) = pnr_rfz(k) * max(min((10.**(-0.05*w1d(k)) + 0.1), 1.0), 0.1)
                     elseif (rr(k).gt. R1 .and. temp(k).lt.HGFR) then
                         pri_rfz(k) = rr(k)*odts
                         pni_rfz(k) = nr(k)*odts
@@ -1309,8 +1314,10 @@ contains
                             pri_rci(k) = rhof(k)*t1_qr_qi*Ef_ri*ri(k)*N0_r(k) &
                                 *((lamr+fv_r)**(-cre(9)))
                             pnr_rci(k) = rhof(k)*t1_qr_qi*Ef_ri*ni(k)*N0_r(k)           &   ! RAIN2M
-                                *((lamr+fv_r)**(-cre(9)))
+                                *((lamr+fv_r)**(-cre(9))) &
+                                * max(min((10.**(-0.05*w1d(k)) + 0.1), 1.0), 0.1)
                             pnr_rci(k) = min(real(nr(k)*odts, kind=dp), pnr_rci(k))
+                            png_rci(k) = pnr_rci(k) * max(min((10.**(-0.05*w1d(k)) + 0.1), 1.0), 0.1)
                             pni_rci(k) = pri_rci(k) * oxmi
                             prr_rci(k) = rhof(k)*t2_qr_qi*Ef_ri*ni(k)*N0_r(k) &
                                 *((lamr+fv_r)**(-cre(8)))
@@ -1497,6 +1504,7 @@ contains
             if (sump.lt. rate_max .and. L_qr(k)) then
                 ratio = rate_max/sump
                 prg_rfz(k) = prg_rfz(k) * ratio
+                pbg_rfz(k) = pbg_rfz(k) * ratio
                 pri_rfz(k) = pri_rfz(k) * ratio
                 prr_rci(k) = prr_rci(k) * ratio
                 prr_rcs(k) = prr_rcs(k) * ratio
@@ -1525,6 +1533,7 @@ contains
                 prg_ihm(k) = prg_ihm(k) * ratio
                 prr_gml(k) = prr_gml(k) * ratio
                 prg_rcg(k) = prg_rcg(k) * ratio
+                pbg_rcg(k) = pbg_rcg(k) * ratio
             endif
 
             !..Re-enforce proper mass conservation for subsequent elements in case
@@ -1533,6 +1542,7 @@ contains
             ratio = min(abs(prr_rcg(k)), abs(prg_rcg(k)) )
             prr_rcg(k) = ratio * sign(1.0, sngl(prr_rcg(k)))
             prg_rcg(k) = -prr_rcg(k)
+            pbg_rcg(k) = prg_rcg(k)/rho_i
             if (temp(k).gt.t_0) then
                 ratio = min(abs(prr_rcs(k)), abs(prs_rcs(k)) )
                 prr_rcs(k) = ratio * sign(1.0, sngl(prr_rcs(k)))
@@ -1699,8 +1709,8 @@ contains
                 * orho
 
             !..Graupel number tendency
-            ngten(k) = ngten(k) + (png_scw(k) + pnr_rfz(k) - png_rcg(k) &
-                + pnr_rci(k) + png_rcs(k) + png_gde(k) &
+            ngten(k) = ngten(k) + (png_scw(k) + png_rfz(k) - png_rcg(k) &
+                + png_rci(k) + png_rcs(k) + png_gde(k) &
                 - pnr_gml(k)) * orho
 
             !..Graupel volume mixing ratio tendency
@@ -1866,7 +1876,7 @@ contains
                     rg(k) = r1
                     ng(k) = r2
                     rb(k) = r1/rho(k)/rho_g(nrhg)
-                    idx_bg(k) = idx_bg1
+                    idx_bg(k) = nrhg
                     l_qg(k) = .false.
                 endif
             enddo
