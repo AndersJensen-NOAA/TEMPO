@@ -618,7 +618,7 @@ contains
         refl_10cm, diagflag, do_radar_ref, re_cloud, re_ice, re_snow, qcbl, cldfrac, &
         has_reqc, has_reqi, has_reqs, ntc, muc, rainprod, evapprod, &
         max_hail_diameter_column, max_hail_diameter_sfc, &
-        ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+        ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte, ml_nc)
 
         ! Subroutine (3D) arguments
         integer, intent(in) :: ids,ide, jds,jde, kds,kde, ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte
@@ -637,13 +637,14 @@ contains
         real, dimension(ims:ime, jms:jme), intent(inout), optional :: snownc, snowncv, graupelnc, graupelncv
         real, intent(in) :: dt_in
         integer, intent(in) :: itimestep
+        logical, intent(in), optional :: ml_nc
 
         ! Local (1d) variables
         real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
             nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qcbl1d, cldfrac1d, qg_max_diam1d
         real, dimension(kts:kte) :: re_qc1d, re_qi1d, re_qs1d
         real, dimension(kts:kte):: rainprod1d, evapprod1d
-        double precision, dimension(kts:kte) :: ncbl1d
+        double precision, dimension(kts:kte) :: ncbl1d, nc1dml
         real, dimension(its:ite, jts:jte) :: pcp_ra, pcp_sn, pcp_gr, pcp_ic, frain
         real :: dt, pptrain, pptsnow, pptgraul, pptice
         real :: qc_max, qr_max, qs_max, qi_max, qg_max, ni_max, nr_max
@@ -652,7 +653,7 @@ contains
         real :: graupel_vol
         real :: tmprc, tmpnc, xDc
         integer :: nu_c
-        logical, dimension(kts:kte) :: sgs_clouds
+        logical, dimension(kts:kte) :: sgs_clouds, qc_present
         double precision :: lamg, lam_exp, lamr, n0_min, n0_exp, lamc
         integer :: i, j, k
         integer :: imax_qc, imax_qr, imax_qi, imax_qs, imax_qg, imax_ni, imax_nr
@@ -741,7 +742,14 @@ contains
                     nr1d(k) = nr(i,k,j)
                     rho(k) = RoverRv * p1d(k) / (R * t1d(k) * (qv1d(k)+RoverRv))
 
+                    if (present(ml_nc)) then
+                       if (ml_nc) nc1dml(k) = 0.
+                    endif
+
                     sgs_clouds(k) = .false.
+                    qc_present(k) = .false.
+                    if (qc1d(k) > R1) qc_present(k) = .true.
+
                     if (present(qcbl) .and. present(cldfrac)) then
                        qcbl1d(k) = qcbl(i,k,j)
                        cldfrac1d(k) = cldfrac(i,k,j)
@@ -776,6 +784,43 @@ contains
                         configs%aerosol_aware = .false.
                     endif
                 enddo
+
+                ! Override nc1d if ml_nc = .true.
+                if (present(ml_nc)) then
+                   if (ml_nc) then
+
+                      if (any(qc_present)) then
+                         call predict_number_sub(kts, kte, qc1d, qr1d, qi1d, qs1d, p1d, t1d, w1d, &
+                              nc1dml, predict_nc=.true.)
+
+                         do k = kts, kte
+                            if (qc1d(k) > R1) then
+                               tmprc = qc1d(k)*rho(k)
+                               tmpnc = max(2., min(real(nc1dml(k))*rho(k), nt_c_max))
+                               if (tmpnc.gt.10000.e6) then
+                                  nu_c = 2
+                               elseif (tmpnc.lt.100.) then
+                                  nu_c = 15
+                               else
+                                  nu_c = nint(nu_c_scale/tmpnc) + 2
+                                  nu_c = max(2, min(nu_c, 15))
+                               endif
+                               lamc = (tmpnc*am_r*ccg(2,nu_c)*ocg1(nu_c)/tmprc)**obmr
+                               xDc = (bm_r + nu_c + 1.) / lamc
+                               if (xDc .lt. D0c) then
+                                  lamc = cce(2,nu_c)/D0c
+                               elseif (xDc.gt. D0r*2.) then
+                                  lamc = cce(2,nu_c)/(D0r*2.)
+                               endif
+                               tmpnc = min(real(nt_c_max, kind=dp), ccg(1,nu_c)*ocg2(nu_c)*tmprc / am_r*lamc**bm_r)
+                               nc1d(k) = tmpnc/rho(k)
+                            else
+                               nc1d(k) = 0.
+                            endif
+                         enddo
+                      endif
+                   endif
+                endif
 
                 ! ng and qb are optional hail-aware variables
                 if ((present(ng)) .and. (present(qb))) then
@@ -889,8 +934,20 @@ contains
                     rainprod(i,k,j) = rainprod1d(k)
                     evapprod(i,k,j) = evapprod1d(k)
 
+                    if (present(ml_nc)) then
+                       if (ml_nc) nc1dml(k) = 0.
+                    endif
+
+                    qc_present(k) = .false.
+                    if (qc1d(k) > R1) qc_present(k) = .true.
+
                     if (present(qcbl) .and. present(cldfrac)) then
                        if ((qc1d(k) <= R1) .and. (qcbl1d(k) > 1.e-9) .and. (cldfrac1d(k) > 0.)) then
+
+                          ! 1.e5 is arbitrary but prevents low qc / high cf
+                          ! when qc < 1.e-5 kg/kg
+                          if (cldfrac1d(k) > qcbl1d(k)*1.e5) cldfrac1d(k) = min(qcbl1d(k)*1.e5, 1.)
+
                           qc1d(k) = qc1d(k) + qcbl1d(k)/cldfrac1d(k) ! Uses in-cloud PBL mass
                           sgs_clouds(k) = .true.
                        else
@@ -900,6 +957,46 @@ contains
                        sgs_clouds(k) = .false.
                     endif
                  enddo
+
+                 ! Override nc1d if ml_nc = .true.
+                 if (present(ml_nc)) then
+                    if (ml_nc) then
+
+                       if (any(qc_present)) then
+                          call predict_number_sub(kts, kte, qc1d, qr1d, qi1d, qs1d, p1d, t1d, w1d, &
+                               nc1dml, predict_nc=.true.)
+
+                          do k = kts, kte
+                             if (qc1d(k) > R1) then
+                                tmprc = qc1d(k)*rho(k)
+                                tmpnc = max(2., min(real(nc1dml(k))*rho(k), nt_c_max))
+
+                                if (tmpnc.gt.10000.e6) then
+                                   nu_c = 2
+                                elseif (tmpnc.lt.100.) then
+                                   nu_c = 15
+                                else
+                                   nu_c = nint(nu_c_scale/tmpnc) + 2
+                                   nu_c = max(2, min(nu_c, 15))
+                                endif
+                                lamc = (tmpnc*am_r*ccg(2,nu_c)*ocg1(nu_c)/tmprc)**obmr
+                                xDc = (bm_r + nu_c + 1.) / lamc
+                                if (xDc .lt. D0c) then
+                                   lamc = cce(2,nu_c)/D0c
+                                elseif (xDc.gt. D0r*2.) then
+                                   lamc = cce(2,nu_c)/(D0r*2.)
+                                endif
+                                tmpnc = min(real(nt_c_max, kind=dp), ccg(1,nu_c)*ocg2(nu_c)*tmprc / am_r*lamc**bm_r)
+                                nc1d(k) = tmpnc/rho(k)
+                                nc(i,k,j) = nc1d(k)
+                             else
+                                nc1d(k) = 0.
+                                nc(i,k,j) = 0.
+                             endif
+                          enddo
+                       endif
+                    endif
+                 endif
 
                  if (any(sgs_clouds)) then
                     ! return array of ncbl1d
@@ -931,37 +1028,6 @@ contains
                        endif
                     enddo
                  endif
-                    ! if (present(qcbl) .and. present(cldfrac)) then
-                    !    if ((qc1d(k) <= R1) .and. (qcbl(i,k,j) > 1.e-9) .and. (cldfrac(i,k,j) > 0.)) then
-                    !       qc1d(k) = qc1d(k) + qcbl(i,k,j)/cldfrac(i,k,j) ! Uses in-cloud PBL mass
-                    !       ! ML prediction of number concentration (Don't add in qibl for now)
-                    !       ! COULD BE DLOW FROM CALLING CALLING SUBROUTINE FOR EACH i,k,j
-                    !       ncbl(k) = predict_number(qc1d(k), qr1d(k), qi1d(k), qs1d(k), &
-                    !            p1d(k), t1d(k), w1d(k), predict_nc=.true.)
-                    !       nc1d(k) = nc1d(k) + ncbl(k)
-                    !       rho(k) = RoverRv * p1d(k) / (R * t1d(k) * (qv1d(k)+RoverRv))
-                    !       tmprc = qc1d(k)*rho(k)
-                    !       tmpnc = max(2., min(nc1d(k)*rho(k), nt_c_max))
-                    !       if (tmpnc.gt.10000.e6) then
-                    !          nu_c = 2
-                    !       elseif (tmpnc.lt.100.) then
-                    !          nu_c = 15
-                    !       else
-                    !          nu_c = nint(nu_c_scale/tmpnc) + 2
-                    !          nu_c = max(2, min(nu_c, 15))
-                    !       endif
-                    !       lamc = (tmpnc*am_r*ccg(2,nu_c)*ocg1(nu_c)/tmprc)**obmr
-                    !       xDc = (bm_r + nu_c + 1.) / lamc
-                    !       if (xDc .lt. D0c) then
-                    !          lamc = cce(2,nu_c)/D0c
-                    !       elseif (xDc.gt. D0r*2.) then
-                    !          lamc = cce(2,nu_c)/(D0r*2.)
-                    !       endif
-                    !       tmpnc = min(real(nt_c_max, kind=dp), ccg(1,nu_c)*ocg2(nu_c)*tmprc / am_r*lamc**bm_r)
-                    !       nc1d(k) = tmpnc/rho(k) ! Update nc1d for calc_effectRad
-                    !    endif
-                    ! endif
-!!! K LOOP                enddo
 
                 !=================================================================================================================
                 ! Reflectivity
