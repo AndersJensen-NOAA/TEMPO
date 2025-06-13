@@ -943,10 +943,9 @@ contains
 
                     if (present(qcbl) .and. present(cldfrac)) then
                        if ((qc1d(k) <= R1) .and. (qcbl1d(k) > 1.e-9) .and. (cldfrac1d(k) > 0.)) then
-
-                          ! 1.e5 is arbitrary but prevents low qc / high cf
-                          ! when qc < 1.e-5 kg/kg
-                          if (cldfrac1d(k) > qcbl1d(k)*1.e5) cldfrac1d(k) = min(qcbl1d(k)*1.e5, 1.)
+                          if (qcbl1d(k) <= 1.e-5) then
+                             cldfrac1d(k) = min(cldfrac1d(k), (5.57*(qcbl1d(k)*1000.)**0.78))
+                          endif
 
                           qc1d(k) = qc1d(k) + qcbl1d(k)/cldfrac1d(k) ! Uses in-cloud PBL mass
                           sgs_clouds(k) = .true.
