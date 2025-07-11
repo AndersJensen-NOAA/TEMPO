@@ -1,6 +1,6 @@
 ! Prognostic cloud fraction module for TEMPO Microphysics
 !=================================================================================================================
-module module_mp_tempo_cldfrac
+module module_mp_tempo_cldfra
     use module_mp_tempo_params, only : lvap0, lsub, cp2, R, Rv, R1, critical_rh, cf_low
     use module_mp_tempo_utils, only : rslf, rsif
 
@@ -18,11 +18,11 @@ module module_mp_tempo_cldfrac
 
     implicit none
     private
-    public:: tempo_cldfrac_driver
+    public:: tempo_cldfra_driver
 
   contains
 !=================================================================================================================    
-  subroutine tempo_cldfrac_driver(i,j,kts,kte,dt,temp,pres,rho,w,lwrad,qa,qv,qc,qi,nc,ni)
+  subroutine tempo_cldfra_driver(i,j,kts,kte,dt,temp,pres,rho,w,lwrad,qa,qv,qc,qi,nc,ni)
 !=================================================================================================================
 
     integer, intent(in) :: i, j, kts, kte
@@ -211,8 +211,8 @@ module module_mp_tempo_cldfrac
        endif
     enddo
 
-  end subroutine tempo_cldfrac_driver
+  end subroutine tempo_cldfra_driver
 
 !=================================================================================================================    
-end module module_mp_tempo_cldfrac
+end module module_mp_tempo_cldfra
 !=================================================================================================================
