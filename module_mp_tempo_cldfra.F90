@@ -100,14 +100,14 @@ module module_mp_tempo_cldfra
                 create_sgs_clouds(k) = .true.
              endif
           else
-!             evolve_sgs_clouds(k) = .true.
+             evolve_sgs_clouds(k) = .true.
           endif
        endif
 
        ! Erosion
-!       if(qa(k) < 1.0 .and. (qc(k) > R1) .and. U(k) < 1.) then
-!          erode_sgs_clouds(k) = .true.
-!       endif
+       if(qa(k) < 1.0 .and. (qc(k) > R1) .and. (qt(k) <= R1) .and. U(k) < 1.) then
+          erode_sgs_clouds(k) = .true.
+       endif
 
        ! Varibles used in cloud fraction scheme
        al = 1. / (1. + dqsdT(k)*lvap(k)*ocp(k))
@@ -167,6 +167,22 @@ module module_mp_tempo_cldfra
        qcten(k) = qcten_create(k) + qcten_evolve(k) + qcten_erode(k)
        thten(k) = thten_create(k) + thten_evolve(k) + thten_erode(k)
 
+       ! If eroding cloud fraction to less than 5%, or cloud water
+       ! to less than R1, then completely remove
+       if ((((qa(k) + qaten(k)*dt) < 0.05) .and. (qaten(k) < 0.)) .or. &
+            ((qc(k) + qcten(k)*dt) <= R1)) then
+           qaten(k) = -qa(k)/dt
+           qcten(k) = -qc(k)/dt
+           thten(k) = ((p0/pres(k))**(R/cp2))*lvap(k)*ocp(k)*qcten(k)
+        endif
+
+
+       ! ! If eroding cloud water to less than R1, completely remove
+       ! if (((qc(k) + qcten(k)*dt) <= R1)) then
+       !    qcten(k) = -qc(k)/dt
+       !    thten_l(k) = ((p0/pres(k))**(R/cp2))*lvap(k)*ocp(k)*qcten(k)
+       ! endif
+
        ! ! Liquid only tendencies
        ! qaten_l(k) = qaten_create(k) + qaten_evolve(k) + qaten_erode(k)
        ! thten_l(k) = thten_create(k) + thten_evolve(k) + thten_erode(k)
@@ -206,12 +222,16 @@ module module_mp_tempo_cldfra
        qa(k) = qa(k) + qaten(k)*dt
        temp(k) = temp(k) + ((thten(k)) / ((p0/pres(k))**(R/cp2)))*dt
 
-       ! ! Final check on cloud fraction
-       ! if (qc(k) > R1) then
+       ! Final check on cloud fraction
+       if ((qc(k) <= R1)) then
+          qa(k) = 0.0
+       else
+          qa(k) = min(qa(k), 1.0)
+          qa(k) = max(qa(k), cf_low)
+       endif
        !    cf_check = 0.5*((qc(k)+qi(k))*1000.)**0.5 + 0.01
        !    cf_check = max(cf_low, min(1., cf_check))
        !    qa(k) = max(qa(k), cf_check)
-       ! endif
     enddo
 
   end subroutine tempo_cldfra_driver
