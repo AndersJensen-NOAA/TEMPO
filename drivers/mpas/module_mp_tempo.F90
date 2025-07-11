@@ -6,6 +6,7 @@ module module_mp_tempo
     use module_mp_tempo_params
     use module_mp_tempo_utils, only : create_bins, table_Efrw, table_Efsw, table_dropEvap, &
          calc_refl10cm, calc_effectRad, hail_size_diagnostics
+    use module_mp_tempo_cldfra, only : tempo_cldfra_driver
     use module_mp_tempo_main, only : mp_tempo_main
     use module_mp_tempo_ml, only : predict_number_sub
     use mpas_atmphys_utilities, only : physics_message, physics_error_fatal
@@ -828,6 +829,10 @@ contains
                            w1d=w1d, dzq=dz1d, pptrain=pptrain, pptsnow=pptsnow, pptgraul=pptgraul, pptice=pptice, &
                            rainprod=rainprod1d, evapprod=evapprod1d, kts=kts, kte=kte, dt=dt, ii=i, jj=j, configs=configs)
 
+                if ((present(qasgs)) .and. (present(qcsgs))) then
+                   call tempo_cldfra_driver(i=i, j=j, kts=kts, kte=kte, dt=dt, temp=t1d, pres=p1d, rho=rho, w=w1d, qv=qv1d, &
+                        qa=qasgs1d, qc=qcsgs1d, qt=qc1d+qr1d+qi1d+qs1d+qg1d)
+                endif
                 !=================================================================================================================
                 ! Compute diagnostics and return output to 3D
                 pcp_ra(i,j) = pptrain

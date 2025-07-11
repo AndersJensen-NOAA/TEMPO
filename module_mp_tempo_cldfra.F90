@@ -22,13 +22,13 @@ module module_mp_tempo_cldfra
 
   contains
 !=================================================================================================================    
-  subroutine tempo_cldfra_driver(i,j,kts,kte,dt,temp,pres,rho,w,lwrad,qa,qv,qc,qi,nc,ni)
+  subroutine tempo_cldfra_driver(i,j,kts,kte,dt,temp,pres,rho,w,qv,qa,qc,qt)
 !=================================================================================================================
 
     integer, intent(in) :: i, j, kts, kte
     real, intent(in) :: dt
-    real, intent(in) :: pres(:), rho(:), w(:), lwrad(:)
-    real, intent(inout) :: qa(:), qv(:), qc(:), qi(:), nc(:), ni(:), temp(:)
+    real, intent(in) :: pres(:), rho(:), w(:), qt(:)
+    real, intent(inout) :: qa(:), qv(:), qc(:), temp(:)
 
     integer :: k
     real :: tempc
@@ -38,25 +38,20 @@ module module_mp_tempo_cldfra
     real :: al, bs, sd, qc_calc
     real :: term1, term2, term3, gterm, eros_term
     real :: cf_check
-    real, dimension(kts:kte) :: qaten, qcten, thten, qiten, thten_l, thten_i, qaten_l
+    logical, dimension(kts:kte) :: create_sgs_clouds, erode_sgs_clouds, evolve_sgs_clouds
     real, dimension(kts:kte) :: qvs, qvi, U, U00, lvap, ocp, dqsdT, omega
-    real, dimension(kts:kte) :: qcten_create, qcten_evolve, qcten_erode
     real, dimension(kts:kte) :: qaten_create, qaten_evolve, qaten_erode
+    real, dimension(kts:kte) :: qcten_create, qcten_evolve, qcten_erode
     real, dimension(kts:kte) :: thten_create, thten_evolve, thten_erode
     real, dimension(kts:kte) :: dcond_ls
-    logical, dimension(kts:kte) :: create_sgs_clouds, erode_sgs_clouds, evolve_sgs_clouds
+
+    real, dimension(kts:kte) :: qaten, qcten, thten, qiten, thten_l, thten_i, qaten_l
 
     do k = kts, kte
        create_sgs_clouds(k) = .false.
        erode_sgs_clouds(k) = .false.
        evolve_sgs_clouds(k) = .false.
-       qaten(k) = 0.
-       qaten_l(k) = 0.
-       qcten(k) = 0.
-       qiten(k) = 0.
-       thten(k) = 0.
-       thten_l(k) = 0.
-       thten_i(k) = 0.
+       dcond_ls(k) = 0.
        qaten_create(k) = 0.
        qcten_create(k) = 0.
        thten_create(k) = 0.
@@ -66,7 +61,15 @@ module module_mp_tempo_cldfra
        qaten_erode(k) = 0.
        qcten_erode(k) = 0.
        thten_erode(k) = 0.
-       dcond_ls(k) = 0.
+       qaten(k) = 0.
+       qcten(k) = 0.
+       thten(k) = 0.
+!       qaten_l(k) = 0.
+!       qiten(k) = 0.
+!       thten_l(k) = 0.
+!       thten_i(k) = 0.
+
+       ! Environment
        tempc = temp(k) - 273.15
        qvs(k) = rslf(pres(k), temp(k))
        if (tempc <= 0.0) then
@@ -82,8 +85,8 @@ module module_mp_tempo_cldfra
        omega(k) = -grav * w(k) * rho(k)
        dqsdT(k) = lvap(k) * qvs(k) / (Rv*temp(k)**2)
 
-       ! Limit cloud fraction to range of cf_low to 100%
-       if ((qc(k) <= R1) .and. (qi(k) <= R1)) then
+       ! Limit cloud fraction to range of cf_low (in module_mp_tempo_params) to 100%
+       if ((qc(k) <= R1)) then
           qa(k) = 0.0
        else
           qa(k) = min(qa(k), 1.0)
@@ -92,19 +95,19 @@ module module_mp_tempo_cldfra
 
        ! Create liquid clouds if no cloud water or ice present, otherwise, evolve SGS clouds
        if((qa(k) < 1.0) .and. (w(k) < ls_w_limit) .and. (U(k) < 1.0) .and. (U(k) > U00(k))) then
-          if (qc(k) <= R1) then
-             if ((w(k) > 0.) .and. (qi(k) <= R1) .and. (tempc > -20.)) then
+          if (qt(k) <= R1) then
+             if ((w(k) > 0.) .and. (tempc > -30.)) then
                 create_sgs_clouds(k) = .true.
              endif
           else
-             evolve_sgs_clouds(k) = .true.
+!             evolve_sgs_clouds(k) = .true.
           endif
        endif
 
        ! Erosion
-       if(qa(k) < 1.0 .and. (qc(k) > R1) .and. (qi(k) <= R1) .and. U(k) < 1.) then
-          erode_sgs_clouds(k) = .true.
-       endif
+!       if(qa(k) < 1.0 .and. (qc(k) > R1) .and. U(k) < 1.) then
+!          erode_sgs_clouds(k) = .true.
+!       endif
 
        ! Varibles used in cloud fraction scheme
        al = 1. / (1. + dqsdT(k)*lvap(k)*ocp(k))
@@ -127,7 +130,7 @@ module module_mp_tempo_cldfra
        elseif (evolve_sgs_clouds(k)) then
           ! Contains large-scale forcing and longwave cooling
           ! Closure terms from Wilson and Gregory 2003, Eq. 22
-          dcond_ls(k) = -al * dqsdT(k) * (omega(k)/rho(k)*ocp(k) + lwrad(k)*(pres(k)/p0)**(R/cp2))
+          dcond_ls(k) = -al * dqsdT(k) * (omega(k)/rho(k)*ocp(k)) ! + lwrad(k)*(pres(k)/p0)**(R/cp2))
           if ((abs(sd) > R1) .and. (dcond_ls(k) > 0.)) then
              term1 = ((1.-qa(k))**2*qa(k)**2/qc(k)) + (qa(k)**2*(1.-qa(k))**2/sd)
              term2 = (1.-qa(k))**2 + qa(k)**2
@@ -164,51 +167,51 @@ module module_mp_tempo_cldfra
        qcten(k) = qcten_create(k) + qcten_evolve(k) + qcten_erode(k)
        thten(k) = thten_create(k) + thten_evolve(k) + thten_erode(k)
 
-       ! Liquid only tendencies
-       qaten_l(k) = qaten_create(k) + qaten_evolve(k) + qaten_erode(k)
-       thten_l(k) = thten_create(k) + thten_evolve(k) + thten_erode(k)
+       ! ! Liquid only tendencies
+       ! qaten_l(k) = qaten_create(k) + qaten_evolve(k) + qaten_erode(k)
+       ! thten_l(k) = thten_create(k) + thten_evolve(k) + thten_erode(k)
 
-       ! If eroding cloud fraction to less than 5%, completely remove
-       if (((qa(k) + qaten(k)*dt) < 0.05) .and. (qaten(k) < 0.)) then
-          qaten(k) = -qa(k)/dt
-          qcten(k) = -qc(k)/dt
-          qiten(k) = -qi(k)/dt
-          thten_l(k) = ((p0/pres(k))**(R/cp2))*lvap(k)*ocp(k)*qcten(k)
-          thten_i(k) = ((p0/pres(k))**(R/cp2))*lsub*ocp(k)*qiten(k)
-       endif
+       ! ! If eroding cloud fraction to less than 5%, completely remove
+       ! if (((qa(k) + qaten(k)*dt) < 0.05) .and. (qaten(k) < 0.)) then
+       !    qaten(k) = -qa(k)/dt
+       !    qcten(k) = -qc(k)/dt
+       !    qiten(k) = -qi(k)/dt
+       !    thten_l(k) = ((p0/pres(k))**(R/cp2))*lvap(k)*ocp(k)*qcten(k)
+       !    thten_i(k) = ((p0/pres(k))**(R/cp2))*lsub*ocp(k)*qiten(k)
+       ! endif
 
-       ! If eroding cloud water to less than R1, completely remove
-       if (((qc(k) + qcten(k)*dt) <= R1)) then
-          qcten(k) = -qc(k)/dt
-          thten_l(k) = ((p0/pres(k))**(R/cp2))*lvap(k)*ocp(k)*qcten(k)
-       endif
+       ! ! If eroding cloud water to less than R1, completely remove
+       ! if (((qc(k) + qcten(k)*dt) <= R1)) then
+       !    qcten(k) = -qc(k)/dt
+       !    thten_l(k) = ((p0/pres(k))**(R/cp2))*lvap(k)*ocp(k)*qcten(k)
+       ! endif
 
-       ! If eroding cloud ice to less than R1, completely remove
-       ! Check on water before removing cloud fraction
-       if (((qi(k) + qiten(k)*dt) <= R1)) then
-          qiten(k) = -qi(k)/dt
-          thten_i(k) = ((p0/pres(k))**(R/cp2))*lsub*ocp(k)*qiten(k)
-          if (((qc(k) + qcten(k)*dt) <= R1)) then
-             qaten(k) = -qa(k)/dt
-          endif
-       endif
+       ! ! If eroding cloud ice to less than R1, completely remove
+       ! ! Check on water before removing cloud fraction
+       ! if (((qi(k) + qiten(k)*dt) <= R1)) then
+       !    qiten(k) = -qi(k)/dt
+       !    thten_i(k) = ((p0/pres(k))**(R/cp2))*lsub*ocp(k)*qiten(k)
+       !    if (((qc(k) + qcten(k)*dt) <= R1)) then
+       !       qaten(k) = -qa(k)/dt
+       !    endif
+       ! endif
 
        ! Update variables
        qc(k) = qc(k) + qcten(k)*dt
-       nc(k) = nc(k) + qcten(k)*dt / (3.14159*1000./6.*((10.e-6)**3.0))
-       qi(k) = qi(k) + qiten(k)*dt
-       ni(k) = ni(k) + qiten(k)*dt / (3.14159*900./6.*((10.e-6)**3.0))
+       ! nc(k) = nc(k) + qcten(k)*dt / (3.14159*1000./6.*((10.e-6)**3.0))
+       ! qi(k) = qi(k) + qiten(k)*dt
+       ! ni(k) = ni(k) + qiten(k)*dt / (3.14159*900./6.*((10.e-6)**3.0))
 
-       qv(k) = qv(k) - qcten(k)*dt - qiten(k)*dt
+       qv(k) = qv(k) - qcten(k)*dt
        qa(k) = qa(k) + qaten(k)*dt
-       temp(k) = temp(k) + ((thten_l(k)+thten_i(k)) / ((p0/pres(k))**(R/cp2)))*dt
+       temp(k) = temp(k) + ((thten(k)) / ((p0/pres(k))**(R/cp2)))*dt
 
-       ! Final check on cloud fraction (liquid only)
-       if (qc(k) > R1) then
-          cf_check = 0.5*((qc(k)+qi(k))*1000.)**0.5 + 0.01
-          cf_check = max(cf_low, min(1., cf_check))
-          qa(k) = max(qa(k), cf_check)
-       endif
+       ! ! Final check on cloud fraction
+       ! if (qc(k) > R1) then
+       !    cf_check = 0.5*((qc(k)+qi(k))*1000.)**0.5 + 0.01
+       !    cf_check = max(cf_low, min(1., cf_check))
+       !    qa(k) = max(qa(k), cf_check)
+       ! endif
     enddo
 
   end subroutine tempo_cldfra_driver
