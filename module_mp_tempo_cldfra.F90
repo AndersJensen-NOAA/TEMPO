@@ -1,7 +1,7 @@
 ! Prognostic cloud fraction module for TEMPO Microphysics
 !=================================================================================================================
 module module_mp_tempo_cldfra
-    use module_mp_tempo_params, only : lvap0, lsub, cp2, R, Rv, R1, critical_rh, cf_low
+    use module_mp_tempo_params, only : lvap0, lsub, cp2, R, Rv, R1, critical_rh, cf_low, D0r, am_r
     use module_mp_tempo_utils, only : rslf, rsif
 
 #if defined(mpas)
@@ -22,22 +22,23 @@ module module_mp_tempo_cldfra
 
   contains
 !=================================================================================================================    
-  subroutine tempo_cldfra_driver(i,j,kts,kte,dt,temp,pres,rho,w,qv,qa,qc,qt)
+  subroutine tempo_cldfra_driver(i,j,kts,kte,dt,temp,pres,rho,w,qv,qa,qc,qt,qcexp,ncexp,qr,nr)
 !=================================================================================================================
 
     integer, intent(in) :: i, j, kts, kte
     real, intent(in) :: dt
     real, intent(in) :: pres(:), rho(:), w(:), qt(:)
-    real, intent(inout) :: qa(:), qv(:), qc(:), temp(:)
+    real, intent(inout) :: qa(:), qv(:), qc(:), temp(:), qcexp(:), ncexp(:), qr(:), nr(:)
 
     integer :: k
     real :: tempc
     real, parameter :: p0 = 100000.
-    real, parameter :: ls_w_limit = 1.
+!    real, parameter :: ls_w_limit = 1.
+    real, parameter :: ls_w_limit = 0.5
     real, parameter :: grav = 9.8
     real :: al, bs, sd, qc_calc
     real :: term1, term2, term3, gterm, eros_term
-    real :: cf_check
+    real :: cf_check, qrten
     logical, dimension(kts:kte) :: create_sgs_clouds, erode_sgs_clouds, evolve_sgs_clouds
     real, dimension(kts:kte) :: qvs, qvi, U, U00, lvap, ocp, dqsdT, omega
     real, dimension(kts:kte) :: qaten_create, qaten_evolve, qaten_erode
@@ -86,7 +87,7 @@ module module_mp_tempo_cldfra
        dqsdT(k) = lvap(k) * qvs(k) / (Rv*temp(k)**2)
 
        ! Limit cloud fraction to range of cf_low (in module_mp_tempo_params) to 100%
-       if ((qc(k) <= R1)) then
+       if ((qc(k) <= R1) .and. (qr(k) <= R1)) then
           qa(k) = 0.0
        else
           qa(k) = min(qa(k), 1.0)
@@ -131,7 +132,7 @@ module module_mp_tempo_cldfra
           ! Contains large-scale forcing and longwave cooling
           ! Closure terms from Wilson and Gregory 2003, Eq. 22
           dcond_ls(k) = -al * dqsdT(k) * (omega(k)/rho(k)*ocp(k)) ! + lwrad(k)*(pres(k)/p0)**(R/cp2))
-          if ((abs(sd) > R1) .and. (dcond_ls(k) > 0.)) then
+          if ((abs(sd) > R1) .and. (dcond_ls(k) > 0.) .and. (qc(k) > 0.)) then
              term1 = ((1.-qa(k))**2*qa(k)**2/qc(k)) + (qa(k)**2*(1.-qa(k))**2/sd)
              term2 = (1.-qa(k))**2 + qa(k)**2
              gterm = 0.5*term1/term2
@@ -148,7 +149,7 @@ module module_mp_tempo_cldfra
        ! Erosion
        ! Wilson et al. 2008, Eqs. A11, A12
        if (erode_sgs_clouds(k)) then
-          if ((abs(sd) > R1)) then
+          if ((abs(sd) > R1) .and. (qc(k) > 0.)) then
              term1 = ((1.-qa(k))**2*qa(k)**2/qc(k)) + (qa(k)**2*(1.-qa(k))**2/sd)
           else
              term1 = 0.
@@ -223,12 +224,36 @@ module module_mp_tempo_cldfra
        temp(k) = temp(k) + ((thten(k)) / ((p0/pres(k))**(R/cp2)))*dt
 
        ! Final check on cloud fraction
-       if ((qc(k) <= R1)) then
+!       if ((qc(k) <= R1) .and. (qr(k) <= R1)) then
+!          qa(k) = 0.0
+!       else
+!          qa(k) = min(qa(k), 1.0)
+!          qa(k) = max(qa(k), cf_low)
+!       endif
+
+       if ((qc(k) > R1)) then
+          if ((qa(k) > 0.98) .and. (U(k) >= 1.)) then
+             qcexp(k) = qcexp(k) + qc(k)
+!!!             ncexp(k) = ncexp(k) + 10.e6 ! 10 cm^-3
+             qc(k) = 0.
+! could still be rain             qa(k) = 0.
+          else
+             qrten = min((1350.*qc(k)**2.47*(50.)**-1.79), qc(k)/dt)
+             qr(k) = qr(k) + qrten*dt
+             nr(k) = nr(k) + qrten*dt / (am_r*(2.*D0r)**3.0)
+             qc(k) = qc(k) - qrten*dt
+             ! LOSS of ncexp (ncexp too high)
+          endif
+       endif
+
+       ! Final check on cloud fraction
+       if ((qc(k) <= R1) .and. (qr(k) <= R1)) then
           qa(k) = 0.0
        else
           qa(k) = min(qa(k), 1.0)
           qa(k) = max(qa(k), cf_low)
        endif
+
        !    cf_check = 0.5*((qc(k)+qi(k))*1000.)**0.5 + 0.01
        !    cf_check = max(cf_low, min(1., cf_check))
        !    qa(k) = max(qa(k), cf_check)
