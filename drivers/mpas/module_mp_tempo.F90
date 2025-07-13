@@ -824,14 +824,14 @@ contains
 
                 !=================================================================================================================
                 ! Main call to the 1D microphysics
-                call mp_tempo_main(qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
+                call mp_tempo_main(qa1d=qasgs1d, qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
                            ni1d=ni1d, nr1d=nr1d, nc1d=nc1d, ng1d=ng1d, nwfa1d=nwfa1d, nifa1d=nifa1d, t1d=t1d, p1d=p1d, &
                            w1d=w1d, dzq=dz1d, pptrain=pptrain, pptsnow=pptsnow, pptgraul=pptgraul, pptice=pptice, &
                            rainprod=rainprod1d, evapprod=evapprod1d, kts=kts, kte=kte, dt=dt, ii=i, jj=j, configs=configs)
 
                 if ((present(qasgs)) .and. (present(qcsgs))) then
                    call tempo_cldfra_driver(i=i, j=j, kts=kts, kte=kte, dt=dt, temp=t1d, pres=p1d, rho=rho, w=w1d, qv=qv1d, &
-                        qa=qasgs1d, qc=qcsgs1d, qt=qc1d+qr1d+qi1d+qs1d+qg1d)
+                        qa=qasgs1d, qc=qcsgs1d, qt=qc1d+qr1d+qi1d+qs1d+qg1d, qcexp=qc1d, ncexp=nc1d, qr=qr1d, nr=nr1d)
                 endif
                 !=================================================================================================================
                 ! Compute diagnostics and return output to 3D
