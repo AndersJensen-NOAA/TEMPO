@@ -23,7 +23,7 @@ contains
     ! A complete description is now found in Thompson et al. (2004, 2008), Thompson and Eidhammer (2014),
     ! and Jensen et al. (2023).
 
-    subroutine mp_tempo_main(qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
+    subroutine mp_tempo_main(qa1d, qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
         nwfa1d, nifa1d, t1d, p1d, w1d, dzq, pptrain, pptsnow, pptgraul, pptice, &
 #if defined(mpas)
         rainprod, evapprod, &
@@ -56,7 +56,7 @@ contains
 
         ! Subroutine arguments
         integer, intent(in) :: kts, kte, ii, jj
-        real(wp), dimension(kts:kte), intent(inout) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, &
+        real(wp), dimension(kts:kte), intent(inout) :: qa1d, qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, &
             ni1d, nr1d, nc1d, ng1d, nwfa1d, nifa1d, t1d
         real(wp), dimension(kts:kte), intent(in) :: p1d, w1d, dzq
         real(wp), intent(inout) :: pptrain, pptsnow, pptgraul, pptice
@@ -175,7 +175,7 @@ contains
         real(wp) :: Ef_ra, Ef_sa, Ef_ga
         real(wp) :: dtsave, odts, odt, odzq, hgt_agl, SR
         real(wp) :: xslw1, ygra1, zans1, eva_factor
-        real(wp) :: melt_f, rand
+        real(wp) :: melt_f, rand, cf_weight
         integer :: i, k, k2, n, nn, nstep, k_0, kbot, IT, iexfrq, k_melting
         integer, dimension(5) :: ksed1
         integer :: nir, nis, nig, nii, nic, niin
@@ -491,6 +491,14 @@ contains
                 no_micro = .false.
                 rr(k) = qr1d(k)*rho(k)
                 nr(k) = max(R2, nr1d(k)*rho(k))
+
+                ! if no cloud fraction but rain exists, set to 1
+                if (qa1d(k) == 0.) qa1d(k) = 1.
+                qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
+                ! in cloud rain values
+                rr(k) = rr(k)/qa1d(k)
+                nr(k) = nr(k)/qa1d(k)
+
                 if (nr(k).le. R2) then
                     mvd_r(k) = 1.0E-3
                     lamr = (3.0 + mu_r + 0.672) / mvd_r(k)
@@ -1664,6 +1672,17 @@ contains
                 - pri_rfz(k) - prr_rci(k)) &
                 * orho
 
+            ! if (qrten(k) > eps) qa1d(k) = 1.
+            if ((qrten(k) > eps)) then
+               if (rr(k) <= R1) then
+                  qa1d(k) = 1.
+               else
+                  cf_weight = (qrten(k)*dtsave*rho(k)) / (rr(k) + qrten(k)*dtsave*rho(k))
+                  cf_weight = max(min(cf_weight, 1.), 0.)
+                  qa1d(k) = qa1d(k)*(1.-cf_weight) + (1.0*cf_weight)
+               endif
+            endif
+
             !..Rain number tendency
             nrten(k) = nrten(k) + (pnr_wau(k) + pnr_sml(k) + pnr_gml(k) &
                 - (pnr_rfz(k) + pnr_rcr(k) + pnr_rcg(k) &
@@ -2451,7 +2470,10 @@ contains
                         rr(k) = max(r1, rr(k) + (sed_r(k+1)-sed_r(k)) &
                             *odzq*dt*onstep(1))
                         nr(k) = max(r2, nr(k) + (sed_n(k+1)-sed_n(k)) &
-                            *odzq*DT*onstep(1))
+                             *odzq*DT*onstep(1))
+                        if ((rr(k) > R1) .and. (qa1d(k) == 0.)) then
+                           qa1d(k) = qa1d(k+1)
+                        endif
 #if defined(ccpp_default)
                         pfll1(k) = pfll1(k) + sed_r(k)*DT*onstep(1)
 #endif
@@ -2777,6 +2799,13 @@ contains
                 qr1d(k) = 0.0
                 nr1d(k) = 0.0
             else
+                ! if no cloud fraction but rain exists, set to 1
+                if (qa1d(k) == 0.) qa1d(k) = 1.
+                qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
+                ! in cloud rain values
+                qr1d(k) = qr1d(k)*qa1d(k)
+                nr1d(k) = nr1d(k)*qa1d(k)
+
                 lamr = (am_r*crg(3)*org2*nr1d(k)/qr1d(k))**obmr
                 mvd_r(k) = (3.0 + mu_r + 0.672) / lamr
                 if (mvd_r(k) .gt. 2.5E-3) then
