@@ -527,6 +527,12 @@ contains
                 no_micro = .false.
                 rs(k) = qs1d(k)*rho(k)
                 L_qs(k) = .true.
+
+                ! if no cloud fraction but rain exists, set to 1
+                if (qa1d(k) == 0.) qa1d(k) = 1.
+                qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
+                ! in cloud rain values
+                rs(k) = rs(k)/qa1d(k)
             else
                 qs1d(k) = 0.0
                 rs(k) = R1
@@ -1718,6 +1724,16 @@ contains
                 - prs_ihm(k) - prr_sml(k)) &
                 * orho
 
+            if ((qsten(k) > eps)) then
+               if (rs(k) <= R1) then
+                  qa1d(k) = 1.
+               else
+                  cf_weight = (qsten(k)*dtsave*rho(k)) / (rs(k) + qsten(k)*dtsave*rho(k))
+                  cf_weight = max(min(cf_weight, 1.), 0.)
+                  qa1d(k) = qa1d(k)*(1.-cf_weight) + (1.0*cf_weight)
+               endif
+            endif
+
             !..Graupel tendency
             qgten(k) = qgten(k) + (prg_scw(k) + prg_rfz(k) &
                 + prg_gde(k) + prg_rcg(k) + prg_gcw(k) &
@@ -2607,6 +2623,10 @@ contains
                         *odzq*onstep(3)*orho
                     rs(k) = max(r1, rs(k) + (sed_s(k+1)-sed_s(k)) &
                         *odzq*DT*onstep(3))
+                    if ((rs(k) > R1) .and. (qa1d(k) == 0.)) then
+                       qa1d(k) = qa1d(k+1)
+                    endif
+
 #if defined(ccpp_default)
                     pfil1(k) = pfil1(k) + sed_s(k)*DT*onstep(3)
 #endif
@@ -2817,7 +2837,16 @@ contains
                 nr1d(k) = crg(2)*org3*qr1d(k)*lamr**bm_r / am_r
             endif
             qs1d(k) = qs1d(k) + qsten(k)*DT
-            if (qs1d(k) .le. R1) qs1d(k) = 0.0
+            if (qs1d(k) .le. R1) then
+               qs1d(k) = 0.0
+            else
+               ! if no cloud fraction but rain exists, set to 1
+               if (qa1d(k) == 0.) qa1d(k) = 1.
+               qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
+               ! in cloud rain values
+               qs1d(k) = qs1d(k)*qa1d(k)
+            endif
+
             qg1d(k) = qg1d(k) + qgten(k)*DT
             ng1d(k) = MAX(R2/rho(k), ng1d(k) + ngten(k)*DT)
             if (qg1d(k) .le. R1) then

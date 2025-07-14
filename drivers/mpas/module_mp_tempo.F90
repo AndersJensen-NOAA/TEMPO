@@ -613,7 +613,7 @@ contains
     ! Required microphysics variables are qv, qc, qr, nr, qi, ni, qs, qg
     ! Optional microphysics variables are aerosol aware (nc, nwfa, nifa, nwfa2d, nifa2d), and hail aware (ng, qg)
 
-    subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, qasgs, qcsgs, &
+    subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, qasgs, qcsgs, qisgs, &
         nwfa, nifa, nwfa2d, nifa2d, th, pii, p, w, dz, dt_in, itimestep, &
         rainnc, rainncv, snownc, snowncv, graupelnc, graupelncv, sr, frainnc, &
         refl_10cm, diagflag, do_radar_ref, re_cloud, re_ice, re_snow, qcbl, cldfrac, &
@@ -631,7 +631,7 @@ contains
         real, optional, dimension(ims:ime,jms:jme), intent(inout) :: frainnc, max_hail_diameter_column, max_hail_diameter_sfc
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: rainprod, evapprod
         real, dimension(ims:ime, jms:jme), intent(in), optional :: ntc, muc
-        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng, qasgs, qcsgs
+        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng, qasgs, qcsgs, qisgs
         real, dimension(ims:ime, jms:jme), intent(in), optional :: nwfa2d, nifa2d
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: refl_10cm
         real, dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: qcbl, cldfrac
@@ -641,7 +641,7 @@ contains
 
         ! Local (1d) variables
         real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, qasgs1d, qcsgs1d, &
-            nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qcbl1d, cldfrac1d, qg_max_diam1d
+            qisgs1d, nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qcbl1d, cldfrac1d, qg_max_diam1d
         real, dimension(kts:kte) :: re_qc1d, re_qi1d, re_qs1d
         real, dimension(kts:kte):: rainprod1d, evapprod1d
         double precision, dimension(kts:kte) :: ncbl1d
@@ -742,12 +742,14 @@ contains
                     nr1d(k) = nr(i,k,j)
                     rho(k) = RoverRv * p1d(k) / (R * t1d(k) * (qv1d(k)+RoverRv))
 
-                    if ((present(qasgs)) .and. (present(qcsgs))) then
+                    if ((present(qasgs)) .and. (present(qcsgs)) .and. (present(qisgs))) then
                        qasgs1d(k) = qasgs(i,k,j)
                        qcsgs1d(k) = qcsgs(i,k,j)
+                       qisgs1d(k) = qisgs(i,k,j)
                     else
                        qasgs1d(k) = 0.
                        qcsgs1d(k) = 0.
+                       qisgs1d(k) = 0.
                     endif
 
                     sgs_clouds(k) = .false.
@@ -829,9 +831,10 @@ contains
                            w1d=w1d, dzq=dz1d, pptrain=pptrain, pptsnow=pptsnow, pptgraul=pptgraul, pptice=pptice, &
                            rainprod=rainprod1d, evapprod=evapprod1d, kts=kts, kte=kte, dt=dt, ii=i, jj=j, configs=configs)
 
-                if ((present(qasgs)) .and. (present(qcsgs))) then
+                if ((present(qasgs)) .and. (present(qcsgs)) .and. (present(qisgs))) then
                    call tempo_cldfra_driver(i=i, j=j, kts=kts, kte=kte, dt=dt, temp=t1d, pres=p1d, rho=rho, w=w1d, qv=qv1d, &
-                        qa=qasgs1d, qc=qcsgs1d, qt=qc1d+qr1d+qi1d+qs1d+qg1d, qcexp=qc1d, ncexp=nc1d, qr=qr1d, nr=nr1d)
+                        qa=qasgs1d, qc=qcsgs1d, qi=qisgs1d, qt=qc1d+qr1d+qi1d+qs1d+qg1d, qcexp=qc1d, &
+                        qr=qr1d, nr=nr1d, qiexp=qi1d, qs=qs1d, ncexp=nc1d, niexp=ni1d)
                 endif
                 !=================================================================================================================
                 ! Compute diagnostics and return output to 3D
@@ -859,10 +862,11 @@ contains
 
                 sr(i,j) = (pptsnow + pptgraul + pptice) / (rainncv(i,j) + R1)
 
-                if ((present(qasgs)) .and. (present(qcsgs))) then
+                if ((present(qasgs)) .and. (present(qcsgs)) .and. (present(qisgs))) then
                    do k = kts, kte
                       qasgs(i,k,j) = qasgs1d(k)
                       qcsgs(i,k,j) = qcsgs1d(k)
+                      qisgs(i,k,j) = qisgs1d(k)
                    enddo
                 endif
 
