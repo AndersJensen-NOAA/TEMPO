@@ -23,8 +23,10 @@ contains
     ! A complete description is now found in Thompson et al. (2004, 2008), Thompson and Eidhammer (2014),
     ! and Jensen et al. (2023).
 
-    subroutine mp_tempo_main(qa1d, qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
+    subroutine mp_tempo_main(qal1d, qai1d, qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
         nwfa1d, nifa1d, t1d, p1d, w1d, dzq, pptrain, pptsnow, pptgraul, pptice, &
+        rthbl1d, rqvbl1d, rqcbl1d, rqibl1d, rthlw1d, rthsw1d, &
+
 #if defined(mpas)
         rainprod, evapprod, &
 #endif
@@ -56,9 +58,9 @@ contains
 
         ! Subroutine arguments
         integer, intent(in) :: kts, kte, ii, jj
-        real(wp), dimension(kts:kte), intent(inout) :: qa1d, qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, &
+        real(wp), dimension(kts:kte), intent(inout) :: qal1d, qai1d, qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, &
             ni1d, nr1d, nc1d, ng1d, nwfa1d, nifa1d, t1d
-        real(wp), dimension(kts:kte), intent(in) :: p1d, w1d, dzq
+        real(wp), dimension(kts:kte), intent(in) :: p1d, w1d, dzq, rthbl1d, rqvbl1d, rqcbl1d, rqibl1d, rthlw1d, rthsw1d
         real(wp), intent(inout) :: pptrain, pptsnow, pptgraul, pptice
         real(wp), intent(in) :: dt
 
@@ -97,7 +99,11 @@ contains
         real(wp), dimension(kts:kte) :: tten, qvten, qcten, qiten, qrten, &
             qsten, qgten, qbten, niten, nrten, ncten, ngten, nwfaten, nifaten
 
+        real(wp), dimension(kts:kte) :: qcten_sgs, qalten, qaiten
+        
         real(dp), dimension(kts:kte) :: prw_vcd
+        real(dp), dimension(kts:kte) :: prw_sgi
+        real(dp), dimension(kts:kte) :: pra_sgi                 
 
         real(dp), dimension(kts:kte) :: pnc_wcd, pnc_wau, pnc_rcw, pnc_scw, pnc_gcw
 
@@ -140,6 +146,9 @@ contains
         real(wp), dimension(kts:kte) :: diffu, visco, vsc2, &
             tcond, lvap, ocp, lvt2
 
+        real(wp), dimension(kts:kte) :: omega, dqsdT, al_sgs, &
+             bs_sgs, sd, qc_calc, dcond_ls
+            
         real(dp), dimension(kts:kte) :: ilamr, ilamg, n0_r, n0_g
         real(dp) :: n0_melt
         real(wp), dimension(kts:kte) :: mvd_r, mvd_c, mvd_g
@@ -183,13 +192,16 @@ contains
             idx_i1, idx_i, idx_c, idx, idx_d, idx_n, idx_in
         integer, dimension(kts:kte) :: idx_bg, idx_table
 
-        logical :: melti, no_micro
+        logical :: melti, no_micro, in_cloud, use_cf
         logical, dimension(kts:kte) :: l_qc, l_qi, l_qr, l_qs, l_qg
         logical :: debug_flag
         character*256 :: mp_debug
         integer :: nu_c, decfl_
 
         !=================================================================================================================
+
+        in_cloud = .true.
+        use_cf = .true.
 
         debug_flag = .false.
 
@@ -225,6 +237,11 @@ contains
         do k = kts, kte
             tten(k) = 0.
             qvten(k) = 0.
+
+            qcten_sgs(k) = 0.
+            qalten(k) = 0.
+            qaiten(k) = 0.
+            
             qcten(k) = 0.
             qiten(k) = 0.
             qrten(k) = 0.
@@ -239,6 +256,10 @@ contains
             nifaten(k) = 0.
 
             prw_vcd(k) = 0.
+
+            prw_sgi(k) = 0.
+
+            pra_sgi(k) = 0.                        
 
             pnc_wcd(k) = 0.
             pnc_wau(k) = 0.
@@ -420,6 +441,15 @@ contains
                 no_micro = .false.
                 rc(k) = qc1d(k)*rho(k)
                 nc(k) = max(2., min(nc1d(k)*rho(k), nt_c_max))
+
+                if (qal1d(k) == 0.) qal1d(k) = 1.
+                qal1d(k) = max(min(qal1d(k), 1.0), cf_low)
+
+                if (in_cloud) then                   
+                   rc(k) = rc(k)/qal1d(k)
+                   nc(k) = nc(k)/qal1d(k)
+                endif
+                
                 l_qc(k) = .true.
                 if (nc(k).gt.10000.e6) then
                     nu_c = 2
@@ -493,11 +523,11 @@ contains
                 nr(k) = max(R2, nr1d(k)*rho(k))
 
                 ! if no cloud fraction but rain exists, set to 1
-                if (qa1d(k) == 0.) qa1d(k) = 1.
-                qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
-                ! in cloud rain values
-                rr(k) = rr(k)/qa1d(k)
-                nr(k) = nr(k)/qa1d(k)
+!                if (qa1d(k) == 0.) qa1d(k) = 1.
+!                qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
+!                ! in cloud rain values
+!                rr(k) = rr(k)/qa1d(k)
+!                nr(k) = nr(k)/qa1d(k)
 
                 if (nr(k).le. R2) then
                     mvd_r(k) = 1.0E-3
@@ -529,10 +559,10 @@ contains
                 L_qs(k) = .true.
 
                 ! if no cloud fraction but rain exists, set to 1
-                if (qa1d(k) == 0.) qa1d(k) = 1.
-                qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
-                ! in cloud rain values
-                rs(k) = rs(k)/qa1d(k)
+!                if (qa1d(k) == 0.) qa1d(k) = 1.
+!                qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
+!                ! in cloud rain values
+!                rs(k) = rs(k)/qa1d(k)
             else
                 qs1d(k) = 0.0
                 rs(k) = R1
@@ -619,6 +649,7 @@ contains
             if (abs(ssatw(k)).lt. eps) ssatw(k) = 0.0
             if (abs(ssati(k)).lt. eps) ssati(k) = 0.0
             if (no_micro .and. ssati(k).gt. 0.0) no_micro = .false.
+            if (no_micro .and. ssatw(k).gt. (critical_rh-1.)) no_micro = .false.
             diffu(k) = 2.11e-5*(temp(k)/273.15)**1.94 * (101325./pres(k))
             if (tempc .ge. 0.0) then
                 visco(k) = (1.718+0.0049*tempc)*1.0e-5
@@ -634,8 +665,12 @@ contains
         !=================================================================================================================
         !..If no existing hydrometeor species and no chance to initiate ice or
         !.. condense cloud water, just exit quickly!
-        if (no_micro) return
-
+        if (no_micro) then
+           qal1d = 0.
+           qai1d = 0.           
+           return
+        endif
+        
         !..Calculate y-intercept, slope, and useful moments for snow.
         if (.not. iiwarm) then
             do k = kts, kte
@@ -1595,15 +1630,20 @@ contains
                 - prg_gcw(k)) &
                 * orho
 
+            if (in_cloud) qcten(k) = qcten(k) * qal1d(k)
+
             !..Cloud water number tendency
             ncten(k) = ncten(k) + (-pnc_wau(k) - pnc_rcw(k) &
                 - pni_wfz(k) - pnc_scw(k) - pnc_gcw(k)) &
                 * orho
 
+            if (in_cloud) ncten(k) = ncten(k) * qal1d(k)
+            
             !..Cloud water mass/number balance; keep mass-wt mean size between
             !.. 1 and 50 microns.  Also no more than Nt_c_max drops total.
             xrc=max(r1, (qc1d(k) + qcten(k)*dtsave)*rho(k))
             xnc=max(2., (nc1d(k) + ncten(k)*dtsave)*rho(k))
+
             if (xrc .gt. r1) then
                 if (xnc.gt.10000.e6) then
                     nu_c = 2
@@ -1679,15 +1719,15 @@ contains
                 * orho
 
             ! if (qrten(k) > eps) qa1d(k) = 1.
-            if ((qrten(k) > eps)) then
-               if (rr(k) <= R1) then
-                  qa1d(k) = 1.
-               else
-                  cf_weight = (qrten(k)*dtsave*rho(k)) / (rr(k) + qrten(k)*dtsave*rho(k))
-                  cf_weight = max(min(cf_weight, 1.), 0.)
-                  qa1d(k) = qa1d(k)*(1.-cf_weight) + (1.0*cf_weight)
-               endif
-            endif
+!            if ((qrten(k) > eps)) then
+!               if (rr(k) <= R1) then
+!                  qa1d(k) = 1.
+!               else
+!                  cf_weight = (qrten(k)*dtsave*rho(k)) / (rr(k) + qrten(k)*dtsave*rho(k))
+!                  cf_weight = max(min(cf_weight, 1.), 0.)
+!                  qa1d(k) = qa1d(k)*(1.-cf_weight) + (1.0*cf_weight)
+!               endif
+!            endif
 
             !..Rain number tendency
             nrten(k) = nrten(k) + (pnr_wau(k) + pnr_sml(k) + pnr_gml(k) &
@@ -1724,15 +1764,15 @@ contains
                 - prs_ihm(k) - prr_sml(k)) &
                 * orho
 
-            if ((qsten(k) > eps)) then
-               if (rs(k) <= R1) then
-                  qa1d(k) = 1.
-               else
-                  cf_weight = (qsten(k)*dtsave*rho(k)) / (rs(k) + qsten(k)*dtsave*rho(k))
-                  cf_weight = max(min(cf_weight, 1.), 0.)
-                  qa1d(k) = qa1d(k)*(1.-cf_weight) + (1.0*cf_weight)
-               endif
-            endif
+!            if ((qsten(k) > eps)) then
+!               if (rs(k) <= R1) then
+!                  qa1d(k) = 1.
+!               else
+!                  cf_weight = (qsten(k)*dtsave*rho(k)) / (rs(k) + qsten(k)*dtsave*rho(k))
+!                  cf_weight = max(min(cf_weight, 1.), 0.)
+!                  qa1d(k) = qa1d(k)*(1.-cf_weight) + (1.0*cf_weight)
+!               endif
+!            endif
 
             !..Graupel tendency
             qgten(k) = qgten(k) + (prg_scw(k) + prg_rfz(k) &
@@ -1839,6 +1879,15 @@ contains
             if ((qc1d(k) + qcten(k)*dt) .gt. r1) then
                 rc(k) = (qc1d(k) + qcten(k)*dt)*rho(k)
                 nc(k) = max(2., min((nc1d(k)+ncten(k)*dt)*rho(k), nt_c_max))
+
+                if (qal1d(k) == 0.) qal1d(k) = 1.
+                qal1d(k) = max(min(qal1d(k), 1.0), cf_low)
+
+                if (in_cloud) then                   
+                   rc(k) = rc(k)/qal1d(k)
+                   nc(k) = nc(k)/qal1d(k)
+                endif
+                
                 if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
                     nc(k) = Nt_c
                     if (present(lsml)) then
@@ -2028,6 +2077,221 @@ contains
         !.. single timestep and explicit number of drops smaller than Dc_star
         !.. from lookup table.
         !+---+-----------------------------------------------------------------+
+        if (use_cf) then
+
+        do k = kts, kte
+            orho = 1./rho(k)
+
+            ! Needed for cloud fraction
+            omega(k) = -9.8 * w1d(k) * rho(k)
+            dqsdT(k) = lvap(k) * qvs(k) / (Rv*temp(k)**2)
+            al_sgs(k) = 1. / (1. + dqsdT(k)*lvap(k)*ocp(k))
+            bs_sgs(k) = al_sgs(k) * (1.-critical_rh) * qvs(k)
+            sd(k) = al_sgs(k)*(qvs(k)-qv(k))
+            qc_calc(k) = al_sgs(k)*(qv(k)+qc1d(k)-qvs(k))
+            dcond_ls(k) = -al_sgs(k) * dqsdT(k) * (omega(k)/rho(k)*ocp(k))
+
+            ! Initialization of cloud water and cloud fraction
+            if (.not. L_qc(k) .and. ssatw(k) > (critical_rh-1.+0.01)) then
+               ! init
+               pra_sgi(k) = 0.5/bs_sgs(k)*(bs_sgs(k)+qc_calc(k)) * odt
+               prw_sgi(k) = pra_sgi(k)*0.5*(bs_sgs(k)+qc_calc(k)) * rho(k) ! kg m^3 s^-1
+
+               if ((qal1d(k) + pra_sgi(k)*dt) < 0.05 .or. (qc1d(k) + prw_sgi(k)*orho*dt)*rho(k) <= R1) then
+                  pra_sgi(k) = 0.
+                  prw_sgi(k) = 0.
+               endif
+            endif
+
+            
+            ! Radiation
+            ! if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. qc_gridmean(k) > R1) then
+            !    term1 = ((1.-qa1d(k))**2*qa1d(k)**2/qc_gridmean(k)) + (qa1d(k)**2*(1.-qa1d(k))**2/sd(k))
+            !    term2 = (1.-qa1d(k))**2 + qa1d(k)**2
+            !    gterm = 0.5*term1/term2
+            !    pra_lw_sgs(k) = gterm*al_sgs(k)*dqsdT(k)*rthlw1d(k)*(pres(k)/100000.)**0.286
+            !    pra_sw_sgs(k) = gterm*al_sgs(k)*dqsdT(k)*rthsw1d(k)*(pres(k)/100000.)**0.286
+            !    prw_lw_sgs(k) = qa1d(k)*al_sgs(k)*dqsdT(k)*rthlw1d(k)*(pres(k)/100000.)**0.286
+            !    prw_sw_sgs(k) = qa1d(k)*al_sgs(k)*dqsdT(k)*rthsw1d(k)*(pres(k)/100000.)**0.286                              
+            ! endif
+            
+            ! ! BL TERMS
+            ! if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. qc_gridmean(k) > R1) then
+            !    term1 = ((1.-qa1d(k))**2*qa1d(k)**2/qc_gridmean(k)) + (qa1d(k)**2*(1.-qa1d(k))**2/sd(k))
+            !    term2 = (1.-qa1d(k))**2 + qa1d(k)**2
+            !    gterm = 0.5*term1/term2
+            !    pra_bl_sgs(k) = gterm*al_sgs(k) * &
+            !         (rqvbl1d(k) + rqcbl1d(k) - dqsdT(k)*rthbl1d(k)*(pres(k)/100000.)**0.286)
+
+            !    prw_bl_sgs(k) = qa1d(k)*al_sgs(k) * &
+            !         (rqvbl1d(k) + rqcbl1d(k) - dqsdT(k)*(rthbl1d(k)*(pres(k)/100000.)**0.286 - lvap(k)*ocp(k)*rqcbl1d(k)))
+            ! endif
+            ! if (L_qi(k)) prai_bl_sgs(k) = rqibl1d(k) / (ri(k) * orho)
+            
+            ! Large-scale forcing 
+            ! if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. ssatw(k) > (critical_rh-1.) .and. qc_gridmean(k) > R1) then
+            !    term1 = ((1.-qa1d(k))**2*qa1d(k)**2/qc_gridmean(k)) + (qa1d(k)**2*(1.-qa1d(k))**2/sd(k))
+            !    term2 = (1.-qa1d(k))**2 + qa1d(k)**2
+            !    gterm = 0.5*term1/term2
+            !    pra_lsf_sgs(k) = gterm*dcond_ls(k)
+            !    prw_lsf_sgs(k) = qa1d(k)*dcond_ls(k)
+            ! else
+            !    pra_lsf_sgs(k) = 0.
+            !    prw_lsf_sgs(k) = 0.
+            ! endif
+
+            ! ! Erosion
+            ! if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. qc_gridmean(k) > R1) then
+            !    term1 = ((1.-qa1d(k))**2*qa1d(k)**2/qc_gridmean(k)) + (qa1d(k)**2*(1.-qa1d(k))**2/sd(k))
+            ! else
+            !    term1 = 0.
+            ! endif
+            ! term2 = (1.-qa1d(k))**2 + qa1d(k)**2
+            ! gterm = 0.5*term1/term2
+            ! term3 = -3.1*qc_calc(k)/(al_sgs(k)*qvs(k))
+            ! eros_term = -2.25e-5 * exp(term3)
+            ! pra_erode_sgs(k) = min(0., (-gterm*qc_calc(k)*eros_term))
+            ! prw_erode_sgs(k) = min(0., ((qc_gridmean(k) - qc_calc(k)*qa1d(k))*eros_term))
+
+            ! Sum cloud fraction terms
+            qalten(k) = qalten(k) + pra_sgi(k)
+            qaiten(k) = qaiten(k) + 0.
+            qcten_sgs(k) = qcten_sgs(k) + prw_sgi(k)
+            
+            ! Tendencies from above are grid-meam
+            xrc = qc1d(k) + (prw_sgi(k))*dt*orho
+            xnc = 0.
+            
+            if (xrc > R1 .and. (qal1d(k) + qalten(k)*dt >= 0.05)) then
+
+               ! This is the grid-mean value
+               prw_vcd(k) = qcten_sgs(k)*orho
+
+               if (in_cloud) prw_vcd(k) = qcten_sgs(k)*orho / min((qal1d(k)+qalten(k)*dt),1.)
+               
+               !+---+-----------------------------------------------------------------+ !  DROPLET NUCLEATION
+               if (qcten_sgs(k)*dt .gt. eps) then
+                  if (configs%aerosol_aware .or. merra2_aerosol_aware) then
+                     rand = 0.0
+                     if (present(rand3)) then
+                        rand = rand3
+                     endif
+                     xnc = max(2., activ_ncloud(temp(k), w1d(k)+rand, nwfa(k), lsml))
+                  else
+                     xnc = Nt_c
+                     if (present(lsml)) then
+                        if(lsml == 1) then
+                           xnc = Nt_c_l
+                        else
+                           xnc = Nt_c_o
+                        endif
+                     endif
+                  endif
+                  pnc_wcd(k) = 0.5*(xnc-nc(k) + abs(xnc-nc(k)))*odts*orho
+                  
+                  !+---+-----------------------------------------------------------------+ !  EVAPORATION
+               elseif (qcten_sgs(k)*dt .lt. -eps .AND. ssatw(k).lt.-1.e-6 .and. configs%aerosol_aware) then                     
+                  tempc = temp(k) - 273.15
+                  otemp = 1./temp(k)
+                  rvs = rho(k)*qvs(k)
+                  rvs_p = rvs*otemp*(lvap(k)*otemp*oRv - 1.)
+                  rvs_pp = rvs * ( otemp*(lvap(k)*otemp*oRv - 1.) &
+                       *otemp*(lvap(k)*otemp*oRv - 1.) &
+                       + (-2.*lvap(k)*otemp*otemp*otemp*oRv) &
+                       + otemp*otemp)
+                  gamsc = lvap(k)*diffu(k)/tcond(k) * rvs_p
+                  alphsc = 0.5*(gamsc/(1.+gamsc))*(gamsc/(1.+gamsc)) &
+                       * rvs_pp/rvs_p * rvs/rvs_p
+                  alphsc = max(1.e-9, alphsc)
+                  xsat = ssatw(k)
+                  if (abs(xsat).lt. 1.e-9) xsat=0.
+                  t1_evap = 2.*pi*( 1.0 - alphsc*xsat  &
+                       + 2.*alphsc*alphsc*xsat*xsat  &
+                       - 5.*alphsc*alphsc*alphsc*xsat*xsat*xsat ) &
+                       / (1.+gamsc)
+                  
+                  dc_star = dsqrt(-2.d0*dt * t1_evap/(2.*pi) &
+                       * 4.*diffu(k)*ssatw(k)*rvs/rho_w2)
+                  idx_d = max(1, min(int(1.e6*dc_star), nbc))
+                  
+                  idx_n = nint(1.0 + float(nbc) * dlog(nc(k)/t_nc(1)) / nic1)
+                  idx_n = max(1, min(idx_n, nbc))
+                  
+                  !>  - Cloud water lookup table index.
+                  if (rc(k).gt. r_c(1)) then
+                     nic = nint(log10(rc(k)))
+                     do_loop_rc_cond2: do nn = nic-1, nic+1
+                        n = nn
+                        if ( (rc(k)/10.**nn).ge.1.0 .and. (rc(k)/10.**nn).lt.10.0 ) exit do_loop_rc_cond2
+                     enddo do_loop_rc_cond2
+                     idx_c = int(rc(k)/10.**n) + 10*(n-nic2) - (n-nic2)
+                     idx_c = max(1, min(idx_c, ntb_c))
+                  else
+                     idx_c = 1
+                  endif
+                  
+                  !prw_vcd(k) = MAX(DBLE(-rc(k)*orho*odt),                     &
+                  !           -tpc_wev(idx_d, idx_c, idx_n)*orho*odt)
+                  prw_vcd(k) = max(real(-rc(k)*0.99*orho*odt, kind=dp), prw_vcd(k))
+                  pnc_wcd(k) = max(real(-nc(k)*0.99*orho*odt, &
+                       kind=dp), real(-tnc_wev(idx_d, idx_c, idx_n)*orho*odt, kind=dp))
+               else
+                  prw_vcd(k) = max(real(-rc(k)*0.99*orho*odt, kind=dp), prw_vcd(k))                  
+               endif
+            else
+               prw_vcd(k) = -rc(k)*orho*odt
+               pnc_wcd(k) = -nc(k)*orho*odt
+               qalten(k) = -qal1d(k)*odt
+            endif
+               
+            !+---+-----------------------------------------------------------------+
+
+            if (in_cloud) prw_vcd(k) = prw_vcd(k) * qal1d(k)
+            if (in_cloud) pnc_wcd(k) = pnc_wcd(k) * qal1d(k)
+            
+            qvten(k) = qvten(k) - prw_vcd(k)
+            qcten(k) = qcten(k) + prw_vcd(k)
+            ncten(k) = ncten(k) + pnc_wcd(k)
+            
+            ! Be careful here: depending on initial conditions,
+            ! cloud evaporation can increase aerosols
+            if (configs%aerosol_aware) nwfaten(k) = nwfaten(k) - pnc_wcd(k)
+
+            tten(k) = tten(k) + lvap(k)*ocp(k)*prw_vcd(k)*(1-IFDRY)
+            
+            rc(k) = max(R1, (qc1d(k) + dt*qcten(k))*rho(k))
+            if (rc(k).eq.R1) l_qc(k) = .false.
+            nc(k) = max(2., min((nc1d(k)+ncten(k)*dt)*rho(k), nt_c_max))
+
+            qal1d(k) = qal1d(k) + qalten(k)*dt
+            
+            if (qal1d(k) == 0.) qal1d(k) = 1.
+            qal1d(k) = max(min(qal1d(k), 1.0), cf_low)
+            
+            if (in_cloud) then                   
+               rc(k) = rc(k)/qal1d(k)
+               nc(k) = nc(k)/qal1d(k)
+            endif
+                
+            if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
+               nc(k) = Nt_c
+               if (present(lsml)) then
+                  if(lsml == 1) then
+                     nc(k) = Nt_c_l
+                  else
+                     nc(k) = Nt_c_o
+                  endif
+               endif
+            endif
+            qv(k) = max(min_qv, qv1d(k) + DT*qvten(k))
+            temp(k) = t1d(k) + DT*tten(k)
+            rho(k) = RoverRv*pres(k)/(R*temp(k)*(qv(k)+RoverRv))
+            qvs(k) = rslf(pres(k), temp(k))
+            ssatw(k) = qv(k)/qvs(k) - 1.
+         enddo
+
+        else
+           
         do k = kts, kte
             orho = 1./rho(k)
             if ((ssatw(k).gt. eps) .or. (ssatw(k).lt. -eps .and. L_qc(k))) then
@@ -2144,6 +2408,8 @@ contains
             endif
         enddo
 
+        endif
+     
         !=================================================================================================================
         !.. If still subsaturated, allow rain to evaporate, following
         !.. Srivastava & Coen (1992).
@@ -2487,9 +2753,9 @@ contains
                             *odzq*dt*onstep(1))
                         nr(k) = max(r2, nr(k) + (sed_n(k+1)-sed_n(k)) &
                              *odzq*DT*onstep(1))
-                        if ((rr(k) > R1) .and. (qa1d(k) == 0.)) then
-                           qa1d(k) = qa1d(k+1)
-                        endif
+!                        if ((rr(k) > R1) .and. (qa1d(k) == 0.)) then
+!                           qa1d(k) = qa1d(k+1)
+!                        endif
 #if defined(ccpp_default)
                         pfll1(k) = pfll1(k) + sed_r(k)*DT*onstep(1)
 #endif
@@ -2623,9 +2889,9 @@ contains
                         *odzq*onstep(3)*orho
                     rs(k) = max(r1, rs(k) + (sed_s(k+1)-sed_s(k)) &
                         *odzq*DT*onstep(3))
-                    if ((rs(k) > R1) .and. (qa1d(k) == 0.)) then
-                       qa1d(k) = qa1d(k+1)
-                    endif
+!                    if ((rs(k) > R1) .and. (qa1d(k) == 0.)) then
+!                       qa1d(k) = qa1d(k+1)
+!                    endif
 
 #if defined(ccpp_default)
                     pfil1(k) = pfil1(k) + sed_s(k)*DT*onstep(3)
@@ -2772,6 +3038,7 @@ contains
             if (qc1d(k) .le. R1) then
                 qc1d(k) = 0.0
                 nc1d(k) = 0.0
+                qal1d(k) = 0.
             else
                 if (nc1d(k)*rho(k).gt.10000.e6) then
                     nu_c = 2
@@ -2820,11 +3087,11 @@ contains
                 nr1d(k) = 0.0
             else
                 ! if no cloud fraction but rain exists, set to 1
-                if (qa1d(k) == 0.) qa1d(k) = 1.
-                qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
-                ! in cloud rain values
-                qr1d(k) = qr1d(k)*qa1d(k)
-                nr1d(k) = nr1d(k)*qa1d(k)
+!                if (qa1d(k) == 0.) qa1d(k) = 1.
+!                qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
+!                ! in cloud rain values
+!                qr1d(k) = qr1d(k)*qa1d(k)
+!                nr1d(k) = nr1d(k)*qa1d(k)
 
                 lamr = (am_r*crg(3)*org2*nr1d(k)/qr1d(k))**obmr
                 mvd_r(k) = (3.0 + mu_r + 0.672) / lamr
@@ -2841,10 +3108,10 @@ contains
                qs1d(k) = 0.0
             else
                ! if no cloud fraction but rain exists, set to 1
-               if (qa1d(k) == 0.) qa1d(k) = 1.
-               qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
-               ! in cloud rain values
-               qs1d(k) = qs1d(k)*qa1d(k)
+!               if (qa1d(k) == 0.) qa1d(k) = 1.
+!               qa1d(k) = max(min(qa1d(k), 1.0), cf_low)
+!               ! in cloud rain values
+!               qs1d(k) = qs1d(k)*qa1d(k)
             endif
 
             qg1d(k) = qg1d(k) + qgten(k)*DT

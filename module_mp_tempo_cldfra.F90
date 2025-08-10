@@ -22,12 +22,13 @@ module module_mp_tempo_cldfra
 
   contains
 !=================================================================================================================    
-  subroutine tempo_cldfra_driver(i,j,kts,kte,dt,temp,pres,rho,w,qv,qa,qc,qi,qt,qcexp,qr,nr,qiexp,qs,ncexp,niexp)
+  subroutine tempo_cldfra_driver(i,j,kts,kte,dt,temp,pres,rho,w,qv,qa,qabl,qc,qcbl,qi,qt,qcexp,qr,nr, &
+       qiexp,qs,ncexp,niexp)
 !=================================================================================================================
 
     integer, intent(in) :: i, j, kts, kte
     real, intent(in) :: dt
-    real, intent(in) :: pres(:), rho(:), w(:), qt(:)
+    real, intent(in) :: pres(:), rho(:), w(:), qt(:), qabl(:), qcbl(:)
     real, intent(inout) :: qa(:), qv(:), qc(:), temp(:), qcexp(:), qr(:), nr(:), qi(:), qiexp(:), qs(:), &
          ncexp(:), niexp(:)
 
@@ -50,6 +51,12 @@ module module_mp_tempo_cldfra
     real, dimension(kts:kte) :: qaten, qcten, qiten, thten, thten_l, thten_i, qaten_l
 
     do k = kts, kte
+
+       if ((qc(k) <= R1) .and. (qt(k) <= R1)) then
+          qc(k) = qc(k) + qcbl(k)
+          qa(k) = max(qa(k), qabl(k))
+       endif
+
        create_sgs_clouds(k) = .false.
        erode_sgs_clouds(k) = .false.
        evolve_sgs_clouds(k) = .false.
@@ -358,7 +365,7 @@ module module_mp_tempo_cldfra
              ncexp(k) = ncexp(k) + qcten(k)*dt / (am_r*(50.e-6)**3.0)
              qc(k) = qc(k) - qcten(k)*dt
           else
-             qrten = min((1350.*qc(k)**2.47*(10.)**-1.79), qc(k)/dt)
+             qrten = min((1350.*qc(k)**2.47*(10.)**(-1.79)), qc(k)/dt)
              qr(k) = qr(k) + qrten*dt
              nr(k) = nr(k) + qrten*dt / (am_r*(4.*D0r)**3.0)
              qc(k) = qc(k) - qrten*dt

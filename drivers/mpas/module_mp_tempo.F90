@@ -6,7 +6,6 @@ module module_mp_tempo
     use module_mp_tempo_params
     use module_mp_tempo_utils, only : create_bins, table_Efrw, table_Efsw, table_dropEvap, &
          calc_refl10cm, calc_effectRad, hail_size_diagnostics
-    use module_mp_tempo_cldfra, only : tempo_cldfra_driver
     use module_mp_tempo_main, only : mp_tempo_main
     use module_mp_tempo_ml, only : predict_number_sub
     use mpas_atmphys_utilities, only : physics_message, physics_error_fatal
@@ -613,7 +612,8 @@ contains
     ! Required microphysics variables are qv, qc, qr, nr, qi, ni, qs, qg
     ! Optional microphysics variables are aerosol aware (nc, nwfa, nifa, nwfa2d, nifa2d), and hail aware (ng, qg)
 
-    subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, qasgs, qcsgs, qisgs, &
+    subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, qalsgs, qaisgs, &
+        rthbl, rqvbl, rqcbl, rqibl, rthlw, rthsw, &
         nwfa, nifa, nwfa2d, nifa2d, th, pii, p, w, dz, dt_in, itimestep, &
         rainnc, rainncv, snownc, snowncv, graupelnc, graupelncv, sr, frainnc, &
         refl_10cm, diagflag, do_radar_ref, re_cloud, re_ice, re_snow, qcbl, cldfrac, &
@@ -631,7 +631,8 @@ contains
         real, optional, dimension(ims:ime,jms:jme), intent(inout) :: frainnc, max_hail_diameter_column, max_hail_diameter_sfc
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: rainprod, evapprod
         real, dimension(ims:ime, jms:jme), intent(in), optional :: ntc, muc
-        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng, qasgs, qcsgs, qisgs
+        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng, qalsgs, qaisgs
+        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: rthbl, rqvbl, rqcbl, rqibl, rthlw, rthsw
         real, dimension(ims:ime, jms:jme), intent(in), optional :: nwfa2d, nifa2d
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: refl_10cm
         real, dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: qcbl, cldfrac
@@ -640,15 +641,16 @@ contains
         integer, intent(in) :: itimestep
 
         ! Local (1d) variables
-        real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, qasgs1d, qcsgs1d, &
-            qisgs1d, nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qcbl1d, cldfrac1d, qg_max_diam1d
+        real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, qalsgs1d, qaisgs1d, &
+             nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qcbl1d, cldfrac1d, qg_max_diam1d, &
+             rthbl1d, rqvbl1d, rqcbl1d, rqibl1d, rthlw1d, rthsw1d
         real, dimension(kts:kte) :: re_qc1d, re_qi1d, re_qs1d
         real, dimension(kts:kte):: rainprod1d, evapprod1d
         double precision, dimension(kts:kte) :: ncbl1d
         real, dimension(its:ite, jts:jte) :: pcp_ra, pcp_sn, pcp_gr, pcp_ic, frain
         real :: dt, pptrain, pptsnow, pptgraul, pptice
         real :: qc_max, qr_max, qs_max, qi_max, qg_max, ni_max, nr_max
-        real :: nwfa1
+        real :: nwfa1, cf_limit
         real :: ygra1, zans1
         real :: graupel_vol
         real :: tmprc, tmpnc, xDc
@@ -742,16 +744,6 @@ contains
                     nr1d(k) = nr(i,k,j)
                     rho(k) = RoverRv * p1d(k) / (R * t1d(k) * (qv1d(k)+RoverRv))
 
-                    if ((present(qasgs)) .and. (present(qcsgs)) .and. (present(qisgs))) then
-                       qasgs1d(k) = qasgs(i,k,j)
-                       qcsgs1d(k) = qcsgs(i,k,j)
-                       qisgs1d(k) = qisgs(i,k,j)
-                    else
-                       qasgs1d(k) = 0.
-                       qcsgs1d(k) = 0.
-                       qisgs1d(k) = 0.
-                    endif
-
                     sgs_clouds(k) = .false.
                     if (present(qcbl) .and. present(cldfrac)) then
                        qcbl1d(k) = qcbl(i,k,j)
@@ -814,6 +806,30 @@ contains
                         endif
                     enddo
                 endif
+
+                if ((present(qalsgs)) .and. (present(qaisgs))) then
+                   do k = kts, kte
+                       qalsgs1d(k) = qalsgs(i,k,j)
+                       qaisgs1d(k) = qaisgs(i,k,j)
+                       rthbl1d(k) = rthbl(i,k,j)
+                       rqvbl1d(k) = rqvbl(i,k,j)
+                       rqcbl1d(k) = rqcbl(i,k,j)
+                       rqibl1d(k) = rqibl(i,k,j)
+                       rthlw1d(k) = rthlw(i,k,j)
+                       rthsw1d(k) = rthsw(i,k,j)
+                    enddo
+                 else
+                    do k = kts, kte
+                       qalsgs1d(k) = 1.
+                       qaisgs1d(k) = 1.
+                       rthbl1d(k) = 0.
+                       rqvbl1d(k) = 0.
+                       rqcbl1d(k) = 0.
+                       rqibl1d(k) = 0.
+                       rthlw1d(k) = 0.
+                       rthsw1d(k) = 0.
+                    enddo
+                 endif
                 
                 !if (itimestep == 1) then
                 !   call physics_message('--- tempo_3d_to_1d_driver() configuration...')
@@ -826,16 +842,18 @@ contains
 
                 !=================================================================================================================
                 ! Main call to the 1D microphysics
-                call mp_tempo_main(qa1d=qasgs1d, qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
+                 call mp_tempo_main(qal1d=qalsgs1d, qai1d=qaisgs1d, qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, &
+                           qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
+                           rthbl1d=rthbl1d, rqvbl1d=rqvbl1d, rqcbl1d=rqcbl1d, rqibl1d=rqibl1d, rthlw1d=rthlw1d, rthsw1d=rthsw1d, &
                            ni1d=ni1d, nr1d=nr1d, nc1d=nc1d, ng1d=ng1d, nwfa1d=nwfa1d, nifa1d=nifa1d, t1d=t1d, p1d=p1d, &
                            w1d=w1d, dzq=dz1d, pptrain=pptrain, pptsnow=pptsnow, pptgraul=pptgraul, pptice=pptice, &
                            rainprod=rainprod1d, evapprod=evapprod1d, kts=kts, kte=kte, dt=dt, ii=i, jj=j, configs=configs)
 
-                if ((present(qasgs)) .and. (present(qcsgs)) .and. (present(qisgs))) then
-                   call tempo_cldfra_driver(i=i, j=j, kts=kts, kte=kte, dt=dt, temp=t1d, pres=p1d, rho=rho, w=w1d, qv=qv1d, &
-                        qa=qasgs1d, qc=qcsgs1d, qi=qisgs1d, qt=qc1d+qr1d+qi1d+qs1d+qg1d, qcexp=qc1d, &
-                        qr=qr1d, nr=nr1d, qiexp=qi1d, qs=qs1d, ncexp=nc1d, niexp=ni1d)
-                endif
+!                if ((present(qasgs)) .and. (present(qcsgs)) .and. (present(qisgs))) then
+!                   call tempo_cldfra_driver(i=i, j=j, kts=kts, kte=kte, dt=dt, temp=t1d, pres=p1d, rho=rho, w=w1d, qv=qv1d, &
+!                        qa=qasgs1d, qabl=cldfrac1d, qc=qcsgs1d, qcbl=qcbl1d, qi=qisgs1d, qt=qc1d+qr1d+qi1d+qs1d+qg1d, &
+!                        qcexp=qc1d, qr=qr1d, nr=nr1d, qiexp=qi1d, qs=qs1d, ncexp=nc1d, niexp=ni1d)
+!                endif         
                 !=================================================================================================================
                 ! Compute diagnostics and return output to 3D
                 pcp_ra(i,j) = pptrain
@@ -862,11 +880,10 @@ contains
 
                 sr(i,j) = (pptsnow + pptgraul + pptice) / (rainncv(i,j) + R1)
 
-                if ((present(qasgs)) .and. (present(qcsgs)) .and. (present(qisgs))) then
+                if ((present(qalsgs)) .and. (present(qaisgs))) then
                    do k = kts, kte
-                      qasgs(i,k,j) = qasgs1d(k)
-                      qcsgs(i,k,j) = qcsgs1d(k)
-                      qisgs(i,k,j) = qisgs1d(k)
+                      qalsgs(i,k,j) = qalsgs1d(k)
+                      qaisgs(i,k,j) = qaisgs1d(k)
                    enddo
                 endif
 
@@ -913,17 +930,18 @@ contains
                     rainprod(i,k,j) = rainprod1d(k)
                     evapprod(i,k,j) = evapprod1d(k)
 
-                    if (present(qcbl) .and. present(cldfrac)) then
-                       if ((qc1d(k) <= R1) .and. (qcbl1d(k) > 1.e-9) .and. (cldfrac1d(k) > 0.)) then
-                          qc1d(k) = qc1d(k) + qcbl1d(k)/cldfrac1d(k) ! Uses in-cloud PBL mass
-                          sgs_clouds(k) = .true.
-                       else
-                          sgs_clouds(k) = .false.
-                       endif
-                    else
-                       sgs_clouds(k) = .false.
-                    endif
+                    ! if (present(qcbl) .and. present(cldfrac)) then
+                    !    if ((qc1d(k) <= R1) .and. (qcbl1d(k) > 1.e-9) .and. (cldfrac1d(k) > 0.)) then
+                    !       qc1d(k) = qc1d(k) + qcbl1d(k)/cldfrac1d(k) ! Uses in-cloud PBL mass
+                    !       sgs_clouds(k) = .true.
+                    !    else
+                    !       sgs_clouds(k) = .false.
+                    !    endif
+                    ! else
+                    !    sgs_clouds(k) = .false.
+                    ! endif
                  enddo
+
 
                  if (any(sgs_clouds)) then
                     ! return array of ncbl1d
