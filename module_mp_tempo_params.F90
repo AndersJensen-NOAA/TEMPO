@@ -121,7 +121,7 @@ module module_mp_tempo_params
 
     ! Cloud fraction
     real(wp), parameter :: critical_rh = 0.83
-    real(wp), parameter :: cf_low = 0.01 ! Minimum cloud fraction 1%
+    real(wp), parameter :: cf_low = 0.01 ! Minimum cloud fraction at 1%
 
     ! Variable graupel density av_g and bv_g values
     ! Computed from A. Heymsfield: Best - Reynolds relationship

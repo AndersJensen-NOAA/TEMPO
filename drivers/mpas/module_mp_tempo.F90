@@ -612,7 +612,7 @@ contains
     ! Required microphysics variables are qv, qc, qr, nr, qi, ni, qs, qg
     ! Optional microphysics variables are aerosol aware (nc, nwfa, nifa, nwfa2d, nifa2d), and hail aware (ng, qg)
 
-    subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, qalsgs, qaisgs, &
+    subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, qal, qai, precipfrac, &
         rthbl, rqvbl, rqcbl, rqibl, rthlw, rthsw, &
         nwfa, nifa, nwfa2d, nifa2d, th, pii, p, w, dz, dt_in, itimestep, &
         rainnc, rainncv, snownc, snowncv, graupelnc, graupelncv, sr, frainnc, &
@@ -631,8 +631,8 @@ contains
         real, optional, dimension(ims:ime,jms:jme), intent(inout) :: frainnc, max_hail_diameter_column, max_hail_diameter_sfc
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: rainprod, evapprod
         real, dimension(ims:ime, jms:jme), intent(in), optional :: ntc, muc
-        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng, qalsgs, qaisgs
-        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: rthbl, rqvbl, rqcbl, rqibl, rthlw, rthsw
+        real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc, nwfa, nifa, qb, ng, qal, qai, precipfrac
+        real, dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: rthbl, rqvbl, rqcbl, rqibl, rthlw, rthsw
         real, dimension(ims:ime, jms:jme), intent(in), optional :: nwfa2d, nifa2d
         real, dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: refl_10cm
         real, dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: qcbl, cldfrac
@@ -641,7 +641,7 @@ contains
         integer, intent(in) :: itimestep
 
         ! Local (1d) variables
-        real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, qalsgs1d, qaisgs1d, &
+        real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, qal1d, qai1d, precipfrac1d, &
              nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qcbl1d, cldfrac1d, qg_max_diam1d, &
              rthbl1d, rqvbl1d, rqcbl1d, rqibl1d, rthlw1d, rthsw1d
         real, dimension(kts:kte) :: re_qc1d, re_qi1d, re_qs1d
@@ -807,10 +807,11 @@ contains
                     enddo
                 endif
 
-                if ((present(qalsgs)) .and. (present(qaisgs))) then
+                if ((present(qal)) .and. (present(qai))) then
                    do k = kts, kte
-                       qalsgs1d(k) = qalsgs(i,k,j)
-                       qaisgs1d(k) = qaisgs(i,k,j)
+                       qal1d(k) = qal(i,k,j)
+                       qai1d(k) = qai(i,k,j)
+                       precipfrac1d(k) = precipfrac(i,k,j)
                        rthbl1d(k) = rthbl(i,k,j)
                        rqvbl1d(k) = rqvbl(i,k,j)
                        rqcbl1d(k) = rqcbl(i,k,j)
@@ -820,8 +821,9 @@ contains
                     enddo
                  else
                     do k = kts, kte
-                       qalsgs1d(k) = 1.
-                       qaisgs1d(k) = 1.
+                       qal1d(k) = 1.
+                       qai1d(k) = 1.
+                       precipfrac1d(k) = 1.
                        rthbl1d(k) = 0.
                        rqvbl1d(k) = 0.
                        rqcbl1d(k) = 0.
@@ -842,8 +844,8 @@ contains
 
                 !=================================================================================================================
                 ! Main call to the 1D microphysics
-                 call mp_tempo_main(qal1d=qalsgs1d, qai1d=qaisgs1d, qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, &
-                           qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
+                 call mp_tempo_main(qal1d=qal1d, qai1d=qai1d, precipfrac1d=precipfrac1d, &
+                           qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
                            rthbl1d=rthbl1d, rqvbl1d=rqvbl1d, rqcbl1d=rqcbl1d, rqibl1d=rqibl1d, rthlw1d=rthlw1d, rthsw1d=rthsw1d, &
                            ni1d=ni1d, nr1d=nr1d, nc1d=nc1d, ng1d=ng1d, nwfa1d=nwfa1d, nifa1d=nifa1d, t1d=t1d, p1d=p1d, &
                            w1d=w1d, dzq=dz1d, pptrain=pptrain, pptsnow=pptsnow, pptgraul=pptgraul, pptice=pptice, &
@@ -880,10 +882,11 @@ contains
 
                 sr(i,j) = (pptsnow + pptgraul + pptice) / (rainncv(i,j) + R1)
 
-                if ((present(qalsgs)) .and. (present(qaisgs))) then
+                if ((present(qal)) .and. (present(qai))) then
                    do k = kts, kte
-                      qalsgs(i,k,j) = qalsgs1d(k)
-                      qaisgs(i,k,j) = qaisgs1d(k)
+                      qal(i,k,j) = qal1d(k)
+                      qai(i,k,j) = qai1d(k)
+                      precipfrac(i,k,j) = precipfrac1d(k)
                    enddo
                 endif
 
