@@ -650,8 +650,8 @@ contains
     ! Required microphysics variables are qv, qc, qr, nr, qi, ni, qs, qg
     ! Optional microphysics variables are aerosol aware (nc, nwfa, nifa, nwfa2d, nifa2d), and hail aware (ng, qg)
 
-    subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, qal, qai, precipfrac, &
-        rthbl, rqvbl, rqcbl, rqibl, rthlw, rthsw, &
+    subroutine tempo_3d_to_1d_driver(qv, qc, qr, qi, qs, qg, qb, ni, nr, nc, ng, &
+        qal, qai, precipfrac, rthbl, rqvbl, rqcbl, rqibl, rthlw, rthsw, &
         nwfa, nifa, nwfa2d, nifa2d, th, pii, p, w, dz, dt_in, itimestep, &
         rainnc, rainncv, snownc, snowncv, graupelnc, graupelncv, sr, frainnc, &
         refl_10cm, diagflag, do_radar_ref, re_cloud, re_ice, re_snow, qcbl, cldfrac, &
@@ -679,16 +679,16 @@ contains
         integer, intent(in) :: itimestep
 
         ! Local (1d) variables
-        real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, qal1d, qai1d, precipfrac1d, &
+        real, dimension(kts:kte) :: qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
              nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, rho, dbz, qcbl1d, cldfrac1d, qg_max_diam1d, &
-             rthbl1d, rqvbl1d, rqcbl1d, rqibl1d, rthlw1d, rthsw1d
+             qal1d, qai1d, precipfrac1d, rthbl1d, rqvbl1d, rqcbl1d, rqibl1d, rthlw1d, rthsw1d
         real, dimension(kts:kte) :: re_qc1d, re_qi1d, re_qs1d
         real, dimension(kts:kte):: rainprod1d, evapprod1d
         double precision, dimension(kts:kte) :: ncbl1d
         real, dimension(its:ite, jts:jte) :: pcp_ra, pcp_sn, pcp_gr, pcp_ic, frain
         real :: dt, pptrain, pptsnow, pptgraul, pptice
         real :: qc_max, qr_max, qs_max, qi_max, qg_max, ni_max, nr_max
-        real :: nwfa1, cf_limit
+        real :: nwfa1
         real :: ygra1, zans1
         real :: graupel_vol
         real :: tmprc, tmpnc, xDc
@@ -889,11 +889,6 @@ contains
                            w1d=w1d, dzq=dz1d, pptrain=pptrain, pptsnow=pptsnow, pptgraul=pptgraul, pptice=pptice, &
                            rainprod=rainprod1d, evapprod=evapprod1d, kts=kts, kte=kte, dt=dt, ii=i, jj=j, configs=configs)
 
-!                if ((present(qasgs)) .and. (present(qcsgs)) .and. (present(qisgs))) then
-!                   call tempo_cldfra_driver(i=i, j=j, kts=kts, kte=kte, dt=dt, temp=t1d, pres=p1d, rho=rho, w=w1d, qv=qv1d, &
-!                        qa=qasgs1d, qabl=cldfrac1d, qc=qcsgs1d, qcbl=qcbl1d, qi=qisgs1d, qt=qc1d+qr1d+qi1d+qs1d+qg1d, &
-!                        qcexp=qc1d, qr=qr1d, nr=nr1d, qiexp=qi1d, qs=qs1d, ncexp=nc1d, niexp=ni1d)
-!                endif         
                 !=================================================================================================================
                 ! Compute diagnostics and return output to 3D
                 pcp_ra(i,j) = pptrain
@@ -971,18 +966,17 @@ contains
                     rainprod(i,k,j) = rainprod1d(k)
                     evapprod(i,k,j) = evapprod1d(k)
 
-                    ! if (present(qcbl) .and. present(cldfrac)) then
-                    !    if ((qc1d(k) <= R1) .and. (qcbl1d(k) > 1.e-9) .and. (cldfrac1d(k) > 0.)) then
-                    !       qc1d(k) = qc1d(k) + qcbl1d(k)/cldfrac1d(k) ! Uses in-cloud PBL mass
-                    !       sgs_clouds(k) = .true.
-                    !    else
-                    !       sgs_clouds(k) = .false.
-                    !    endif
-                    ! else
-                    !    sgs_clouds(k) = .false.
-                    ! endif
+                    if (present(qcbl) .and. present(cldfrac)) then
+                       if ((qc1d(k) <= R1) .and. (qcbl1d(k) > 1.e-9) .and. (cldfrac1d(k) > 0.)) then
+                          qc1d(k) = qc1d(k) + qcbl1d(k)/cldfrac1d(k) ! Uses in-cloud PBL mass
+                          sgs_clouds(k) = .true.
+                       else
+                          sgs_clouds(k) = .false.
+                       endif
+                    else
+                       sgs_clouds(k) = .false.
+                    endif
                  enddo
-
 
                  if (any(sgs_clouds)) then
                     ! return array of ncbl1d
