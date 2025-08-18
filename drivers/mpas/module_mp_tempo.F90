@@ -23,11 +23,11 @@ contains
     !   l_mp_tables = .false. to build lookup tables. If l_mp_tables = .true., lookup tables are built.
 
     ! AAJ No support yet for hail_aware in microphysics driver
-    subroutine tempo_init(l_mp_tables, hail_aware_flag, aerosol_aware_flag)
+    subroutine tempo_init(l_mp_tables, hail_aware_flag, aerosol_aware_flag, cldfra_flag, incld_flag)
 
         ! Input arguments:
         logical, intent(in) :: l_mp_tables
-        logical, intent(in), optional :: aerosol_aware_flag, hail_aware_flag
+        logical, intent(in), optional :: aerosol_aware_flag, hail_aware_flag, cldfra_flag, incld_flag
 
         integer, parameter :: open_OK = 0
         integer, parameter :: num_records = 5
@@ -68,6 +68,44 @@ contains
             av_g(idx_bg1) = av_g_old
             bv_g(idx_bg1) = bv_g_old
             dimNRHG = NRHG1
+        endif
+
+        if (present(cldfra_flag)) then
+           configs%cldfra = cldfra_flag
+
+           write(message, '(L1)') configs%cldfra
+           call physics_message('--- tempo_init() called with cldfra_flag = ' // trim(message))
+
+           if (present(incld_flag)) then
+              if (configs%cldfra) then
+                 configs%incld = incld_flag
+
+                 write(message, '(L1)') configs%incld
+                 call physics_message('--- tempo_init() called with incld_flag = ' // trim(message))
+              else
+                 call physics_message('--- tempo_init() called with cldfra_flag = F ---> setting incld_flag = F')
+                 configs%incld = .false.
+              endif
+           else
+              if (configs%cldfra) then
+                 write(message, '(L1)') configs%cldfra
+                 call physics_message('--- tempo_init() called with cldfra_flag = ' // trim(message))
+
+                 configs%incld = .true.
+                 write(message, '(L1)') configs%incld
+                 call physics_message('--- tempo_init() incld_flag NOT present... setting incld_flag = ' // trim(message))
+              else
+                 write(message, '(L1)') configs%cldfra
+                 call physics_message('--- tempo_init() called with cldfra_flag = ' // trim(message))
+
+                 configs%incld = .false.
+                 write(message, '(L1)') configs%incld
+                 call physics_message('--- tempo_init() incld_flag NOT present... setting incld_flag = ' // trim(message))
+              endif
+           endif
+        else
+           configs%cldfra = .false.
+           configs%incld = .false.
         endif
 
         micro_init = .false.

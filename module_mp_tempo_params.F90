@@ -37,6 +37,8 @@ module module_mp_tempo_params
     type ty_tempo_cfg
         logical :: aerosol_aware
         logical :: hail_aware
+        logical :: cldfra
+        logical :: incld
     end type ty_tempo_cfg
 
     type(ty_tempo_cfg) configs
