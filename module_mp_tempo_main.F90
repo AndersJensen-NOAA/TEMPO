@@ -101,7 +101,6 @@ contains
             qsten, qgten, qbten, niten, nrten, ncten, ngten, nwfaten, nifaten
 
         real(wp), dimension(kts:kte) :: qcten_sgs, qalten, qaiten, qal, qai, pf
-        
         real(dp), dimension(kts:kte) :: prw_vcd
         real(dp), dimension(kts:kte) :: prw_sgi, prw_sge, prw_sgf, prw_slw, prw_ssw, prw_sbl
         real(dp), dimension(kts:kte) :: pra_sgi, pra_sge, pra_sgf, pra_slw, pra_ssw, pra_sbl, pra_ibl
@@ -150,7 +149,6 @@ contains
         real(wp), dimension(kts:kte) :: omega, dqsdT, al_sgs, &
              bs_sgs, sd, qc_calc, dcond_ls, &
              dqsdTi, al_sgsi, bs_sgsi, sdi, qi_calc
-
         real(wp) :: term1, term2, term3, gterm, eros_term
         
         real(dp), dimension(kts:kte) :: ilamr, ilamg, n0_r, n0_g
@@ -188,7 +186,7 @@ contains
         real(wp) :: Ef_ra, Ef_sa, Ef_ga
         real(wp) :: dtsave, odts, odt, odzq, hgt_agl, SR
         real(wp) :: xslw1, ygra1, zans1, eva_factor
-        real(wp) :: melt_f, rand, cf_weight, tend_weight, ql_ten, qi_ten
+        real(wp) :: melt_f, rand
         integer :: i, k, k2, n, nn, nstep, k_0, kbot, IT, iexfrq, k_melting
         integer, dimension(5) :: ksed1
         integer :: nir, nis, nig, nii, nic, niin
@@ -203,7 +201,7 @@ contains
         integer :: nu_c, decfl_
 
         !=================================================================================================================
-        
+
         debug_flag = .false.
 
         no_micro = .true.
@@ -238,12 +236,10 @@ contains
         do k = kts, kte
             tten(k) = 0.
             qvten(k) = 0.
-
             qcten_sgs(k) = 0.
             qalten(k) = 0.
             qaiten(k) = 0.
             precipfrac1d(k) = max(qal1d(k),qai1d(k))
-            
             qcten(k) = 0.
             qiten(k) = 0.
             qrten(k) = 0.
@@ -265,7 +261,6 @@ contains
             prw_slw(k) = 0.
             prw_ssw(k) = 0.
             prw_sbl(k) = 0.                                                            
-
             pra_sgi(k) = 0.
             pra_sge(k) = 0.
             pra_sgf(k) = 0.
@@ -431,7 +426,7 @@ contains
             mvd_r(k) = 0.
             mvd_c(k) = 0.
         enddo
-        
+
         !=================================================================================================================
         ! Convert microphysics variables to concentrations (kg / m^3 and # / m^3)
         do k = kts, kte
@@ -495,8 +490,8 @@ contains
                         endif
                     endif
                 endif
-             else
-                qal1d(k) = 0.
+            else
+                qal1d(k) = 0.0
                 qc1d(k) = 0.0
                 nc1d(k) = 0.0
                 rc(k) = R1
@@ -530,8 +525,8 @@ contains
                     lami = cie(2)/300.E-6
                     ni(k) = cig(1)*oig2*ri(k)/am_i*lami**bm_i
                 endif
-             else
-                qai1d(k) = 0.
+            else
+                qai1d(k) = 0.0
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
                 ri(k) = R1
@@ -548,7 +543,7 @@ contains
                    ! if no qc or qi, estimate precip fraction from max-in-column
                    precipfrac1d(k) = max(maxval(qal1d), maxval(qai1d))
                 else
-                   ! scale precip fraction by mass
+                   ! ad-hoc scaling of precip fraction by mass
                    precipfrac1d(k) = max(qal1d(k), qai1d(k)) * &
                         sqrt(max(((qr1d(k)+qs1d(k))/(qc1d(k)+qi1d(k))), 1.))
                 endif
@@ -576,9 +571,7 @@ contains
                     lamr = (3.0 + mu_r + 0.672) / mvd_r(k)
                     nr(k) = crg(2)*org3*rr(k)*lamr**bm_r / am_r
                 endif
-             else
-                ! if no qc and no qr, set liquid cloud fraction to zero
-! AAJ TEST                if (qc1d(k) .le. R1) qal1d(k) = 0.
+            else
                 qr1d(k) = 0.0
                 nr1d(k) = 0.0
                 rr(k) = R1
@@ -602,11 +595,7 @@ contains
                    rs(k) = rs(k)/precipfrac1d(k)
                 endif
             else
-!!               if (qi1d(k) .le. R1) qai1d(k) = 0.
-!!               if ((qi1d(k) .le. R1) .and. (qc1d(k) .le. R1) .and. (qr1d(k) .le. R1)) precipfrac1d(k) = 0.
-
                if (qr1d(k) .le. R1) precipfrac1d(k) = 0.               
-             
                 qs1d(k) = 0.0
                 rs(k) = R1
                 L_qs(k) = .false.
@@ -618,7 +607,6 @@ contains
                 ng(k) = max(r2, ng1d(k)*rho(k))
                 rb(k) = max(qg1d(k)/rho_g(nrhg), qb1d(k))
                 rb(k) = min(qg1d(k)/rho_g(1), rb(k))
-
                 qb1d(k) = rb(k)
                 idx_bg(k) = max(1,min(nint(qg1d(k)/rb(k) *0.01)+1,nrhg))
                 idx_table(k) = idx_bg(k)
@@ -638,7 +626,7 @@ contains
                     lamg = (3.0 + mu_g + 0.672) / mvd_g(k)
                     ng(k) = cgg(2,1)*ogg3*rg(k)*lamg**bm_g / am_g(idx_bg(k))
                 endif
-             else
+            else
                 qg1d(k) = 0.0
                 ng1d(k) = 0.0
                 qb1d(k) = 0.0
@@ -668,7 +656,7 @@ contains
                pf(k) = 1.
             endif
         enddo
-        
+
         !     if (debug_flag) then
         !      write(mp_debug,*) 'DEBUG-VERBOSE at (i,j) ', ii, ', ', jj
         !      CALL wrf_debug(550, mp_debug)
@@ -720,11 +708,11 @@ contains
         !.. condense cloud water, just exit quickly!
         if (no_micro) then
            qal1d = 0.
-           qai1d = 0.           
+           qai1d = 0.
+           precipfrac1d = 0.
            return
         endif
-        
-        !..Calculate y-intercept, slope, and useful moments for snow.
+                !..Calculate y-intercept, slope, and useful moments for snow.
         if (.not. iiwarm) then
             do k = kts, kte
                 if (.not. L_qs(k)) CYCLE
@@ -912,7 +900,7 @@ contains
             endif
 
             !>  - Rain collecting cloud water.  In CE, assume Dc<<Dr and vtc=~0.
-            if (L_qr(k) .and. mvd_r(k).gt. D0r .and. mvd_c(k).gt. D0c) then               
+            if (L_qr(k) .and. mvd_r(k).gt. D0r .and. mvd_c(k).gt. D0c) then
                 lamr = 1./ilamr(k)
                 idx = 1 + int(nbr*log(real(mvd_r(k)/Dr(1), kind=dp)) / log(real(Dr(nbr)/Dr(1), kind=dp)))
                 idx = min(idx, nbr)
@@ -1333,28 +1321,26 @@ contains
                     !+---+------------------ END NEW ICE NUCLEATION -----------------------+
 
                     if (configs%cldfra) then
-                       
-                    ! Update to ice cloud fraction from nucleation
-                    if (pri_rfz(k)*pf(k)*dtsave > eps) then
-                       qaiten(k) = qaiten(k) + precipfrac1d(k)*odts
-                    endif
-                    
-                    if ((pri_wfz(k)*qal(k) + pri_inu(k) + pri_iha(k))*dtsave > eps) then
-                       if (qal1d(k) > cf_low) then
-                          qaiten(k) = qaiten(k) + qal1d(k)*odts
-                       else
-                          omega(k) = -9.8 * w1d(k) * rho(k)
-                          dqsdTi(k) = lsub * qvsi(k) / (Rv*temp(k)**2)
-                          al_sgsi(k) = 1. / (1. + dqsdTi(k)*lsub*ocp(k))
-                          bs_sgsi(k) = al_sgsi(k) * (1.-critical_rh) * qvsi(k)
-                          sdi(k) = al_sgsi(k)*(qvsi(k)-qv(k))
-                          qi_calc(k) = al_sgsi(k)*(qv(k)+ri(k)/rho(k)*qai(k)-qvsi(k))
-                          qaiten(k) = qaiten(k) + max((0.5/bs_sgsi(k)*(bs_sgsi(k)+qi_calc(k)) * odt), 0.05)
+                       ! Update to ice cloud fraction from nucleation
+                       if (pri_rfz(k)*pf(k)*dtsave > eps) then
+                          qaiten(k) = qaiten(k) + precipfrac1d(k)*odts
                        endif
-                    endif                    
 
+                       if ((pri_wfz(k)*qal(k) + pri_inu(k) + pri_iha(k))*dtsave > eps) then
+                          if (qal1d(k) > cf_low) then
+                             qaiten(k) = qaiten(k) + qal1d(k)*odts
+                          else
+                             omega(k) = -9.8 * w1d(k) * rho(k)
+                             dqsdTi(k) = lsub * qvsi(k) / (Rv*temp(k)**2)
+                             al_sgsi(k) = 1. / (1. + dqsdTi(k)*lsub*ocp(k))
+                             bs_sgsi(k) = al_sgsi(k) * (1.-critical_rh) * qvsi(k)
+                             sdi(k) = al_sgsi(k)*(qvsi(k)-qv(k))
+                             qi_calc(k) = al_sgsi(k)*(qv(k)+ri(k)/rho(k)*qai(k)-qvsi(k))
+                             qaiten(k) = qaiten(k) + max((0.5/bs_sgsi(k)*(bs_sgsi(k)+qi_calc(k)) * odt), 0.05)
+                          endif
+                       endif
                     endif
-                 
+
                     !..Deposition/sublimation of cloud ice (Srivastava & Coen 1992).
                     if (L_qi(k)) then
                         lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
@@ -1696,8 +1682,8 @@ contains
 
             !..Water vapor tendency
             qvten(k) = qvten(k) + (-pri_inu(k) - pri_iha(k) - pri_ide(k)*qai(k)   &
-                 + pf(k)*(-prs_ide(k) - prs_sde(k)) - prg_gde(k)) &
-                 * orho
+                + pf(k)*(-prs_ide(k) - prs_sde(k)) - prg_gde(k)) &
+                * orho
 
             !..Cloud water tendency
             qcten(k) = qcten(k) + (-prr_wau(k) - pri_wfz(k) &
@@ -1718,7 +1704,6 @@ contains
             !.. 1 and 50 microns.  Also no more than Nt_c_max drops total.
             xrc=max(r1, (qc1d(k) + qcten(k)*dtsave)*rho(k))
             xnc=max(2., (nc1d(k) + ncten(k)*dtsave)*rho(k))
-
             if (xrc .gt. r1) then
                 if (xnc.gt.10000.e6) then
                     nu_c = 2
@@ -1752,16 +1737,16 @@ contains
 
             !..Cloud ice mixing ratio tendency
             qiten(k) = qiten(k) + (pri_inu(k) + pri_iha(k) + pri_ihm(k)    &
-                 + pri_wfz(k)*qal(k) + pri_rfz(k)*pf(k) + (pri_ide(k) &
-                 - prs_iau(k) - prs_sci(k) - pri_rci(k))*qai(k)) &
-                 * orho
+                + pri_wfz(k)*qal(k) + pri_rfz(k)*pf(k) + (pri_ide(k) &
+                - prs_iau(k) - prs_sci(k) - pri_rci(k))*qai(k)) &
+                * orho
 
             !..Cloud ice number tendency.
             niten(k) = niten(k) + (pni_inu(k) + pni_iha(k) + pni_ihm(k)    &
-                 + pni_wfz(k)*qal(k) + pni_rfz(k)*pf(k) + (pni_ide(k) &
-                 - pni_iau(k) - pni_sci(k) - pni_rci(k))*qai(k)) &
-                 * orho
-            
+                + pni_wfz(k)*qal(k) + pni_rfz(k)*pf(k) + (pni_ide(k) &
+                - pni_iau(k) - pni_sci(k) - pni_rci(k))*qai(k)) &
+                * orho
+
             !..Cloud ice mass/number balance; keep mass-wt mean size between
             !.. 5 and 300 microns.  Also no more than 500 xtals per liter.
             xri=max(r1,(qi1d(k) + qiten(k)*dtsave)*rho(k))
@@ -1788,22 +1773,21 @@ contains
 
             !..Rain tendency
             qrten(k) = qrten(k) + ((prr_wau(k) + prr_rcw(k))*qal(k) &
-                 + (prr_sml(k) + prr_gml(k) + prr_rcs(k) &
-                 + prr_rcg(k) - prg_rfz(k) &
-                 - pri_rfz(k))*pf(k) - qai(k)*prr_rci(k)) &
-                 * orho
+                + (prr_sml(k) + prr_gml(k) + prr_rcs(k) &
+                + prr_rcg(k) - prg_rfz(k) &
+                - pri_rfz(k))*pf(k) - qai(k)*prr_rci(k)) &
+                * orho
 
             !..Rain number tendency
             nrten(k) = nrten(k) + (pnr_wau(k)*qal(k) + (pnr_sml(k) + pnr_gml(k) &
-                 - pnr_rfz(k) + pnr_rcr(k) + pnr_rcg(k) &
-                 + pnr_rcs(k) + pni_rfz(k)*pf(k)) + pnr_rci(k)*qai(k)) &
-                 * orho
-               
+                - pnr_rfz(k) - pnr_rcr(k) - pnr_rcg(k) &
+                - pnr_rcs(k) - pni_rfz(k)*pf(k)) - pnr_rci(k)*qai(k)) &
+                * orho
+
             !..Rain mass/number balance; keep median volume diameter between
             !.. 37 microns (D0r*0.75) and 2.5 mm.
             xrr=max(R1,(qr1d(k) + qrten(k)*dtsave)*rho(k))
             xnr=max(R2,(nr1d(k) + nrten(k)*dtsave)*rho(k))
-
             if (xrr.gt. R1) then
                 lamr = (am_r*crg(3)*org2*xnr/xrr)**obmr
                 mvd_r(k) = (3.0 + mu_r + 0.672) / lamr
@@ -1825,31 +1809,31 @@ contains
 
             !..Snow tendency
             qsten(k) = qsten(k) + ((prs_iau(k) + prs_sci(k))*qai(k) + prs_sde(k)  &
-                 + prs_scw(k)*qal(k) + (prs_rcs(k) - prr_sml(k))*pf(k) &
-                 + prs_ide(k) - prs_ihm(k)) &
-                 * orho
+                + prs_scw(k)*qal(k) + (prs_rcs(k) - prr_sml(k))*pf(k) &
+                + prs_ide(k) - prs_ihm(k)) &
+                * orho
 
             !..Graupel tendency
             qgten(k) = qgten(k) + (prg_scw(k)*qal(k) &
-                 + (prg_rfz(k) + prg_rcg(k) + prg_rcs(k))*pf(k) &
-                 + prg_gde(k) + prg_gcw(k)*qal(k) &
-                 + prg_rci(k)*qai(k) - prg_ihm(k) &
-                 - prr_gml(k)) &
-                 * orho
+                + (prg_rfz(k) + prg_rcg(k) + prg_rcs(k))*pf(k) &
+                + prg_gde(k) + prg_gcw(k)*qal(k) &
+                + prg_rci(k)*qai(k) - prg_ihm(k) &
+                - prr_gml(k)) &
+                * orho
             
             !..Graupel number tendency
             ngten(k) = ngten(k) + (qal(k)*png_scw(k) &
-                 + (png_rfz(k) - png_rcg(k) + png_rcs(k))*pf(k) &
-                 + png_rci(k)*qai(k) + png_gde(k) &
-                 - pnr_gml(k)) * orho
+                + (png_rfz(k) - png_rcg(k) + png_rcs(k))*pf(k) &
+                + png_rci(k)*qai(k) + png_gde(k) &
+                - pnr_gml(k)) * orho
             
             !..Graupel volume mixing ratio tendency
             qbten(k) = qbten(k) + ((pbg_scw(k) + pbg_gcw(k))*qal(k) &
-                 + qai(k)*pbg_rci(k) + (pbg_rcs(k) + pbg_rfz(k) &
-                 + pbg_rcg(k) + pbg_sml(k))*pf(k) - pbg_gml(k) &
-                 + (prg_gde(k) - prg_ihm(k)) /rho_g(idx_bg(k)) ) &
-                 * orho
-            
+                + qai(k)*pbg_rci(k) + (pbg_rcs(k) + pbg_rfz(k) &
+                + pbg_rcg(k) + pbg_sml(k))*pf(k) - pbg_gml(k) &
+                + (prg_gde(k) - prg_ihm(k)) /rho_g(idx_bg(k)) ) &
+                * orho
+
             !..Graupel mass/number balance; keep its median volume diameter between
             !.. 3.0 times minimum size (D0g) and 25 mm.
             xrg=max(r1,(qg1d(k) + qgten(k)*dtsave)*rho(k))
@@ -1881,7 +1865,7 @@ contains
 
             !..Temperature tendency
             if (temp(k).lt.T_0) then
-               tten(k) = tten(k) &
+                tten(k) = tten(k) &
                     + ( lsub*ocp(k)*(pri_inu(k) + pri_ide(k)*qai(k) &
                     + prs_ide(k)*pf(k) + pf(k)*prs_sde(k) &
                     + prg_gde(k) + pri_iha(k)) &
@@ -1892,7 +1876,7 @@ contains
                     + prr_rci(k)*qai(k) + pf(k)*prg_rcg(k)) &
                     )*orho * (1-IFDRY)
             else
-               tten(k) = tten(k) &
+                tten(k) = tten(k) &
                     + ( lfus*ocp(k)*(-prr_sml(k)*pf(k) - pf(k)*prr_gml(k) &
                     - prr_rcg(k)*pf(k) - pf(k)*prr_rcs(k)) &
                     + lsub*ocp(k)*(prs_sde(k)*pf(k) + prg_gde(k)) &
@@ -1935,16 +1919,6 @@ contains
             if ((qc1d(k) + qcten(k)*dt) .gt. r1) then
                 rc(k) = (qc1d(k) + qcten(k)*dt)*rho(k)
                 nc(k) = max(2., min((nc1d(k)+ncten(k)*dt)*rho(k), nt_c_max))
-
-!                if (qal1d(k) < cf_low) qal1d(k) = 5.57*(1000.*rc(k)/rho(k))**(0.78)
-!                qal1d(k) = max(min(qal1d(k), 1.0), cf_low)
-
-!                if (configs%incld) then
-!                   qal(k) = qal1d(k)
-!                   rc(k) = rc(k)/qal1d(k)
-!                   nc(k) = nc(k)/qal1d(k)
-!                endif
-                
                 if (.not.(configs%aerosol_aware .or. merra2_aerosol_aware)) then
                     nc(k) = Nt_c
                     if (present(lsml)) then
@@ -1965,14 +1939,6 @@ contains
             if ((qi1d(k) + qiten(k)*DT) .gt. R1) then
                 ri(k) = (qi1d(k) + qiten(k)*DT)*rho(k)
                 ni(k) = max(R2, (ni1d(k) + niten(k)*DT)*rho(k))
-
-!                qai1d(k) = max(min(qai1d(k), 1.0), cf_low)
-!                if (configs%incld) then
-!                   qai(k) = qai1d(k)
-!                   ri(k) = ri(k)/qai1d(k)
-!                   ni(k) = ni(k)/qai1d(k)
-!                endif
-                
                 L_qi(k) = .true.
             else
                 ri(k) = R1
@@ -1983,23 +1949,6 @@ contains
             if ((qr1d(k) + qrten(k)*DT) .gt. R1) then
                 rr(k) = (qr1d(k) + qrten(k)*DT)*rho(k)
                 nr(k) = max(R2, (nr1d(k) + nrten(k)*DT)*rho(k))
-
-!                if (precipfrac1d(k) <= cf_low) then
-!                   if (((qc1d(k) + qcten(k)*dt) .le. R1) .and. ((qi1d(k) + qiten(k)*dt) .le. R1)) then
-!                      precipfrac1d(k) = max(maxval(qal1d), maxval(qai1d))                      
-!                   else
-!                      precipfrac1d(k) = max(qal1d(k), qai1d(k)) * &
-!                           sqrt(max(((qr1d(k)+qrten(k)*dt+qs1d(k)+qsten(k)*dt) / &
-!                           (qc1d(k)+qcten(k)*dt+qi1d(k)+qiten(k)*dt)), 1.))
-!                   endif
-!                endif
-
-!                precipfrac1d(k) = max(min(precipfrac1d(k), 1.0), cf_low*1.)
-!                if (configs%incld) then                   
-!                   rr(k) = rr(k)/precipfrac1d(k)
-!                   nr(k) = nr(k)/precipfrac1d(k)
-!                endif
-                
                 L_qr(k) = .true.
                 lamr = (am_r*crg(3)*org2*nr(k)/rr(k))**obmr
                 mvd_r(k) = (3.0 + mu_r + 0.672) / lamr
@@ -2020,24 +1969,6 @@ contains
 
             if ((qs1d(k) + qsten(k)*DT) .gt. R1) then
                 rs(k) = (qs1d(k) + qsten(k)*DT)*rho(k)
-               
-!                if (precipfrac1d(k) <= cf_low) then
-!                   if (((qc1d(k) + qcten(k)*dt) .le. R1) .and. ((qi1d(k) + qiten(k)*dt) .le. R1)) then
-!                      precipfrac1d(k) = max(maxval(qal1d), maxval(qai1d))                      
-!                   else
-!                      precipfrac1d(k) = max(qal1d(k), qai1d(k)) * &
-!                           sqrt(max(((qr1d(k)+qrten(k)*dt+qs1d(k)+qsten(k)*dt) / &
-!                           (qc1d(k)+qcten(k)*dt+qi1d(k)+qiten(k)*dt)), 1.))
-!                   endif
-!                endif
-
-!                precipfrac1d(k) = max(min(precipfrac1d(k), 1.0), cf_low*1.)
-!                if (configs%incld) then
-!                   pf(k) = precipfrac1d(k)
-!                   rs(k) = rs(k)/precipfrac1d(k)
-!                endif
-                
-
                 L_qs(k) = .true.
             else
                 rs(k) = R1
@@ -2509,7 +2440,7 @@ contains
         enddo
 
         endif
-     
+
         !=================================================================================================================
         !.. If still subsaturated, allow rain to evaporate, following
         !.. Srivastava & Coen (1992).
@@ -2585,24 +2516,6 @@ contains
                 rr(k) = max(r1, (qr1d(k) + dt*qrten(k))*rho(k))
                 qv(k) = max(1.e-10, qv1d(k) + dt*qvten(k))
                 nr(k) = max(r2, (nr1d(k) + dt*nrten(k))*rho(k))
-
-!                if (precipfrac1d(k) <= cf_low) then
-!                   if (((qc1d(k) + qcten(k)*dt) .le. R1) .and. ((qi1d(k) + qiten(k)*dt) .le. R1)) then
-!                      precipfrac1d(k) = max(maxval(qal1d), maxval(qai1d))                      
-!                   else
-!                      precipfrac1d(k) = max(qal1d(k), qai1d(k)) * &
-!                           sqrt(max(((qr1d(k)+qrten(k)*dt+qs1d(k)+qsten(k)*dt) / &
-!                           (qc1d(k)+qcten(k)*dt+qi1d(k)+qiten(k)*dt)), 1.))
-!                   endif
-!                endif
-
-!                precipfrac1d(k) = max(min(precipfrac1d(k), 1.0), cf_low*1.)
-!                if (configs%incld) then
-!                   pf(k) = precipfrac1d(k)
-!                   rr(k) = rr(k)/precipfrac1d(k)
-!                   nr(k) = nr(k)/precipfrac1d(k)
-!                endif
-                
                 temp(k) = t1d(k) + DT*tten(k)
                 rho(k) = RoverRv*pres(k)/(R*temp(k)*(qv(k)+RoverRv))
             endif
@@ -2857,10 +2770,8 @@ contains
                     nrten(k) = nrten(k) - sed_n(k)*odzq*onstep(1)*orho*pf(k)
                     rr(k) = max(r1, rr(k) - sed_r(k)*odzq*dt*onstep(1))
                     nr(k) = max(r2, nr(k) - sed_n(k)*odzq*dt*onstep(1))
-                    if ((rr(k) > R1) .and. (precipfrac1d(k) < cf_low)) then
-                       precipfrac1d(k) = 1.
-!                       if (configs%incld) pf(k) = precipfrac1d(k)
-                    endif
+                    if ((rr(k) > R1) .and. (precipfrac1d(k) < cf_low)) precipfrac1d(k) = 1.
+
 #if defined(ccpp_default)
                     pfll1(k) = pfll1(k) + sed_r(k)*DT*onstep(1)
 #endif
@@ -2868,17 +2779,17 @@ contains
                         odzq = 1./dzq(k)
                         orho = 1./rho(k)
                         qrten(k) = qrten(k) + (sed_r(k+1)-sed_r(k)) &
-                             *odzq*onstep(1)*orho*pf(k)
+                            *odzq*onstep(1)*orho*pf(k)
                         nrten(k) = nrten(k) + (sed_n(k+1)-sed_n(k)) &
-                             *odzq*onstep(1)*orho*pf(k)
+                            *odzq*onstep(1)*orho*pf(k)
                         rr(k) = max(r1, rr(k) + (sed_r(k+1)-sed_r(k)) &
                             *odzq*dt*onstep(1))
                         nr(k) = max(r2, nr(k) + (sed_n(k+1)-sed_n(k)) &
                              *odzq*DT*onstep(1))
                         if ((rr(k) > R1) .and. (precipfrac1d(k) < cf_low)) then
                            precipfrac1d(k) = max(min(precipfrac1d(k+1), 1.), cf_low*10.)
-!                           if (configs%incld) pf(k) = precipfrac1d(k)
                         endif
+                        
 #if defined(ccpp_default)
                         pfll1(k) = pfll1(k) + sed_r(k)*DT*onstep(1)
 #endif
@@ -2947,7 +2858,6 @@ contains
 
                 if ((rc(k) > R1) .and. (qal1d(k) < cf_low)) then
                    qal1d(k) = max(min(qal1d(k+1), 1.), cf_low)
-!!                   if (configs%incld) qal(k) = qal1d(k)
                 endif
             enddo
         endif
@@ -2989,7 +2899,6 @@ contains
 
                     if ((ri(k) > R1) .and. (qai1d(k) < cf_low)) then
                        qai1d(k) = max(min(qai1d(k+1), 1.), cf_low)
-!!                       if (configs%incld) qai(k) = qai1d(k)
                     endif
 #if defined(ccpp_default)
                     pfil1(k) = pfil1(k) + sed_i(k)*DT*onstep(2)
@@ -3017,7 +2926,6 @@ contains
                 rs(k) = max(r1, rs(k) - sed_s(k)*odzq*dt*onstep(3))
                 if ((rs(k) > R1) .and. (precipfrac1d(k) < cf_low)) then
                    precipfrac1d(k) = 1.
-!!                   if (configs%incld) pf(k) = precipfrac1d(k)
                 endif
 #if defined(ccpp_default)
                 pfil1(k) = pfil1(k) + sed_s(k)*DT*onstep(3)
@@ -3029,12 +2937,9 @@ contains
                         *odzq*onstep(3)*orho*pf(k)
                     rs(k) = max(r1, rs(k) + (sed_s(k+1)-sed_s(k)) &
                          *odzq*DT*onstep(3))
-!                    if ((ri(k) > R1) .and. (qai1d(k) < cf_low)) then
-!                       qai1d(k) = max(min(qai1d(k+1), 1.), cf_low)                   
-!                    endif
+
                     if ((rs(k) > R1) .and. (precipfrac1d(k) < cf_low)) then
                        precipfrac1d(k) = max(min(precipfrac1d(k+1), 1.), cf_low*10.)
-!!                       if (configs%incld) pf(k) = precipfrac1d(k)
                     endif
 
 #if defined(ccpp_default)
@@ -3152,8 +3057,6 @@ contains
                     qiten(k) = qiten(k) - xri*odt
                     niten(k) = -ni1d(k)*odt
                     tten(k) = tten(k) - lfus*ocp(k)*xri*odt*(1-IFDRY)
-!                    qal1d(k) = max(qai1d(k), qal1d(k))
-!                    qai1d(k) = 0.
                     qalten(k) = qalten(k) + qai1d(k)*odt
                     qaiten(k) = qaiten(k) - qai1d(k)*odt 
                  endif
@@ -3169,9 +3072,6 @@ contains
                     tten(k) = tten(k) + lfus2*ocp(k)*xrc*odt*(1-IFDRY)
                     qalten(k) = qalten(k) - qal1d(k)*odt
                     qaiten(k) = qaiten(k) + qal1d(k)*odt
-                    
- !                   qai1d(k) = max(qai1d(k), qal1d(k))
- !                   qal1d(k) = 0.                    
                 endif
             enddo
         endif
@@ -3193,7 +3093,7 @@ contains
             if (qc1d(k) .le. R1) then
                 qc1d(k) = 0.0
                 nc1d(k) = 0.0
-                qal1d(k) = 0.
+                qal1d(k) = 0.0
             else
                 if (nc1d(k)*rho(k).gt.10000.e6) then
                     nu_c = 2
@@ -3224,7 +3124,7 @@ contains
             if (qi1d(k) .le. R1) then
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
-                qai1d(k) = 0.
+                qai1d(k) = 0.0
              else
                 lami = (am_i*cig(2)*oig1*ni1d(k)/qi1d(k))**obmi
                 ilami = 1./lami
@@ -3238,23 +3138,10 @@ contains
             endif
             qr1d(k) = qr1d(k) + qrten(k)*DT
             nr1d(k) = max(R2/rho(k), nr1d(k) + nrten(k)*DT)
-
-!            if (qr1d(k) > 0.01) then
-!               write(*,*) 'RAIN OUT:', k, qr1d(k)*1000., qrten(k)*DT*1000., qar1d(k), qal1d(k), qc1d(k)
-!            endif
-            
             if (qr1d(k) .le. R1) then
                 qr1d(k) = 0.0
                 nr1d(k) = 0.0
-!AAJ TEST                if (qc1d(k) .le. R1) qal1d(k) = 0.
-!                qar1d(k) = 0.
              else
-!                pf1d(k) = qar1d(k)
-!               if (qc1d(k) .le. R1) then
-!                  qal1d(k) = qar1d(k)
-!               endif
-
-
                 lamr = (am_r*crg(3)*org2*nr1d(k)/qr1d(k))**obmr
                 mvd_r(k) = (3.0 + mu_r + 0.672) / lamr
                 if (mvd_r(k) .gt. 2.5E-3) then
@@ -3268,13 +3155,7 @@ contains
             qs1d(k) = qs1d(k) + qsten(k)*DT
             if (qs1d(k) .le. R1) then
                qs1d(k) = 0.0
-!               if (qi1d(k) .le. R1) qai1d(k) = 0.
                if (qr1d(k) .le. R1) precipfrac1d(k) = 0.
-            else
-!               pf1d(k) = qar1d(k)
-!               if (qi1d(k) .le. R1) then
-!                  qai1d(k) = qar1d(k)
-!               endif
             endif
 
             qg1d(k) = qg1d(k) + qgten(k)*DT
