@@ -33,7 +33,7 @@ contains
         integer, parameter :: num_records = 5
         integer :: qr_acr_qg_filesize, qr_acr_qg_check, qr_acr_qg_dim1size, qr_acr_qg_dim9size
         logical :: qr_acr_qg_exists, qr_acr_qg_hailaware_exists
-        integer :: i, j, k, l, m, n
+        integer :: i, j, k, l, m, n, s
         integer :: istat
         logical :: micro_init
         integer :: mp_unit
@@ -126,18 +126,18 @@ contains
         if (.not. allocated(tnr_gacr)) allocate(tnr_gacr(ntb_g1,ntb_g,dimNRHG,ntb_r1,ntb_r))
 
         ! Rain-snow
-        if (.not. allocated(tcs_racs1)) allocate(tcs_racs1(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tmr_racs1)) allocate(tmr_racs1(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tcs_racs2)) allocate(tcs_racs2(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tmr_racs2)) allocate(tmr_racs2(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tcr_sacr1)) allocate(tcr_sacr1(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tms_sacr1)) allocate(tms_sacr1(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tcr_sacr2)) allocate(tcr_sacr2(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tms_sacr2)) allocate(tms_sacr2(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tnr_racs1)) allocate(tnr_racs1(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tnr_racs2)) allocate(tnr_racs2(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tnr_sacr1)) allocate(tnr_sacr1(ntb_s,ntb_t,ntb_r1,ntb_r))
-        if (.not. allocated(tnr_sacr2)) allocate(tnr_sacr2(ntb_s,ntb_t,ntb_r1,ntb_r))
+        if (.not. allocated(tcs_racs1)) allocate(tcs_racs1(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tmr_racs1)) allocate(tmr_racs1(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tcs_racs2)) allocate(tcs_racs2(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tmr_racs2)) allocate(tmr_racs2(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tcr_sacr1)) allocate(tcr_sacr1(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tms_sacr1)) allocate(tms_sacr1(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tcr_sacr2)) allocate(tcr_sacr2(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tms_sacr2)) allocate(tms_sacr2(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tnr_racs1)) allocate(tnr_racs1(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tnr_racs2)) allocate(tnr_racs2(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tnr_sacr1)) allocate(tnr_sacr1(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
+        if (.not. allocated(tnr_sacr2)) allocate(tnr_sacr2(ntb_s,ntb_t,ntb_r1,ntb_r,ntb_spp))
 
         ! Cloud water freezing
         if (.not. allocated(tpi_qcfz)) allocate(tpi_qcfz(ntb_c,nbc,ntb_t1,ntb_IN))
@@ -156,7 +156,7 @@ contains
 
         ! Collision efficiencies
         if (.not. allocated(t_efrw)) allocate(t_efrw(nbr,nbc))
-        if (.not. allocated(t_efsw)) allocate(t_efsw(nbs,nbc))
+        if (.not. allocated(t_efsw)) allocate(t_efsw(nbs,nbc,ntb_spp))
 
         ! Cloud water
         if (.not. allocated(tnr_rev)) allocate(tnr_rev(nbr,ntb_r1,ntb_r))
@@ -394,26 +394,28 @@ contains
                 enddo
             enddo
 
-            do m = 1, ntb_r
-                do k = 1, ntb_r1
-                    do j = 1, ntb_t
+            do s = 1, ntb_spp
+               do m = 1, ntb_r
+                  do k = 1, ntb_r1
+                     do j = 1, ntb_t
                         do i = 1, ntb_s
-                            tcs_racs1(i,j,k,m) = 0.0_dp
-                            tmr_racs1(i,j,k,m) = 0.0_dp
-                            tcs_racs2(i,j,k,m) = 0.0_dp
-                            tmr_racs2(i,j,k,m) = 0.0_dp
-                            tcr_sacr1(i,j,k,m) = 0.0_dp
-                            tms_sacr1(i,j,k,m) = 0.0_dp
-                            tcr_sacr2(i,j,k,m) = 0.0_dp
-                            tms_sacr2(i,j,k,m) = 0.0_dp
-                            tnr_racs1(i,j,k,m) = 0.0_dp
-                            tnr_racs2(i,j,k,m) = 0.0_dp
-                            tnr_sacr1(i,j,k,m) = 0.0_dp
-                            tnr_sacr2(i,j,k,m) = 0.0_dp
-                        enddo
-                    enddo
+                            tcs_racs1(i,j,k,m,s) = 0.0_dp
+                            tmr_racs1(i,j,k,m,s) = 0.0_dp
+                            tcs_racs2(i,j,k,m,s) = 0.0_dp
+                            tmr_racs2(i,j,k,m,s) = 0.0_dp
+                            tcr_sacr1(i,j,k,m,s) = 0.0_dp
+                            tms_sacr1(i,j,k,m,s) = 0.0_dp
+                            tcr_sacr2(i,j,k,m,s) = 0.0_dp
+                            tms_sacr2(i,j,k,m,s) = 0.0_dp
+                            tnr_racs1(i,j,k,m,s) = 0.0_dp
+                            tnr_racs2(i,j,k,m,s) = 0.0_dp
+                            tnr_sacr1(i,j,k,m,s) = 0.0_dp
+                            tnr_sacr2(i,j,k,m,s) = 0.0_dp
+                         enddo
+                      enddo
+                   enddo
                 enddo
-            enddo
+             enddo
 
             do m = 1, ntb_IN
                 do k = 1, ntb_t1
@@ -446,10 +448,15 @@ contains
                 do i = 1, nbr
                     t_Efrw(i,j) = 0.0
                 enddo
-                do i = 1, nbs
-                    t_Efsw(i,j) = 0.0
-                enddo
             enddo
+
+            do s = 1, ntb_spp
+               do j = 1, nbc
+                  do i = 1, nbs
+                    t_Efsw(i,j,s) = 0.0
+                 enddo
+              enddo
+           enddo
 
             do k = 1, ntb_r
                 do j = 1, ntb_r1

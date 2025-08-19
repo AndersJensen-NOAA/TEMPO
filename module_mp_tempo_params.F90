@@ -160,6 +160,7 @@ module module_mp_tempo_params
     integer, parameter :: ntb_i1 = 55
     integer, parameter :: ntb_c = 37
     integer, parameter :: ntb_t = 9
+    integer, parameter :: ntb_spp = 9
     integer, parameter :: ntb_g1 = 37
 
 #if defined(ccpp_default) && defined(OLD_MPTBLS)
@@ -188,6 +189,21 @@ module module_mp_tempo_params
     real(dp), dimension(nbs) :: Ds, dts
     real(dp), dimension(nbg) :: Dg, dtg
     real(dp), dimension(nbc) :: t_Nc
+
+    !..Lookup tables for snow M(d) and V(d) equation coefficients
+    !.. used in SPP routine (Bartolini and Minder, 2025)
+    real(wp), dimension(ntb_spp), parameter :: &
+         am_s_tbl = (/0.0022, 0.0052, 0.0123, 0.0291, 0.069, 0.1636, &
+         0.388, 0.9201, 2.182/) !default = 0.069
+    real(wp), dimension(ntb_spp), parameter :: &
+         bm_s_tbl = (/1.4942, 1.6205, 1.7469, 1.8733, 2.0, 2.1268,   &
+         2.2536, 2.3803, 2.5071/) !default = 2.0
+    real(wp), dimension(ntb_spp), parameter :: &
+         av_s_tbl = (/2.0, 11.5, 21.0, 30.5, 40.0, 49.5,             &
+         59.0, 68.5, 78.0/) !default = 40.0
+    real(wp), dimension(ntb_spp), parameter :: &
+         bv_s_tbl = (/0.2218, 0.4134, 0.4794, 0.5202, 0.55, 0.5733,  &
+         0.5925, 0.6089, 0.6231/) !default = 0.55
 
     ! Lookup tables for cloud water content (kg/m**3).
     real(wp), dimension(ntb_c), parameter :: &
@@ -291,12 +307,13 @@ module module_mp_tempo_params
     ! represent lookup tables.  Save compile-time memory by making
     ! allocatable (2009Jun12, J. Michalakes).
     real(dp), allocatable, dimension(:,:,:,:,:) :: tcg_racg, tmr_racg, tcr_gacr, tnr_racg, tnr_gacr
-    real(dp), allocatable, dimension(:,:,:,:) :: tcs_racs1, tmr_racs1, tcs_racs2, tmr_racs2, &
+    real(dp), allocatable, dimension(:,:,:,:,:) :: tcs_racs1, tmr_racs1, tcs_racs2, tmr_racs2, &
         tcr_sacr1, tms_sacr1, tcr_sacr2, tms_sacr2, tnr_racs1, tnr_racs2, tnr_sacr1, tnr_sacr2
     real(dp), allocatable, dimension(:,:,:,:) :: tpi_qcfz, tni_qcfz
     real(dp), allocatable, dimension(:,:,:,:) :: tpi_qrfz, tpg_qrfz, tni_qrfz, tnr_qrfz
     real(dp), allocatable, dimension(:,:) :: tps_iaus, tni_iaus, tpi_ide
-    real(dp), allocatable, dimension(:,:) :: t_Efrw, t_Efsw
+    real(dp), allocatable, dimension(:,:) :: t_Efrw
+    real(dp), allocatable, dimension(:,:,:) :: t_Efsw
     real(dp), allocatable, dimension(:,:,:) :: tnr_rev, tpc_wev, tnc_wev
     real(sp), allocatable, dimension(:,:,:,:,:) :: tnccn_act
 
