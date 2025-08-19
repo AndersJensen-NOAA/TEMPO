@@ -1681,8 +1681,9 @@ contains
             endif
 
             !..Water vapor tendency
-            qvten(k) = qvten(k) + (-pri_inu(k) - pri_iha(k) - pri_ide(k)*qai(k)   &
-                + pf(k)*(-prs_ide(k) - prs_sde(k)) - prg_gde(k)) &
+            qvten(k) = qvten(k) + (-pri_inu(k) - pri_iha(k) &
+                - (pri_ide(k) + prs_ide(k))*qai(k) &
+                -prs_sde(k)*pf(k) - prg_gde(k)) &
                 * orho
 
             !..Cloud water tendency
@@ -1736,13 +1737,13 @@ contains
                 ncten(k) = (Nt_c_max-nc1d(k)*rho(k))*odts*orho
 
             !..Cloud ice mixing ratio tendency
-            qiten(k) = qiten(k) + (pri_inu(k) + pri_iha(k) + pri_ihm(k)    &
+            qiten(k) = qiten(k) + (pri_inu(k) + pri_iha(k) + pri_ihm(k)*qal(k)    &
                 + pri_wfz(k)*qal(k) + pri_rfz(k)*pf(k) + (pri_ide(k) &
                 - prs_iau(k) - prs_sci(k) - pri_rci(k))*qai(k)) &
                 * orho
 
             !..Cloud ice number tendency.
-            niten(k) = niten(k) + (pni_inu(k) + pni_iha(k) + pni_ihm(k)    &
+            niten(k) = niten(k) + (pni_inu(k) + pni_iha(k) + pni_ihm(k)*qal(k)    &
                 + pni_wfz(k)*qal(k) + pni_rfz(k)*pf(k) + (pni_ide(k) &
                 - pni_iau(k) - pni_sci(k) - pni_rci(k))*qai(k)) &
                 * orho
@@ -1773,15 +1774,15 @@ contains
 
             !..Rain tendency
             qrten(k) = qrten(k) + ((prr_wau(k) + prr_rcw(k))*qal(k) &
-                + (prr_sml(k) + prr_gml(k) + prr_rcs(k) &
+                + (prr_sml(k) + prr_rcs(k) &
                 + prr_rcg(k) - prg_rfz(k) &
-                - pri_rfz(k))*pf(k) - qai(k)*prr_rci(k)) &
+                - pri_rfz(k))*pf(k) - qai(k)*prr_rci(k) + prr_gml(k)) &
                 * orho
 
             !..Rain number tendency
-            nrten(k) = nrten(k) + (pnr_wau(k)*qal(k) + (pnr_sml(k) + pnr_gml(k) &
+            nrten(k) = nrten(k) + (pnr_wau(k)*qal(k) + (pnr_sml(k) &
                 - pnr_rfz(k) - pnr_rcr(k) - pnr_rcg(k) &
-                - pnr_rcs(k) - pni_rfz(k)*pf(k)) - pnr_rci(k)*qai(k)) &
+                - pnr_rcs(k) - pni_rfz(k)*pf(k)) - pnr_rci(k)*qai(k) + pnr_gml(k)) &
                 * orho
 
             !..Rain mass/number balance; keep median volume diameter between
@@ -1808,16 +1809,16 @@ contains
             endif
 
             !..Snow tendency
-            qsten(k) = qsten(k) + ((prs_iau(k) + prs_sci(k))*qai(k) + prs_sde(k)  &
-                + prs_scw(k)*qal(k) + (prs_rcs(k) - prr_sml(k))*pf(k) &
-                + prs_ide(k) - prs_ihm(k)) &
+            qsten(k) = qsten(k) + ((prs_iau(k) + prs_sci(k))*qai(k) &
+                + prs_scw(k)*qal(k) + (prs_sde(k) + prs_rcs(k) - prr_sml(k))*pf(k) &
+                + prs_ide(k)*qai(k) - prs_ihm(k)*qal(k)) &
                 * orho
 
             !..Graupel tendency
             qgten(k) = qgten(k) + (prg_scw(k)*qal(k) &
                 + (prg_rfz(k) + prg_rcg(k) + prg_rcs(k))*pf(k) &
                 + prg_gde(k) + prg_gcw(k)*qal(k) &
-                + prg_rci(k)*qai(k) - prg_ihm(k) &
+                + prg_rci(k)*qai(k) - prg_ihm(k)*qal(k) &
                 - prr_gml(k)) &
                 * orho
             
@@ -1831,7 +1832,7 @@ contains
             qbten(k) = qbten(k) + ((pbg_scw(k) + pbg_gcw(k))*qal(k) &
                 + qai(k)*pbg_rci(k) + (pbg_rcs(k) + pbg_rfz(k) &
                 + pbg_rcg(k) + pbg_sml(k))*pf(k) - pbg_gml(k) &
-                + (prg_gde(k) - prg_ihm(k)) /rho_g(idx_bg(k)) ) &
+                + (prg_gde(k) - prg_ihm(k)*qal(k)) /rho_g(idx_bg(k)) ) &
                 * orho
 
             !..Graupel mass/number balance; keep its median volume diameter between
@@ -1867,18 +1868,18 @@ contains
             if (temp(k).lt.T_0) then
                 tten(k) = tten(k) &
                     + ( lsub*ocp(k)*(pri_inu(k) + pri_ide(k)*qai(k) &
-                    + prs_ide(k)*pf(k) + pf(k)*prs_sde(k) &
+                    + prs_ide(k)*qai(k) + prs_sde(k)*pf(k) &
                     + prg_gde(k) + pri_iha(k)) &
-                    + lfus2*ocp(k)*(qal(k)*pri_wfz(k) + pri_rfz(k)*pf(k) &
-                    + prg_rfz(k)*pf(k) + qal(k)*prs_scw(k) &
+                    + lfus2*ocp(k)*(pri_wfz(k)*qal(k) + pri_rfz(k)*pf(k) &
+                    + prg_rfz(k)*pf(k) + prs_scw(k)*qal(k) &
                     + (prg_scw(k) + prg_gcw(k))*qal(k) &
-                    + pf(k)*prg_rcs(k) + pf(k)*prs_rcs(k) &
-                    + prr_rci(k)*qai(k) + pf(k)*prg_rcg(k)) &
+                    + prg_rcs(k)*pf(k) + prs_rcs(k)*pf(k) &
+                    + prr_rci(k)*qai(k) + prg_rcg(k)*pf(k)) &
                     )*orho * (1-IFDRY)
             else
                 tten(k) = tten(k) &
-                    + ( lfus*ocp(k)*(-prr_sml(k)*pf(k) - pf(k)*prr_gml(k) &
-                    - prr_rcg(k)*pf(k) - pf(k)*prr_rcs(k)) &
+                    + ( lfus*ocp(k)*(-prr_sml(k)*pf(k) - prr_gml(k) &
+                    - prr_rcg(k)*pf(k) - prr_rcs(k)*pf(k)) &
                     + lsub*ocp(k)*(prs_sde(k)*pf(k) + prg_gde(k)) &
                     )*orho * (1-IFDRY)
             endif
@@ -3125,7 +3126,7 @@ contains
                 qi1d(k) = 0.0
                 ni1d(k) = 0.0
                 qai1d(k) = 0.0
-             else
+            else
                 lami = (am_i*cig(2)*oig1*ni1d(k)/qi1d(k))**obmi
                 ilami = 1./lami
                 xDi = (bm_i + mu_i + 1.) * ilami
@@ -3141,7 +3142,7 @@ contains
             if (qr1d(k) .le. R1) then
                 qr1d(k) = 0.0
                 nr1d(k) = 0.0
-             else
+            else
                 lamr = (am_r*crg(3)*org2*nr1d(k)/qr1d(k))**obmr
                 mvd_r(k) = (3.0 + mu_r + 0.672) / lamr
                 if (mvd_r(k) .gt. 2.5E-3) then
