@@ -2137,14 +2137,16 @@ contains
 
             ! Large-scale forcing 
             if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. rc(k)*orho*qal(k) > R1) then
-               term1 = ((1.-qal1d(k))**2*qal1d(k)**2/(rc(k)*orho*qal1d(k))) + (qal1d(k)**2*(1.-qal1d(k))**2/sd(k))
-               term2 = (1.-qal1d(k))**2 + qal1d(k)**2
-               gterm = 0.5*term1/term2
-               pra_sgf(k) = gterm*dcond_ls(k)
-               prw_sgf(k) = qal1d(k)*dcond_ls(k)
-            else
-               pra_sgf(k) = 0.
-               prw_sgf(k) = 0.
+               if ((ssatw(k) > (critical_rh-1.+0.01) .and. (omega(k) < 0.)) .or. ((ssatw(k) <= (critical_rh-1.+0.01)) .and. (omega(k) > 0.))) then
+                  term1 = ((1.-qal1d(k))**2*qal1d(k)**2/(rc(k)*orho*qal1d(k))) + (qal1d(k)**2*(1.-qal1d(k))**2/sd(k))
+                  term2 = (1.-qal1d(k))**2 + qal1d(k)**2
+                  gterm = 0.5*term1/term2
+                  pra_sgf(k) = gterm*dcond_ls(k)
+                  prw_sgf(k) = qal1d(k)*dcond_ls(k)
+               else
+                  pra_sgf(k) = 0.
+                  prw_sgf(k) = 0.
+               endif
             endif
 
             ! Radiation
@@ -2167,7 +2169,7 @@ contains
             term2 = (1.-qal1d(k))**2 + qal1d(k)**2
             gterm = 0.5*term1/term2
             term3 = -3.1*qc_calc(k)/(al_sgs(k)*qvs(k))
-            eros_term = -2.25e-5 * exp(term3) * 5.
+            eros_term = -2.25e-5 * exp(term3) * 10.
             pra_sge(k) = min(0., (-gterm*qc_calc(k)*eros_term))
             prw_sge(k) = min(0., ((rc(k)*orho*qal(k) - qc_calc(k)*qal1d(k))*eros_term))
             
@@ -2796,8 +2798,15 @@ contains
 #endif
                     enddo
 
-                    if (rr(kts).gt.R1*1000.) &
-                        pptrain = pptrain + sed_r(kts)*DT*onstep(1)*precipfrac1d(kts)
+
+                    if (rr(kts).gt.R1*1000.) then
+                       if (configs%incld) then
+                          pf(kts) = precipfrac1d(kts)
+                       else
+                          pf(kts) = 1.
+                       endif
+                       pptrain = pptrain + sed_r(kts)*DT*onstep(1)*pf(kts)
+                    endif
                 enddo
             else !if(.not. sedi_semi)
                 niter = 1
@@ -2906,8 +2915,14 @@ contains
 #endif
                 enddo
 
-                if (ri(kts).gt.R1*1000.) &
-                    pptice = pptice + sed_i(kts)*DT*onstep(2)*qai1d(kts)
+                if (ri(kts).gt.R1*1000.) then
+                   if (configs%incld) then
+                      qai(kts) = qai1d(kts)
+                   else
+                      qai(kts) = 1.
+                   endif
+                   pptice = pptice + sed_i(kts)*DT*onstep(2)*qai(kts)
+                endif
             enddo
         endif
 
@@ -2948,8 +2963,14 @@ contains
 #endif
                 enddo
 
-                if (rs(kts).gt.R1*1000.) &
-                    pptsnow = pptsnow + sed_s(kts)*DT*onstep(3)*precipfrac1d(kts)
+                if (rs(kts).gt.R1*1000.) then
+                   if (configs%incld) then
+                      pf(kts) = precipfrac1d(kts)
+                   else
+                      pf(kts) = 1.
+                   endif
+                   pptsnow = pptsnow + sed_s(kts)*DT*onstep(3)*pf(kts)
+                endif
             enddo
         endif
 
