@@ -884,7 +884,7 @@ contains
 
             !..Autoconversion follows Berry & Reinhardt (1974) with characteristic
             !.. diameters correctly computed from gamma distrib of cloud droplets.
-            if (rc(k).gt. 0.01e-3) then
+            if (rc(k)*qal(k).gt. 0.05e-3) then
                 Dc_g = ((ccg(3,nu_c)*ocg2(nu_c))**obmr / lamc) * 1.E6
                 Dc_b = (xDc*xDc*xDc*Dc_g*Dc_g*Dc_g - xDc*xDc*xDc*xDc*xDc*xDc) &
                     **(1./6.)
@@ -2169,7 +2169,7 @@ contains
             term2 = (1.-qal1d(k))**2 + qal1d(k)**2
             gterm = 0.5*term1/term2
             term3 = -3.1*qc_calc(k)/(al_sgs(k)*qvs(k))
-            eros_term = -2.25e-5 * exp(term3) * 10.
+            eros_term = -2.25e-5 * exp(term3) * 5.
             pra_sge(k) = min(0., (-gterm*qc_calc(k)*eros_term))
             prw_sge(k) = min(0., ((rc(k)*orho*qal(k) - qc_calc(k)*qal1d(k))*eros_term))
             
