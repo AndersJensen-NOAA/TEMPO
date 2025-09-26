@@ -662,6 +662,7 @@ contains
         logical, optional, intent(in) :: diagflag
         integer, optional, intent(in) :: do_radar_ref
         character(len=132) :: message
+        logical :: melti
 
         !=================================================================================================================
         i_start = its
@@ -966,7 +967,7 @@ contains
                 !=================================================================================================================
                 ! Reflectivity
                 call calc_refl10cm (qv1d=qv1d, qc1d=qc1d, qr1d=qr1d, nr1d=nr1d, qs1d=qs1d, qg1d=qg1d, ng1d=ng1d, qb1d=qb1d, &
-                    t1d=t1d, p1d=p1d, dBZ=dBZ, kts=kts, kte=kte, ii=i, jj=j, configs=configs)
+                    t1d=t1d, p1d=p1d, dBZ=dBZ, kts=kts, kte=kte, ii=i, jj=j, configs=configs, melti = .true.)
                 do k = kts, kte
                     refl_10cm(i,k,j) = max(-35.0_wp, dBZ(k))
                 enddo
