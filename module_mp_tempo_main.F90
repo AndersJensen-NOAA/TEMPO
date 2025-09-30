@@ -691,6 +691,7 @@ contains
             if (abs(ssati(k)).lt. eps) ssati(k) = 0.0
             if (no_micro .and. ssati(k).gt. 0.0) no_micro = .false.
             if (no_micro .and. ssatw(k).gt. (critical_rh-1.)) no_micro = .false.
+            if (rqcbl1d(k) > eps) no_micro = .false.
             diffu(k) = 2.11e-5*(temp(k)/273.15)**1.94 * (101325./pres(k))
             if (tempc .ge. 0.0) then
                 visco(k) = (1.718+0.0049*tempc)*1.0e-5
@@ -884,7 +885,7 @@ contains
 
             !..Autoconversion follows Berry & Reinhardt (1974) with characteristic
             !.. diameters correctly computed from gamma distrib of cloud droplets.
-            if (rc(k)*qal(k).gt. 0.05e-3) then
+            if (rc(k) .gt. 0.1e-3) then
                 Dc_g = ((ccg(3,nu_c)*ocg2(nu_c))**obmr / lamc) * 1.E6
                 Dc_b = (xDc*xDc*xDc*Dc_g*Dc_g*Dc_g - xDc*xDc*xDc*xDc*xDc*xDc) &
                     **(1./6.)
@@ -1335,7 +1336,7 @@ contains
                              al_sgsi(k) = 1. / (1. + dqsdTi(k)*lsub*ocp(k))
                              bs_sgsi(k) = al_sgsi(k) * (1.-critical_rh) * qvsi(k)
                              sdi(k) = al_sgsi(k)*(qvsi(k)-qv(k))
-                             qi_calc(k) = al_sgsi(k)*(qv(k)+ri(k)/rho(k)*qai(k)-qvsi(k))
+                             qi_calc(k) = al_sgsi(k)*(qv(k)+ri(k)/rho(k)*qai1d(k)-qvsi(k))
                              qaiten(k) = qaiten(k) + max((0.5/bs_sgsi(k)*(bs_sgsi(k)+qi_calc(k)) * odt), 0.05)
                           endif
                        endif
@@ -2109,7 +2110,7 @@ contains
         !.. single timestep and explicit number of drops smaller than Dc_star
         !.. from lookup table.
         !+---+-----------------------------------------------------------------+
-        if (configs%cldfra) then
+        if (configs%cldfra .and. ssatw(k) < 0.25+eps) then
 
         do k = kts, kte
             orho = 1./rho(k)
@@ -2120,24 +2121,27 @@ contains
             al_sgs(k) = 1. / (1. + dqsdT(k)*lvap(k)*ocp(k))
             bs_sgs(k) = al_sgs(k) * (1.-critical_rh) * qvs(k)
             sd(k) = al_sgs(k)*(qvs(k)-qv(k))
-            qc_calc(k) = al_sgs(k)*(qv(k)+rc(k)*orho*qal(k)-qvs(k))
+            qc_calc(k) = al_sgs(k)*(qv(k)+rc(k)*orho*qal1d(k)-qvs(k))
             dcond_ls(k) = -al_sgs(k) * dqsdT(k) * (omega(k)/rho(k)*ocp(k))
 
-            ! Initialization of cloud water and cloud fraction
-            if (.not. L_qc(k) .and. ssatw(k) > (critical_rh-1.+0.01)) then
-               ! init
-               pra_sgi(k) = 0.5/bs_sgs(k)*(bs_sgs(k)+qc_calc(k)) * odt
-               prw_sgi(k) = pra_sgi(k)*0.5*(bs_sgs(k)+qc_calc(k)) * rho(k) ! kg m^3 s^-1
+            ! Initialization of cloud water and cloud fraction when above
+            ! critical RH or if positive cloud water tendency from PBL scheme
+            if ((ssatw(k) > (critical_rh-1.+0.01)) .or. (rqcbl1d(k)*dt > R1)) then
 
-               if ((qal1d(k) + pra_sgi(k)*dt) < 0.05 .or. (rc(k)*orho*qal(k) + prw_sgi(k)*orho*dt)*rho(k) <= R1) then
+               if (rqcbl1d(k)*dt > R1) bs_sgs(k) = al_sgs(k) * (1.-0.) * qvs(k)
+               pra_sgi(k) = 0.5/bs_sgs(k)*(bs_sgs(k)+qc_calc(k)) * odt
+               prw_sgi(k) = pra_sgi(k)*0.5*(bs_sgs(k)+qc_calc(k)) * rho(k)
+
+               if ((rc(k)*qal(k) + prw_sgi(k)*dt)*rho(k) <= R1) then
                   pra_sgi(k) = 0.
                   prw_sgi(k) = 0.
                endif
             endif
 
             ! Large-scale forcing 
-            if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. rc(k)*orho*qal(k) > R1) then
-               if ((ssatw(k) > (critical_rh-1.+0.01) .and. (omega(k) < 0.)) .or. ((ssatw(k) <= (critical_rh-1.+0.01)) .and. (omega(k) > 0.))) then
+            if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. rc(k)*qal(k) > R1) then
+               ! if ((ssatw(k) > (critical_rh-1.+0.01) .and. (omega(k) < 0.)) .or. ((ssatw(k) <= (critical_rh-1.+0.01)) .and. (omega(k) > 0.))) then
+               if ((ssatw(k) > (critical_rh-1.+0.01) .and. (omega(k) < 0.))) then
                   term1 = ((1.-qal1d(k))**2*qal1d(k)**2/(rc(k)*orho*qal1d(k))) + (qal1d(k)**2*(1.-qal1d(k))**2/sd(k))
                   term2 = (1.-qal1d(k))**2 + qal1d(k)**2
                   gterm = 0.5*term1/term2
@@ -2147,10 +2151,15 @@ contains
                   pra_sgf(k) = 0.
                   prw_sgf(k) = 0.
                endif
+               ! Don't let large-scale subsidence kill off non-local mixing from PBL
+               if (omega(k) > 0. .and. rqcbl1d(k)*dt > R1) then
+                  pra_sgf(k) = 0.
+                  prw_sgf(k) = 0.
+               endif
             endif
 
             ! Radiation
-            if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. rc(k)*orho*qal(k) > R1) then
+            if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. rc(k)*qal(k) > R1) then
                term1 = ((1.-qal1d(k))**2*qal1d(k)**2/(rc(k)*orho*qal1d(k))) + (qal1d(k)**2*(1.-qal1d(k))**2/sd(k))
                term2 = (1.-qal1d(k))**2 + qal1d(k)**2
                gterm = 0.5*term1/term2
@@ -2161,7 +2170,7 @@ contains
             endif
             
             ! Erosion
-            if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. rc(k)*orho*qal(k) > R1 .and. ssatw(k) < -1.e-6) then
+            if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. rc(k)*qal(k) > R1 .and. ssatw(k) < -1.e-6 .and. rqcbl1d(k)*dt <= R1) then
                term1 = ((1.-qal1d(k))**2*qal1d(k)**2/(rc(k)*orho*qal1d(k))) + (qal1d(k)**2*(1.-qal1d(k))**2/sd(k))
             else
                term1 = 0.
@@ -2169,12 +2178,12 @@ contains
             term2 = (1.-qal1d(k))**2 + qal1d(k)**2
             gterm = 0.5*term1/term2
             term3 = -3.1*qc_calc(k)/(al_sgs(k)*qvs(k))
-            eros_term = -2.25e-5 * exp(term3) * 5.
+            eros_term = -2.25e-5 * exp(term3)
             pra_sge(k) = min(0., (-gterm*qc_calc(k)*eros_term))
             prw_sge(k) = min(0., ((rc(k)*orho*qal(k) - qc_calc(k)*qal1d(k))*eros_term))
             
             ! Boundary layer 
-            if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. rc(k)*orho*qal(k) > R1) then
+            if ((abs(sd(k)) > 1.e-4) .and. L_qc(k) .and. rc(k)*qal(k) > R1) then
                term1 = ((1.-qal1d(k))**2*qal1d(k)**2/(rc(k)*orho*qal1d(k))) + (qal1d(k)**2*(1.-qal1d(k))**2/sd(k))
                term2 = (1.-qal1d(k))**2 + qal1d(k)**2
                gterm = 0.5*term1/term2
@@ -2182,6 +2191,8 @@ contains
                     (rqvbl1d(k) + rqcbl1d(k) - dqsdT(k)*rthbl1d(k)*(pres(k)/100000.)**0.286)
                prw_sbl(k) = qal1d(k)*al_sgs(k) * &
                     (rqvbl1d(k) + rqcbl1d(k) - dqsdT(k)*(rthbl1d(k)*(pres(k)/100000.)**0.286 - lvap(k)*ocp(k)*rqcbl1d(k)))
+               pra_sbl(k) = max(pra_sbl(k), 0.)
+               prw_sbl(k) = max(prw_sbl(k), 0.)
             endif
             if (ri(k) .gt. R1) pra_ibl(k) = rqibl1d(k) / (ri(k) * orho)
             
@@ -2191,7 +2202,7 @@ contains
             qcten_sgs(k) = qcten_sgs(k) + prw_sgi(k) + prw_sge(k) + prw_sgf(k) + prw_slw(k) + prw_ssw(k) + prw_sbl(k)
 
             ! Tendencies from above are grid-meam
-            xrc = rc(k)*orho*qal(k) + (prw_sgi(k)+prw_sge(k)+prw_sgf(k)+prw_slw(k)+prw_ssw(k)+prw_sbl(k))*dt*orho
+            xrc = rc(k)*qal(k) + (prw_sgi(k)+prw_sge(k)+prw_sgf(k)+prw_slw(k)+prw_ssw(k)+prw_sbl(k))*dt
             xnc = 0.
             
             if (xrc > R1 .and. (qal1d(k) + qalten(k)*dt >= 0.05)) then
@@ -2275,8 +2286,8 @@ contains
                if (configs%incld) pnc_wcd(k) = pnc_wcd(k) * min((qal1d(k)+qalten(k)*dt),1.)
 
             else
-               prw_vcd(k) = -rc(k)*orho*odt
-               pnc_wcd(k) = -nc(k)*orho*odt
+               prw_vcd(k) = -rc(k)*orho*odt * qal(k)
+               pnc_wcd(k) = -nc(k)*orho*odt * qal(k)
                qalten(k) = -qal1d(k)*odt
             endif
                
@@ -2291,7 +2302,7 @@ contains
             if (configs%aerosol_aware) nwfaten(k) = nwfaten(k) - pnc_wcd(k)
 
             tten(k) = tten(k) + lvap(k)*ocp(k)*prw_vcd(k)*(1-IFDRY)
-            
+
             rc(k) = max(R1, (qc1d(k) + dt*qcten(k))*rho(k))
             if (rc(k).eq.R1) l_qc(k) = .false.
             nc(k) = max(2., min((nc1d(k)+ncten(k)*dt)*rho(k), nt_c_max))
@@ -2339,6 +2350,7 @@ contains
                 xnc = 0.
                 if (xrc > R1) then
                     prw_vcd(k) = clap*odt
+
                     !+---+-----------------------------------------------------------------+ !  DROPLET NUCLEATION
                     if (clap .gt. eps) then
                         if (configs%aerosol_aware .or. merra2_aerosol_aware) then
@@ -2416,6 +2428,7 @@ contains
                 qvten(k) = qvten(k) - prw_vcd(k)
                 qcten(k) = qcten(k) + prw_vcd(k)
                 ncten(k) = ncten(k) + pnc_wcd(k)
+                qalten(k) = qalten(k) + 1.*odt
                 ! Be careful here: depending on initial conditions,
                 ! cloud evaporation can increase aerosols
                 if (configs%aerosol_aware) nwfaten(k) = nwfaten(k) - pnc_wcd(k)
