@@ -1120,7 +1120,7 @@ contains
                             prr_rcg(k) = min(real(rg(k)*odts, kind=dp), prr_rcg(k))
                             prg_rcg(k) = -prr_rcg(k)
                             png_rcg(k) = tnr_racg(idx_g1,idx_g,idx_table(k),idx_r1,idx_r)
-!!!                    + tnr_gacr(idx_g1,idx_g,idx_table(k),idx_r1,idx_r)
+                            !!!     + tnr_gacr(idx_g1,idx_g,idx_table(k),idx_r1,idx_r)
                             png_rcg(k) = min(real(ng(k)*odts, kind=dp), png_rcg(k))
                             pbg_rcg(k) = prg_rcg(k)/rho_g(idx_bg(k))
                             !..Put in explicit drop break-up due to collisions.
@@ -1180,7 +1180,7 @@ contains
                         pnr_rfz(k) = tnr_qrfz(idx_r,idx_r1,idx_tc,idx_IN)*odts          ! RAIN2M
                         prg_rfz(k) = min(real(rr(k)*odts, kind=dp), prg_rfz(k))
                         pnr_rfz(k) = min(real(nr(k)*odts, kind=dp), pnr_rfz(k))
-                        png_rfz(k) = pnr_rfz(k) * max(min((10.**(-0.1*w1d(k)) + 0.1), 1.0), 0.1)
+                        png_rfz(k) = 0.1 * pnr_rfz(k) ! * max(min((10.**(-0.1*w1d(k)) + 0.1), 1.0), 0.1)
                     elseif (rr(k).gt. R1 .and. temp(k).lt.HGFR) then
                         pri_rfz(k) = rr(k)*odts
                         pni_rfz(k) = nr(k)*odts
@@ -1315,7 +1315,7 @@ contains
                             pnr_rci(k) = rhof(k)*t1_qr_qi*Ef_ri*ni(k)*N0_r(k)           &   ! RAIN2M
                                 *((lamr+fv_r)**(-cre(9)))
                             pnr_rci(k) = min(real(nr(k)*odts, kind=dp), pnr_rci(k))
-                            png_rci(k) = pnr_rci(k) * max(min((10.**(-0.1*w1d(k)) + 0.1), 1.0), 0.1)
+                            png_rci(k) = 0.1 * pnr_rci(k) ! * max(min((10.**(-0.1*w1d(k)) + 0.1), 1.0), 0.1)
                             pni_rci(k) = pri_rci(k) * oxmi
                             prr_rci(k) = rhof(k)*t2_qr_qi*Ef_ri*ni(k)*N0_r(k) &
                                 *((lamr+fv_r)**(-cre(8)))
@@ -2168,6 +2168,7 @@ contains
                     !..if the water was immediately shed off.
                     IF (prr_gml(k).gt.0.0) THEN
                         eva_factor = min(1.0, 0.01+(0.99-0.01)*(tempc/20.0))
+!                        eva_factor = 1.
                         prv_rev(k) = prv_rev(k)*eva_factor
                     ENDIF
                 endif

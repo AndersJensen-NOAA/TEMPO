@@ -343,7 +343,7 @@ module module_mp_tempo_params
 #if defined(ccpp_default)
     real(wp), parameter :: demott_nuc_ssati = 0.15 ! 0.15 for CCPP
 #else
-    real(wp), parameter :: demott_nuc_ssati = 0.25
+    real(wp), parameter :: demott_nuc_ssati = 0.15
 #endif
     ! Declaration of constants for assumed CCN/IN aerosols when none in
     ! the input data.  Look inside the init routine for modifications
@@ -355,7 +355,7 @@ module module_mp_tempo_params
     real(dp), parameter :: max_ni = 4999.e3
     real(wp), parameter :: icenuc_max = 1000.e3
     
-    real(wp), parameter :: rime_threshold = 2.0 ! For MPAS
+    real(wp), parameter :: rime_threshold = 5.0 ! For MPAS
     real(wp), parameter :: rime_conversion = 0.95 ! For MPAS
 
     real(wp), parameter :: fv_r = 195.0
