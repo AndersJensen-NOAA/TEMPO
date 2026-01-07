@@ -30,7 +30,7 @@ module module_mp_tempo_init
   contains
 
   subroutine tempo_init(aerosolaware_flag, hailaware_flag, &
-    ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, tempo_cfgs)
+    ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, cldfra_flag, tempo_cfgs)
     !! initialize tempo microphysics
     use module_mp_tempo_params, only : tempo_version, t_efrw, &
       initialize_graupel_vars, initialize_parameters, initialize_bins_for_tables, &
@@ -39,7 +39,7 @@ module module_mp_tempo_init
       initialize_bins_for_hail_size, initialize_bins_for_radar
 
     logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, &
-      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag
+      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, cldfra_flag
     type(ty_tempo_cfgs), intent(out) :: tempo_cfgs
   
     character(len=100) :: table_filename
