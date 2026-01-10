@@ -329,7 +329,7 @@ module module_mp_tempo_main
 
     call rain_check_and_update(rho, l_qr, qr1d, nr1d, rr, nr, qrten, nrten, ilamr, mvd_r)
   
-    ! qifrac1d = 1.
+    qifrac1d = 1.
     call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qifrac1d, qi1d=qi1d, ni1d=ni1d, &
       ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
   
@@ -509,7 +509,7 @@ module module_mp_tempo_main
 
     ! here
 
-    call prog_cloud_frac_ice(temp, l_qc, rho, qv, qvsi, qi1d, qifrac1d, &
+    call prog_cloud_frac_ice(temp, l_qi, rho, qv, qvsi, qi1d, qifrac1d, &
       qcfrac1d, qiten_bl1d, qiten, w1d, ocp, tend)
 
     call prog_cloud_frac_condensation(temp, pres, l_qc, rho, qv, qvs, qc1d, qcfrac1d, &
@@ -954,7 +954,7 @@ module module_mp_tempo_main
 
     ! estimate from Gultepe and Isaac, 2007
     ! write(*,*) 'aaj', qc, qcfrac
-    qcfrac = 5.57_wp*(1000._wp*qc)**(0.78_wp) 
+    qcfrac = max(qcfrac, (5.57_wp*(1000._wp*qc)**(0.78_wp)))
     qcfrac = max(min(qcfrac, 1._wp), cf_low)
   end subroutine cloud_fraction_check
 
@@ -2217,41 +2217,50 @@ module module_mp_tempo_main
   end subroutine rain_evaporation
 
 
-  subroutine prog_cloud_frac_ice(temp, l_qc, rho, qv, qvsi, qi1d, qifrac1d, &
+  subroutine prog_cloud_frac_ice(temp, l_qi, rho, qv, qvsi, qi1d, qifrac1d, &
       qcfrac1d, qiten_bl1d, qiten, w1d, ocp, tend)
     use module_mp_tempo_params, only : r1, rv, cloud_fraction_rh, eps, lsub
 
     real(wp), dimension(:), intent(in) :: temp, rho, qv, qvsi, qi1d, qifrac1d, &
       qcfrac1d, w1d, ocp, qiten_bl1d, qiten
-    logical, dimension(:), intent(in) :: l_qc
+    logical, dimension(:), intent(in) :: l_qi
     type(ty_tend), intent(inout) :: tend
     real(wp) :: orho, omega, dqsdTi, al, bs, sd, qi_mean, qtot_mean, ls_cond, &
       term1, term2, gterm
+    real(wp) :: cf_low = 0.01
     integer :: k, nz
 
     nz = size(rho)
     do k = 1, nz
 
-      if ((tend%pri_wfz(k)+ tend%pri_inu(k) + tend%pri_iha(k))*global_dt &
-        > eps) then
-        tend%pai_sgi(k) = qcfrac1d(k)*global_inverse_dt
-      elseif (qiten(k) > eps .and. qi1d(k) > r1) then
-        omega = -9.8 * w1d(k) * rho(k)
-        dqsdTi = lsub * qvsi(k) / (rv*temp(k)**2)
-        al = 1._wp / (1._wp + dqsdTi*lsub*ocp(k))
-        bs = al * (1._wp-cloud_fraction_rh) * qvsi(k)
-        sd = al*(qvsi(k)-qv(k))
-        qtot_mean = qv(k) + qi1d(k)
-        qi_mean = al*(qtot_mean-qvsi(k))
-        tend%pai_sgi(k) = (0.5_wp/bs*(bs+qi_mean) * global_inverse_dt)
-      endif
+      ! init
+      if (qi1d(k) <= r1) then
+        if ((tend%pri_wfz(k)+ tend%pri_inu(k) + tend%pri_iha(k))*global_dt > eps) then
+          if (qcfrac1d(k) > cf_low) then
+            tend%pai_sgi(k) = qcfrac1d(k)*global_inverse_dt
+          else 
+            omega = -9.8 * w1d(k) * rho(k)
+            dqsdTi = lsub * qvsi(k) / (rv*temp(k)**2)
+            al = 1._wp / (1._wp + dqsdTi*lsub*ocp(k))
+            bs = al * (1._wp-cloud_fraction_rh) * qvsi(k)
+            sd = al*(qvsi(k)-qv(k))
+            qtot_mean = qv(k) + qi1d(k)
+            qi_mean = al*(qtot_mean-qvsi(k))
+            tend%pai_sgi(k) = (0.5_wp/bs*(bs+qi_mean) * global_inverse_dt)
+          endif
+        endif 
+      else
+        if (qiten(k) > eps) tend%pai_sgi(k) = sqrt(qiten(k) / qi1d(k))
+      endif 
 
       ! pbl
       if (qi1d(k) > r1) then
         tend%pai_ibl(k) = qiten_bl1d(k) / (qi1d(k))
       endif 
 
+
     enddo 
+
   end subroutine prog_cloud_frac_ice
 
 
