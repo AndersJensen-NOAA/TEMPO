@@ -63,12 +63,14 @@ module module_mp_tempo_init
       if (present(hailaware_flag)) tempo_cfgs%hailaware_flag = hailaware_flag
       if (present(ml_for_bl_nc_flag)) tempo_cfgs%ml_for_bl_nc_flag = ml_for_bl_nc_flag
       if (present(ml_for_nc_flag)) tempo_cfgs%ml_for_nc_flag = ml_for_nc_flag
+      if (present(cldfra_flag)) tempo_cfgs%cldfra_flag = cldfra_flag
 
       write(*,'(A)') 'tempo_init() --- TEMPO microphysics configuration options: '
       write(*,'(A,L)') 'tempo_init() --- aerosol aware = ', tempo_cfgs%aerosolaware_flag
       write(*,'(A,L)') 'tempo_init() --- hail aware = ', tempo_cfgs%hailaware_flag
       write(*,'(A,L)') 'tempo_init() --- ML for subgrid cloud number = ', tempo_cfgs%ml_for_bl_nc_flag
       write(*,'(A,L)') 'tempo_init() --- ML for cloud number = ', tempo_cfgs%ml_for_nc_flag
+      write(*,'(A,L)') 'tempo_init() --- cloud fraction = ', tempo_cfgs%cldfra_flag
 
       ! set graupel variables from hail_aware_flag
       call initialize_graupel_vars(tempo_cfgs%hailaware_flag) 

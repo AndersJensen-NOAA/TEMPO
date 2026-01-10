@@ -12,6 +12,7 @@ module module_mp_tempo_cfgs
     logical :: hailaware_flag = .true. !! flag to run hail-aware microphysics
     logical :: ml_for_bl_nc_flag = .false. !! flag to run machine-learning prediction for subgrid cloud number concentration
     logical :: ml_for_nc_flag = .false. !! flag to run machine-learning prediction for tempo cloud number concentration
+    logical :: cldfra_flag = .false. !! flag to run experimental prognostic cloud fraction scheme
     logical :: semi_sedi_flag = .false. !! flag for semi-lagrangian sedimentation
     logical :: refl10cm_from_melting_flag = .false. !! flag to calculate reflectivity for melting snow and graupel
     logical :: turn_off_micro_flag = .false. !! flag to turn off all microphysical processes

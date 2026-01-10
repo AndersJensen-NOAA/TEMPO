@@ -205,7 +205,17 @@ module module_mp_tempo_driver
           if (present(qc_bl) .and. present(qcfrac_bl)) then
             qc_bl1d(k) = qc_bl(i,k,j)
             qcfrac_bl1d(k) = qcfrac_bl(i,k,j)
-          endif 
+          endif
+
+          ! prognostic cloud fraction
+          if (present(qcfrac)) qcfrac1d(k) = qcfrac(i,k,j)
+          if (present(qifrac)) qifrac1d(k) = qifrac(i,k,j)
+          if (present(thten_bl)) thten_bl1d(k) = thten_bl(i,k,j)
+          if (present(qvten_bl)) qvten_bl1d(k) = qvten_bl(i,k,j)
+          if (present(qcten_bl)) qcten_bl1d(k) = qcten_bl(i,k,j)
+          if (present(qiten_bl)) qiten_bl1d(k) = qiten_bl(i,k,j)
+          if (present(thten_lwrad)) thten_lwrad1d(k) = thten_lwrad(i,k,j)
+          if (present(thten_swrad)) thten_swrad1d(k) = thten_swrad(i,k,j)
         enddo
 
         ! main call to the 1d tempo microphysics
@@ -260,6 +270,10 @@ module module_mp_tempo_driver
           if ((present(ng)) .and. (present(qb))) then
             ng(i,k,j) = ng1d(k)
             qb(i,k,j) = qb1d(k)
+          endif 
+          if (present(qcfrac) .and. present(qifrac)) then 
+            qcfrac(i,k,j) = qcfrac1d(k)
+            qifrac(i,k,j) = qifrac1d(k)
           endif 
           qv(i,k,j) = qv1d(k)
           qc(i,k,j) = qc1d(k)
