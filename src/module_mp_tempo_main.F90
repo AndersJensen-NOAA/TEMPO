@@ -402,7 +402,8 @@ module module_mp_tempo_main
 
     ! main microphysical processes ---------------------------------------------------------------
     if (.not. tempo_cfgs%turn_off_micro_flag) then
-      call warm_rain(rhof, l_qc, rc, nc, ilamc, mvd_c, l_qr, rr, nr, mvd_r, tend)  
+      call warm_rain(rhof, l_qc, rc, nc, ilamc, mvd_c, qcfrac1d, &
+        l_qr, rr, nr, mvd_r, tend)  
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call rain_snow_rain_graupel(temp, l_qr, rr, nr, ilamr, l_qs, rs, &
@@ -936,10 +937,10 @@ module module_mp_tempo_main
 
 
   subroutine cloud_ice_fraction_check(qifrac, qi)
+    use module_mp_tempo_params, only : cf_low
 
     real(wp), intent(inout) :: qifrac
     real(wp), intent(in) :: qi
-    real(wp) :: cf_low = 0.01
 
     !! qcfrac = 5.57_wp*(1000._wp*qc)**(0.78_wp) 
     qifrac = max(min(qifrac, 1._wp), cf_low)
@@ -947,10 +948,10 @@ module module_mp_tempo_main
 
 
   subroutine cloud_fraction_check(qcfrac, qc)
+    use module_mp_tempo_params, only : cf_low
 
     real(wp), intent(inout) :: qcfrac
     real(wp), intent(in) :: qc
-    real(wp) :: cf_low = 0.01
 
     ! estimate from Gultepe and Isaac, 2007
     ! write(*,*) 'aaj', qc, qcfrac
@@ -986,7 +987,7 @@ module module_mp_tempo_main
     qcten, ncten, ilamc, mvd_c)
     !! computes cloud water contents, ilamc, and mvd_c and checks bounds
     use module_mp_tempo_params, only : r1, nt_c_max, nt_c_min, nu_c_scale, &
-      am_r, bm_r, cce, ccg, d0c, d0r, ocg1, ocg2, obmr, nt_c_l, d0r
+      am_r, bm_r, cce, ccg, d0c, d0r, ocg1, ocg2, obmr, nt_c_l, d0r, cf_low
 
     real(wp), dimension(:), intent(in) :: rho
     real(wp), dimension(:), intent(inout) :: qc1d, qcten, ncten, rc, nc
@@ -996,7 +997,6 @@ module module_mp_tempo_main
     logical, dimension(:), intent(inout) :: l_qc
     integer :: k, nz, nu_c
     real(dp) :: lamc, xdc
-    real(dp) :: cf_low = 0.01
     logical :: hit_limit
 
     nz = size(qc1d)
@@ -2219,7 +2219,8 @@ module module_mp_tempo_main
 
   subroutine prog_cloud_frac_ice(temp, l_qi, rho, qv, qvsi, qi1d, qifrac1d, &
       qcfrac1d, qiten_bl1d, qiten, w1d, ocp, tend)
-    use module_mp_tempo_params, only : r1, rv, cloud_fraction_rh, eps, lsub
+    use module_mp_tempo_params, only : r1, rv, cloud_fraction_rh, eps, lsub, &
+      cf_low
 
     real(wp), dimension(:), intent(in) :: temp, rho, qv, qvsi, qi1d, qifrac1d, &
       qcfrac1d, w1d, ocp, qiten_bl1d, qiten
@@ -2227,7 +2228,6 @@ module module_mp_tempo_main
     type(ty_tend), intent(inout) :: tend
     real(wp) :: orho, omega, dqsdTi, al, bs, sd, qi_mean, qtot_mean, ls_cond, &
       term1, term2, gterm
-    real(wp) :: cf_low = 0.01
     integer :: k, nz
 
     nz = size(rho)
@@ -2325,10 +2325,12 @@ module module_mp_tempo_main
         endif
 
         ! radiation
-        tend%pra_slw(k) = -gterm*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
-        tend%pra_ssw(k) = -gterm*al*dqsdT*thten_swrad1d(k) * theta_to_temp
-        tend%prw_slw(k) = -qcfrac1d(k)*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
-        tend%prw_ssw(k) = -qcfrac1d(k)*al*dqsdT*thten_swrad1d(k) * theta_to_temp
+        if ((ssatw(k) > (cloud_fraction_rh-1.01_wp))) then
+          tend%pra_slw(k) = -gterm*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
+          tend%pra_ssw(k) = -gterm*al*dqsdT*thten_swrad1d(k) * theta_to_temp
+          tend%prw_slw(k) = -qcfrac1d(k)*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
+          tend%prw_ssw(k) = -qcfrac1d(k)*al*dqsdT*thten_swrad1d(k) * theta_to_temp
+        endif 
 
         if ((qcfrac1d(k) + &
           (tend%pra_slw(k) + tend%pra_ssw(k) + tend%pra_sgf(k))*global_dt) < 0.05) then
@@ -2341,9 +2343,9 @@ module module_mp_tempo_main
         endif   
 
         ! erosion
-        if (ssatw(k) < -1.e-6_wp) then
+        ! if (ssatw(k) < -1.e-6_wp) then
           term3 = -3.1_wp*qc_mean/(al*qvs(k))
-          eros_term = -2.25e-5_wp * exp(term3)
+          eros_term = -2.25e-5_wp * exp(term3) * 10._wp
           tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
           tend%prw_sge(k) = min(0._dp, ((qc1d(k) - qc_mean*qcfrac1d(k))*eros_term))
           if ((qcfrac1d(k) + tend%pra_sge(k)*global_dt) < 0.05) then
@@ -2354,15 +2356,18 @@ module module_mp_tempo_main
             tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
             tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
           endif
-        endif
+        ! endif
 
         ! boundary layer 
-        tend%pra_sbl(k) = gterm*al * &
-          (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
-        tend%prw_sbl(k) = qcfrac1d(k)*al * &
-            (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - &
-            lvap(k)*ocp(k)*qcten_bl1d(k)))
+        if ((ssatw(k) > (cloud_fraction_rh-1.01_wp))) then
+          tend%pra_sbl(k) = gterm*al * &
+            (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+          tend%prw_sbl(k) = qcfrac1d(k)*al * &
+              (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - &
+              lvap(k)*ocp(k)*qcten_bl1d(k)))
+        endif
       endif
+
       ! if total > 0. activate
       ! else sub propoation to nc/rc
       ! xnc = max(nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
@@ -2530,13 +2535,14 @@ module module_mp_tempo_main
   end function activate_cloud_number
 
 
-  subroutine warm_rain(rhof, l_qc, rc, nc, ilamc, mvd_c, l_qr, rr, nr, mvd_r, tend)
+  subroutine warm_rain(rhof, l_qc, rc, nc, ilamc, mvd_c, qcfrac1d, &
+      l_qr, rr, nr, mvd_r, tend)
     !! computes warm-rain process rates -- condensation/evaporation happen later
     use module_mp_tempo_params, only : d0r, d0c, r1, nbr, t_efrw, &
       t1_qr_qc, mu_r, am_r, ccg, obmr, ocg2, dr, org2, cre, fv_r, &
       autocon_nr_factor
 
-    real(wp), dimension(:), intent(in) :: rhof, mvd_r, mvd_c, rr, nr, rc, nc
+    real(wp), dimension(:), intent(in) :: rhof, mvd_r, mvd_c, rr, nr, rc, nc, qcfrac1d
     real(dp), dimension(:), intent(in) :: ilamc
     logical, dimension(:), intent(in) :: l_qc, l_qr
     type(ty_tend), intent(inout) :: tend
@@ -2564,7 +2570,7 @@ module module_mp_tempo_main
       !> [Berry and Reinhardt (1974)](https://doi.org/10.1175/1520-0469(1974)031<1814:AAOCDG>2.0.CO;2)
       !> with characteristic diameters correctly computed from gamma distribution of cloud droplets
       if (l_qc(k)) then
-        if (rc(k) > 0.01e-3_wp) then
+        if (rc(k) > 0.01e-3_wp .and. qcfrac1d(k) > 0.05) then
           nu_c = get_nuc(nc(k))
           lamc = 1._dp / ilamc(k)       
           xdc = max(d0c*1.e6_wp, ((rc(k)/(am_r*nc(k)))**obmr) * 1.e6_wp)
