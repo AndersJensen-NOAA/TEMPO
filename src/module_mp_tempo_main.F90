@@ -959,7 +959,7 @@ module module_mp_tempo_main
 
     ! estimate from Gultepe and Isaac, 2007
     ! write(*,*) 'aaj', qc, qcfrac
-    ! TEST qcfrac = max(qcfrac, (5.57_wp*(1000._wp*qc)**(0.78_wp)))
+    qcfrac = max(qcfrac, (5.57_wp*(1000._wp*qc)**(0.78_wp)))
     qcfrac = max(min(qcfrac, 1._wp), cf_low)
   end subroutine cloud_fraction_check
 
