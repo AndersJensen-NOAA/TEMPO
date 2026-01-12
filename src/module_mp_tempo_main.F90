@@ -959,7 +959,7 @@ module module_mp_tempo_main
 
     ! estimate from Gultepe and Isaac, 2007
     ! write(*,*) 'aaj', qc, qcfrac
-    qcfrac = max(qcfrac, (5.57_wp*(1000._wp*qc)**(0.78_wp)))
+    ! TEST qcfrac = max(qcfrac, (5.57_wp*(1000._wp*qc)**(0.78_wp)))
     qcfrac = max(min(qcfrac, 1._wp), cf_low)
   end subroutine cloud_fraction_check
 
@@ -2255,8 +2255,9 @@ module module_mp_tempo_main
           tend%pai_sgi(k) = (0.5_wp/bs*(bs+qi_mean) * global_inverse_dt)
         endif 
       else
-        if (qiten(k) > eps) tend%pai_sgi(k) = &
-          (qiten(k)*global_dt / qi1d(k))**2 * global_inverse_dt
+!         if (qiten(k) > eps) tend%pai_sgi(k) = (qiten(k)*global_dt / qi1d(k))**2 * global_inverse_dt
+        if (qiten(k) > eps) tend%pai_sgi(k) = sqrt(qiten(k)*global_dt / qi1d(k)) * global_inverse_dt
+
       endif 
 
       ! pbl
@@ -2270,7 +2271,7 @@ module module_mp_tempo_main
   subroutine prog_cloud_frac_condensation(temp, pres, l_qc, rho, qv, qvs, qc1d, nc1d, qcfrac1d, &
       w1d, lvap, ocp, ssatw, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
       thten_bl1d, nwfa, tend)
-    use module_mp_tempo_params, only : r1, rv, cloud_fraction_rh, eps
+    use module_mp_tempo_params, only : r1, rv, cloud_fraction_rh, eps, nt_c_min
 
     real(wp), dimension(:), intent(in) :: temp, pres, rho, qv, qvs, qc1d, qcfrac1d, &
       w1d, lvap, ocp, ssatw, nwfa, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
@@ -2279,7 +2280,7 @@ module module_mp_tempo_main
     logical, dimension(:), intent(in) :: l_qc
     type(ty_tend), intent(inout) :: tend
     real(wp) :: orho, omega, dqsdT, al, bs, sd, qc_mean, qtot_mean, ls_cond, &
-      term1, term2, term3, gterm, eros_term, theta_to_temp
+      term1, term2, term3, gterm, eros_term, theta_to_temp, xnc
     integer :: k, nz
 
     nz = size(rho)
@@ -2378,9 +2379,12 @@ module module_mp_tempo_main
               lvap(k)*ocp(k)*qcten_bl1d(k)))
         endif
       endif
-
-      ! if total > 0. activate
-      ! else sub propoation to nc/rc
+      if (tend%prw_sgi(k) + tend%prw_sbl(k) + tend%prw_sgf(k) + tend%prw_ssw(k) + tend%prw_slw(k) > eps) then
+        xnc = max(nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
+        if (present(nc1d)) then
+          tend%pnc_sgi(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
+        endif 
+      endif 
       ! xnc = max(nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
       ! tend%pnc_sgi(k) = 0.5_wp*(xnc-nc(k) + abs(xnc-nc(k)))*global_inverse_dt*orho
     enddo 
@@ -2595,10 +2599,14 @@ module module_mp_tempo_main
           tau = 3.72_wp/(rc(k)*taud)
           tend%prr_wau(k) = zeta/tau
           tend%prr_wau(k) = min(real(rc(k)*global_inverse_dt, kind=dp), &
-            tend%prr_wau(k)) * qcfrac1d(k)
+            tend%prr_wau(k))
           tend%pnr_wau(k) = tend%prr_wau(k) / (am_r*nu_c*autocon_nr_factor*d0r*d0r*d0r) 
           tend%pnc_wau(k) = min(real(nc(k)*global_inverse_dt, kind=dp), &
             tend%prr_wau(k) / (am_r*mvd_c(k)*mvd_c(k)*mvd_c(k)))
+          
+          tend%prr_wau(k) = tend%prr_wau(k) * qcfrac1d(k)
+          tend%pnr_wau(k) = tend%pnr_wau(k) * qcfrac1d(k)
+          tend%pnc_wau(k) = tend%pnc_wau(k) * qcfrac1d(k)
         endif
       endif
 
@@ -2675,8 +2683,8 @@ module module_mp_tempo_main
               r_frac = min(30.0_dp, tend%prs_scw(k)/tend%prs_sde(k))
               g_frac = min(rime_conversion, 0.15_wp + (r_frac-2._wp)*.028_wp)
               vtboost(k) = min(1.5_wp, 1.1_wp + (r_frac-2.)*.016_wp)
-              tend%prg_scw(k) = g_frac*tend%prs_scw(k) * qcfrac1d(k)
-              tend%png_scw(k) = tend%prg_scw(k)*smo0(k)/rs(k) * qcfrac1d(k)
+              tend%prg_scw(k) = g_frac*tend%prs_scw(k)
+              tend%png_scw(k) = tend%prg_scw(k)*smo0(k)/rs(k)
               vts = av_s*xds**bv_s * exp(-fv_s*xds)
               const_ri = -1._wp*(mvd_c(k)*0.5e6_wp)*vts/min(-0.1_wp,tempc)
               const_ri = max(0.1_wp, min(const_ri, 10._wp))
@@ -3054,8 +3062,8 @@ module module_mp_tempo_main
           tend%pni_wfz(k) = min(real(nc(k)*global_inverse_dt, kind=dp), &
             tend%pri_wfz(k)/(2.0_dp*xm0i), tend%pni_wfz(k))
         elseif (rc(k) > r1 .and. temp(k) < hgfrz) then
-          tend%pri_wfz(k) = rc(k)*global_inverse_dt * qcfrac1d(k)
-          tend%pni_wfz(k) = nc(k)*global_inverse_dt * qcfrac1d(k)
+          tend%pri_wfz(k) = rc(k)*global_inverse_dt !* qcfrac1d(k)
+          tend%pni_wfz(k) = nc(k)*global_inverse_dt !* qcfrac1d(k)
         endif
 
         !>
@@ -3068,23 +3076,29 @@ module module_mp_tempo_main
           else
             xnc = min(icenuc_max, tno*exp(ato*(t0-temp(k))))
           endif
-          xni = ni(k)*qifrac1d(k) + (tend%pni_rfz(k)+tend%pni_wfz(k))*global_dt
+          xni = ni(k) + (tend%pni_rfz(k)+tend%pni_wfz(k))*global_dt
           tend%pni_inu(k) = 0.5_wp*(xnc-xni + abs(xnc-xni))*global_inverse_dt
           tend%pri_inu(k) = min(real(rate_max, kind=dp), xm0i*tend%pni_inu(k))
           tend%pni_inu(k) = tend%pri_inu(k)/xm0i
         endif
         !>
         !> freezing of aqueous aerosols is based on [Koop et al. (2000)](https://doi.org/10.1038/35020537)
-        xni = smo0(k)+ni(k)*qifrac1d(k) + &
+        xni = smo0(k)+ni(k) + &
           (tend%pni_rfz(k)+tend%pni_wfz(k)+tend%pni_inu(k))*global_dt
         if (present(nwfa)) then
           if ((xni <= max_ni) .and.(temp(k) < 238._wp) .and. (ssati(k) >= 0.4_wp)) then
             xnc = koop_nucleation(temp(k), ssatw(k), nwfa(k))
-            tend%pni_iha(k) = xnc*global_inverse_dt * qifrac1d(k)
+            tend%pni_iha(k) = xnc*global_inverse_dt
             tend%pri_iha(k) = min(real(rate_max, kind=dp), xm0i*0.1_wp*tend%pni_iha(k))
             tend%pni_iha(k) = tend%pri_iha(k)/(xm0i*0.1_wp)
           endif
         endif 
+        tend%pni_iha(k) = tend%pni_iha(k) * qifrac1d(k)
+        tend%pri_iha(k) = tend%pri_iha(k) * qifrac1d(k)
+        tend%pni_inu(k) = tend%pni_inu(k) * qifrac1d(k)
+        tend%pri_inu(k) = tend%pri_inu(k) * qifrac1d(k)
+        tend%pri_wfz(k) = tend%pri_wfz(k) * qcfrac1d(k)
+        tend%pni_wfz(k) = tend%pni_wfz(k) * qcfrac1d(k)
       endif 
     enddo 
   end subroutine ice_nucleation

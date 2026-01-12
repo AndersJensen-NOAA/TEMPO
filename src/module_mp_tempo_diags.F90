@@ -29,9 +29,9 @@ module module_mp_tempo_diags
     integer :: k, nz, nu_c
 
     nz = size(l_qc)
-    allocate(re_qc(nz), source=0._wp)
-    allocate(re_qi(nz), source=0._wp)
-    allocate(re_qs(nz), source=0._wp)
+    allocate(re_qc(nz), source=2.49e-6_wp)
+    allocate(re_qi(nz), source=4.99e-6_wp)
+    allocate(re_qs(nz), source=9.99e-6_wp)
     do k = 1, nz
       !> @note
       !> limiting values of \(2.51-50 \mu m\) for cloud water, \(2.51-125 \mu m\) for

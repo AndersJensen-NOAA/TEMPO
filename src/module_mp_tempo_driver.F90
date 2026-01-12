@@ -146,9 +146,9 @@ module module_mp_tempo_driver
     if (tempo_cfgs%rain_med_vol_diam_flag) allocate(tempo_diags%rain_med_vol_diam(its:ite, kts:kte, jts:jte), source=0._wp)
     if (tempo_cfgs%graupel_med_vol_diam_flag) allocate(tempo_diags%graupel_med_vol_diam(its:ite, kts:kte, jts:jte), source=0._wp)
     if (tempo_cfgs%refl10cm_flag) allocate(tempo_diags%refl10cm(its:ite, kts:kte, jts:jte), source=-35._wp)
-    if (tempo_cfgs%re_cloud_flag) allocate(tempo_diags%re_cloud(its:ite, kts:kte, jts:jte), source=0._wp)
-    if (tempo_cfgs%re_ice_flag) allocate(tempo_diags%re_ice(its:ite, kts:kte, jts:jte), source=0._wp)
-    if (tempo_cfgs%re_snow_flag) allocate(tempo_diags%re_snow(its:ite, kts:kte, jts:jte), source=0._wp)
+    if (tempo_cfgs%re_cloud_flag) allocate(tempo_diags%re_cloud(its:ite, kts:kte, jts:jte), source=2.49e-6_wp)
+    if (tempo_cfgs%re_ice_flag) allocate(tempo_diags%re_ice(its:ite, kts:kte, jts:jte), source=4.99e-6_wp)
+    if (tempo_cfgs%re_snow_flag) allocate(tempo_diags%re_snow(its:ite, kts:kte, jts:jte), source=9.99e-6_wp)
     if (tempo_cfgs%max_hail_diameter_flag) allocate(tempo_diags%max_hail_diameter_sfc(its:ite, jts:jte), source=0._wp)
     if (tempo_cfgs%max_hail_diameter_flag) allocate(tempo_diags%max_hail_diameter_column(its:ite, jts:jte), source=0._wp)
 
@@ -245,16 +245,18 @@ module module_mp_tempo_driver
         endif 
         if (allocated(tempo_diags%graupel_med_vol_diam) .and. allocated(tempo_main_diags%graupel_med_vol_diam)) then
           tempo_diags%graupel_med_vol_diam(i,:,j) = tempo_main_diags%graupel_med_vol_diam
-        endif 
+        endif
+
         if (allocated(tempo_diags%re_cloud) .and. allocated(tempo_main_diags%re_cloud)) then
           tempo_diags%re_cloud(i,:,j) = tempo_main_diags%re_cloud
         endif 
         if (allocated(tempo_diags%re_ice) .and. allocated(tempo_main_diags%re_ice)) then
           tempo_diags%re_ice(i,:,j) = tempo_main_diags%re_ice
-        endif 
+        endif
         if (allocated(tempo_diags%re_snow) .and. allocated(tempo_main_diags%re_snow)) then
           tempo_diags%re_snow(i,:,j) = tempo_main_diags%re_snow
         endif 
+  
         if (allocated(tempo_diags%refl10cm) .and. allocated(tempo_main_diags%refl10cm)) then
           tempo_diags%refl10cm(i,:,j) = tempo_main_diags%refl10cm
         endif
