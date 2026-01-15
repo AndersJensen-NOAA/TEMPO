@@ -3,16 +3,23 @@ module module_mp_tempo_params
 
 ! define machine precision
 #if defined(tempo_mpas)
-  use mpas_kind_types, only: wp => RKIND, sp => R4KIND, dp => R8KIND
+  use mpas_kind_types, only : wp => RKIND, sp => R4KIND, dp => R8KIND
 #elif defined(tempo_ccpp)
-  use machine, only: wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
+  use machine, only : wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
+#elif defined(wrfmodel)
+  use ccpp_kind_types, only : wp => kind_phys, sp => kind_phys
 #else
   use machine, only: wp => kind_phys, sp => kind_sngl_prec, dp => kind_dbl_prec
 #endif 
   use iso_fortran_env, only : real32, real64 ! for machine-independent lookup table precisions
+
   implicit none
 
   public
+
+#if defined(wrfmodel)
+  integer, parameter :: dp = selected_real_kind(15,307)
+#endif
 
   character(len=11) :: tempo_version !! tempo version string (max is xxx.xxx.xxx)
 
@@ -370,11 +377,38 @@ module module_mp_tempo_params
     tnr_racs1, tnr_racs2, tnr_sacr1, tnr_sacr2 !! rain-snow collection data arrays
   real(table_dp), allocatable, dimension(:,:,:,:) :: tpi_qcfz, tni_qcfz !! cloud droplet freezing data arrays
   real(table_dp), allocatable, dimension(:,:,:,:) :: tpi_qrfz, tpg_qrfz, tni_qrfz, tnr_qrfz !! rain freezing data arrays
-  real(table_dp), allocatable, dimension(:,:) :: tps_iaus, tni_iaus, tpi_ide !! cloud ice depositional growth and conversion to snow data array
+  real(dp), allocatable, dimension(:,:) :: tps_iaus, tni_iaus, tpi_ide !! cloud ice depositional growth and conversion to snow data array
     
   ! -------------------------------------------------------------------------------------------------------
   ! -------------------------------------------------------------------------------------------------------
   contains
+
+  subroutine get_version(version)
+    !! returns the tempo version string from the README.md file
+    !! or returns empty string if not found
+  
+    character(len=*), intent(inout) :: version
+    character(len=100) :: first_line, filename
+    integer :: io_unit
+    logical :: fileexists
+
+    filename = 'README.md'
+    inquire(file=trim(filename), exist=fileexists)
+    if (.not. fileexists) then
+      version = ''
+      ! write(*,'(A)') 'Unable to determine TEMPO Microphysics Version'
+      return
+    endif
+  
+    open(newunit=io_unit, file=filename, status='old', action='read')
+    read(io_unit, '(A)') first_line
+    close(io_unit)
+
+    ! format is tempo-vX.X.X
+    version = trim(first_line(8:))
+    write(*,'(A)') 'TEMPO Microphysics Version: '//trim(version)
+  end subroutine get_version
+
 
   subroutine initialize_graupel_vars(hail_flag)
     !! initialize graupel variables based on hail-aware configuration flag
