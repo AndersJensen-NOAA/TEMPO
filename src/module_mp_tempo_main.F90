@@ -509,21 +509,58 @@ module module_mp_tempo_main
       satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
       supersaturated, above_cloud_fraction_rh)
 
-    ! here
+ 
 
+!cond
+    ! after update do cloud condensation / rain evaporation --------------------------------------
+    ! cloud condensation
+    if (.not. tempo_cfgs%turn_off_micro_flag) then
+      call cloud_condensation(rho, temp, w1d, ssatw, lvap, tcond, diffu, lvt2, &
+        nwfa, qv, qvs, l_qc, rc, nc, tend)
+
+      do k = 1, nz
+        if (satw(k) <= 0.83 .or. satw(k) >= 1.) then
+
+        qvten(k) = qvten(k) - tend%prw_vcd(k)
+        qcten(k) = qcten(k) + tend%prw_vcd(k)
+        ncten(k) = ncten(k) + tend%pnc_wcd(k)
+        nwfaten(k) = nwfaten(k) - tend%pnc_wcd(k)
+        tten(k) = tten(k) + lvap(k)*ocp(k)*tend%prw_vcd(k)
+        qcfrac1d(k) = 1._wp
+        endif
+      enddo 
+
+      xrx = qc1d
+      if (present(nc1d)) then
+        if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
+        xncx = nc1d
+      endif 
+      call cloud_check_and_update(rho=rho, l_qc=l_qc, qcfrac1d=qcfrac1d, qc1d=xrx, nc1d=xncx, &
+        rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
+
+      do k = 1, nz
+        qv(k) = max(min_qv, qv1d(k) + qvten(k)*global_dt)
+        temp(k) = t1d(k) + tten(k)*global_dt
+        rho(k) = roverrv*pres(k)/(rdry*temp(k)*(qv(k)+roverrv))
+      enddo 
+      
+      call thermo_vars(qv, temp, pres, rho, rhof, rhof2, qvs, delqvs, qvsi, &
+      satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
+      supersaturated, above_cloud_fraction_rh)
+    endif 
+! cond
+
+   ! here
     call prog_cloud_frac_ice(temp, l_qi, rho, qv, qvsi, qi1d, qifrac1d, &
       qcfrac1d, qiten_bl1d, qiten, w1d, ocp, tend)
 
-    call prog_cloud_frac_condensation(temp=temp, pres=pres, l_qc=l_qc, rho=rho, qv=qv, &
+    call prog_cloud_frac_condensation2(temp=temp, pres=pres, dz1d=dz1d, l_qc=l_qc, rho=rho, qv=qv, &
       qvs=qvs, qc1d=qc1d, nc1d=nc1d, qcfrac1d=qcfrac1d, w1d=w1d, lvap=lvap, ocp=ocp, &
       ssatw=ssatw, thten_swrad1d=thten_swrad1d, thten_lwrad1d=thten_lwrad1d, &
       qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, thten_bl1d=thten_bl1d, nwfa=nwfa, tend=tend)
 
-     do k = 1, nz
-        qifracten(k) = qifracten(k) + tend%pai_sgi(k) + tend%pai_ibl(k)
-
-        qcfracten(k) = qcfracten(k) + tend%pra_sgi(k) + tend%pra_sgf(k) + &
-          tend%pra_slw(k) + tend%pra_ssw(k) + tend%pra_sbl(k)
+    do k = 1, nz
+    if (satw(k) > 0.83 .and. satw(k) < 1.) then
         qvten(k) = qvten(k) - tend%prw_sgi(k) - tend%prw_sgf(k) - &
           tend%prw_slw(k) - tend%prw_ssw(k) - tend%prw_sbl(k)
         qcten(k) = qcten(k) + tend%prw_sgi(k) + tend%prw_sgf(k) + &
@@ -535,11 +572,16 @@ module module_mp_tempo_main
         tten(k) = tten(k) + lvap(k)*ocp(k) * &
           (tend%prw_sgi(k) + tend%prw_sgf(k) + &
           tend%prw_slw(k) + tend%prw_ssw(k) + tend%prw_sbl(k))
+    endif
+
+        qifracten(k) = qifracten(k) + tend%pai_sgi(k) + tend%pai_ibl(k)
+        qcfracten(k) = qcfracten(k) + tend%pra_sgi(k) + tend%pra_sgf(k) + &
+          tend%pra_slw(k) + tend%pra_ssw(k) + tend%pra_sbl(k)
 
         ! update actual cloud fraction here before next check
         qcfrac1d(k) = qcfrac1d(k) + qcfracten(k)*global_dt
         qifrac1d(k) = qifrac1d(k) + qifracten(k)*global_dt
-
+      
       enddo 
 
       xrx = qc1d
@@ -549,7 +591,6 @@ module module_mp_tempo_main
       endif 
       call cloud_check_and_update(rho=rho, l_qc=l_qc, qcfrac1d=qcfrac1d, qc1d=xrx, nc1d=xncx, &
         rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
-
         ! qcfrac1d is updated
 
     xrx = qi1d
@@ -567,41 +608,8 @@ module module_mp_tempo_main
       call thermo_vars(qv, temp, pres, rho, rhof, rhof2, qvs, delqvs, qvsi, &
       satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
       supersaturated, above_cloud_fraction_rh)
-    ! end here 
+    ! end here prog
 
-
-    ! after update do cloud condensation / rain evaporation --------------------------------------
-    ! cloud condensation
-    ! if (.not. tempo_cfgs%turn_off_micro_flag) then
-    !   !call cloud_condensation(rho, temp, w1d, ssatw, lvap, tcond, diffu, lvt2, &
-    !   !  nwfa, qv, qvs, l_qc, rc, nc, tend)
-
-    !   do k = 1, nz
-    !     qvten(k) = qvten(k) - tend%prw_vcd(k)
-    !     qcten(k) = qcten(k) + tend%prw_vcd(k)
-    !     ncten(k) = ncten(k) + tend%pnc_wcd(k)
-    !     nwfaten(k) = nwfaten(k) - tend%pnc_wcd(k)
-    !     tten(k) = tten(k) + lvap(k)*ocp(k)*tend%prw_vcd(k)
-    !   enddo 
-
-    !   xrx = qc1d
-    !   if (present(nc1d)) then
-    !     if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
-    !     xncx = nc1d
-    !   endif 
-    !   call cloud_check_and_update(rho=rho, l_qc=l_qc, qcfrac1d=qcfrac1d, qc1d=xrx, nc1d=xncx, &
-    !     rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
-
-    !   do k = 1, nz
-    !     qv(k) = max(min_qv, qv1d(k) + qvten(k)*global_dt)
-    !     temp(k) = t1d(k) + tten(k)*global_dt
-    !     rho(k) = roverrv*pres(k)/(rdry*temp(k)*(qv(k)+roverrv))
-    !   enddo 
-      
-    !   call thermo_vars(qv, temp, pres, rho, rhof, rhof2, qvs, delqvs, qvsi, &
-    !   satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
-    !   supersaturated, above_cloud_fraction_rh)
-    ! endif 
 
     ! rain evaporation
     if (.not. tempo_cfgs%turn_off_micro_flag) then
@@ -959,7 +967,7 @@ module module_mp_tempo_main
 
     ! estimate from Gultepe and Isaac, 2007
     ! write(*,*) 'aaj', qc, qcfrac
-    qcfrac = max(qcfrac, (5.57_wp*(1000._wp*qc)**(0.78_wp)))
+    ! qcfrac = max(qcfrac, (5.57_wp*(1000._wp*qc)**(0.78_wp)))
     qcfrac = max(min(qcfrac, 1._wp), cf_low)
   end subroutine cloud_fraction_check
 
@@ -1006,14 +1014,15 @@ module module_mp_tempo_main
     nz = size(qc1d)
     do k = 1, nz
       hit_limit = .false.
-      if (qc1d(k)+qcten(k)*global_dt > &
-        r1/min(max(qcfrac1d(k), cf_low), 1._wp)) then
+      if (qc1d(k)+qcten(k)*global_dt > r1) then
+
+!      if (qc1d(k)+qcten(k)*global_dt > r1/min(max(qcfrac1d(k), cf_low), 1._wp)) then
         l_qc(k) = .true.
         ! update mass
         rc(k) = (qc1d(k)+qcten(k)*global_dt)*rho(k)
         if (present(qcfrac1d)) then
           call cloud_fraction_check(qcfrac1d(k), rc(k)/rho(k))
-          rc(k) = rc(k) / qcfrac1d(k)
+          ! rc(k) = rc(k) / qcfrac1d(k)
         endif
         qc1d(k) = qc1d(k)+qcten(k)*global_dt
 
@@ -1021,9 +1030,9 @@ module module_mp_tempo_main
         if (present(nc1d)) then
           nc(k) = max(nt_c_min, (nc1d(k)+ncten(k)*global_dt)*rho(k))
 
-          if (present(qcfrac1d)) then
-            nc(k) = nc(k) / qcfrac1d(k)
-          endif
+          ! if (present(qcfrac1d)) then
+          !   nc(k) = nc(k) / qcfrac1d(k)
+          ! endif
 
           ! number check
           if (nc(k) <= nt_c_min) then
@@ -1049,7 +1058,9 @@ module module_mp_tempo_main
           ! update number to be consistent with lamc
           nc(k) = ccg(1,nu_c)*ocg2(nu_c)*rc(k) / am_r*lamc**bm_r
 
-          if (hit_limit) ncten(k) = (qcfrac1d(k)*nc(k)/rho(k) - nc1d(k)) * global_inverse_dt
+          ! if (hit_limit) ncten(k) = (qcfrac1d(k)*nc(k)/rho(k) - nc1d(k)) * global_inverse_dt
+
+          if (hit_limit) ncten(k) = (nc(k)/rho(k) - nc1d(k)) * global_inverse_dt
           nc1d(k) = max(nt_c_min/rho(k), &
             min(ccg(1,nu_c)*ocg2(nu_c)*qc1d(k)/am_r*lamc**bm_r, nt_c_max/rho(k)))
         ! else
@@ -2268,38 +2279,49 @@ module module_mp_tempo_main
   end subroutine prog_cloud_frac_ice
 
 
-  subroutine prog_cloud_frac_condensation(temp, pres, l_qc, rho, qv, qvs, qc1d, nc1d, qcfrac1d, &
+  subroutine prog_cloud_frac_condensation(temp, pres, dz1d, l_qc, rho, qv, qvs, qc1d, nc1d, qcfrac1d, &
       w1d, lvap, ocp, ssatw, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
       thten_bl1d, nwfa, tend)
     use module_mp_tempo_params, only : r1, rv, cloud_fraction_rh, eps, nt_c_min
 
     real(wp), dimension(:), intent(in) :: temp, pres, rho, qv, qvs, qc1d, qcfrac1d, &
       w1d, lvap, ocp, ssatw, nwfa, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
-      thten_bl1d
+      thten_bl1d, dz1d
     real(wp), dimension(:), intent(in), optional :: nc1d
     logical, dimension(:), intent(in) :: l_qc
     type(ty_tend), intent(inout) :: tend
     real(wp) :: orho, omega, dqsdT, al, bs, sd, qc_mean, qtot_mean, ls_cond, &
-      term1, term2, term3, gterm, eros_term, theta_to_temp, xnc
+      term1, term2, term3, gterm, eros_term, theta_to_temp, xnc, qcfrac_, hgt, cflocal
     integer :: k, nz
 
+    hgt = 0._wp
     nz = size(rho)
     do k = 1, nz
+      hgt = hgt + dz1d(k)
+      cflocal = min(0.99, (cloud_fraction_rh + 0.07*((hgt/1000.))))
+
       theta_to_temp = (pres(k)/100000._wp)**0.286_wp
       orho = 1._wp / rho(k)
       omega = -9.8_wp * w1d(k) * rho(k)
       dqsdT = lvap(k) * qvs(k) / (rv*temp(k)**2)
       al = 1._wp / (1._wp + dqsdT*lvap(k)*ocp(k))
-      bs = al * (1._wp-cloud_fraction_rh) * qvs(k)
+      bs = al * (1._wp-cflocal) * qvs(k)
       sd = al * (qvs(k)-qv(k))
       qtot_mean = qv(k) + qc1d(k)
       qc_mean = al * (qtot_mean-qvs(k))
       ls_cond = -al * dqsdT * (omega*orho*ocp(k))
 
+      ! if (.not. l_qc(k)) then
+      !   !tend%prw_sbl(k) = qcfrac1d(k)*al * (qvten_bl1d(k) + qcten_bl1d(k) - &
+      !   !  dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+      !   tend%prw_sbl(k) = min(1., max(0.05, 0.5_dp/bs*(bs+qc_mean))) *al * (qvten_bl1d(k) + qcten_bl1d(k) - &
+      !     dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+      ! endif 
+        
       ! initialization of cloud water and cloud fraction
       ! tendencies are grid-mean
       if (.not. l_qc(k)) then
-        if (ssatw(k) > (cloud_fraction_rh-1.01_wp) .and. w1d(k) > 0.1) then
+        if (ssatw(k) > (cflocal-0.99_wp) .and. ssatw(k) < 0._wp .and. w1d(k) > 0.1) then
           tend%pra_sgi(k) = 0.5_dp/bs*(bs+qc_mean) * global_inverse_dt
           tend%prw_sgi(k) = tend%pra_sgi(k)*0.5_dp*(bs+qc_mean) * rho(k) ! kg/m3/s
           if ((qc1d(k)*rho(k) + tend%prw_sgi(k)*global_dt) <= r1) then
@@ -2311,84 +2333,317 @@ module module_mp_tempo_main
             tend%prw_sgi(k) = 0._dp
           endif          
         endif
-      endif
 
-      ! source/sinks
-      if ((abs(sd) > 1.e-6_wp) .and. l_qc(k) .and. qc1d(k) > r1) then
-        term1 = ((1._wp-qcfrac1d(k))**2*qcfrac1d(k)**2/qc1d(k)) + &
-          (qcfrac1d(k)**2*(1._wp-qcfrac1d(k))**2/sd)
-        term2 = (1._wp-qcfrac1d(k))**2 + qcfrac1d(k)**2
+        if ((abs(sd) > 1.e-6_wp) .and. (qc1d(k)+ tend%prw_sgi(k)*global_dt) > r1 .and. ssatw(k) < 0._wp .and. &
+          ssatw(k) > (cflocal-0.99_wp) .and. w1d(k) > 0.1) then
+          qcfrac_ = max(min(1., tend%pra_sgi(k)*global_dt), 0.05)
+          term1 = ((1._wp-qcfrac_)**2*qcfrac_**2/(qc1d(k)+ tend%prw_sgi(k)*global_dt)) + (qcfrac_**2*(1._wp-qcfrac_)**2/sd)
+          term2 = (1._wp-qcfrac_)**2 + qcfrac_**2
+          gterm = 0.5_wp*term1/term2
+
+          tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+          tend%prw_sbl(k) = qcfrac_*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+        endif 
+      endif 
+
+      if ((abs(sd) > 1.e-6_wp) .and. (qc1d(k)+ tend%prw_sbl(k)*global_dt + tend%prw_sgi(k)*global_dt) > r1 .and. &
+        ssatw(k) < 0._wp .and. ssatw(k) > (cflocal-0.99_wp)) then
+
+        qcfrac_ = max(min(1., qcfrac1d(k) + tend%pra_sbl(k)*global_dt + tend%pra_sgi(k)*global_dt), 0.05)
+        term1 = ((1._wp-qcfrac_)**2*qcfrac_**2/(qc1d(k)+ tend%prw_sbl(k)*global_dt + tend%prw_sgi(k)*global_dt)) + (qcfrac_**2*(1._wp-qcfrac_)**2/sd)
+        term2 = (1._wp-qcfrac_)**2 + qcfrac_**2
         gterm = 0.5_wp*term1/term2
 
-        ! large-scale forcing
-        if ((ssatw(k) > (cloud_fraction_rh-1.01_wp) .and. (omega < eps))) then
-          tend%pra_sgf(k) = gterm*ls_cond
-          tend%prw_sgf(k) = qcfrac1d(k)*ls_cond
-        else
-          tend%pra_sgf(k) = 0._dp
-          tend%prw_sgf(k) = 0._dp
-        endif
+        ! erosion
+        term3 = -3.1_wp*qc_mean/(al*qvs(k))
+        eros_term = -2.25e-5_wp * exp(term3) * 100._wp
+        tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
+        tend%prw_sge(k) = min(0._dp, (-qc_mean*qcfrac_*eros_term))
 
-        ! radiation
-        if ((ssatw(k) > (cloud_fraction_rh-1.01_wp))) then
-          tend%pra_slw(k) = -gterm*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
-          tend%pra_ssw(k) = -gterm*al*dqsdT*thten_swrad1d(k) * theta_to_temp
-          tend%prw_slw(k) = -qcfrac1d(k)*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
-          tend%prw_ssw(k) = -qcfrac1d(k)*al*dqsdT*thten_swrad1d(k) * theta_to_temp
+        if (present(nc1d)) then
+          if (qc1d(k) + tend%pra_sgi(k)*global_dt + tend%prw_sbl(k)*global_dt > r1) then
+            tend%pnc_sgi(k) = tend%prw_sge(k) * nc1d(k)/(qc1d(k) + tend%pra_sgi(k)*global_dt + tend%prw_sbl(k)*global_dt)
+          endif 
         endif 
 
-        if ((qcfrac1d(k) + &
-          (tend%pra_slw(k) + tend%pra_ssw(k) + tend%pra_sgf(k))*global_dt) < 0.05) then
-          tend%pra_slw(k) = 0._dp
-          tend%prw_slw(k) = 0._dp
-          tend%pra_ssw(k) = 0._dp
-          tend%prw_ssw(k) = 0._dp
-          tend%pra_sgf(k) = 0._dp
-          tend%prw_sgf(k) = 0._dp
-        endif   
-
-        ! erosion
-        ! if (ssatw(k) < -1.e-6_wp) then
-          term3 = -3.1_wp*qc_mean/(al*qvs(k))
-          eros_term = -2.25e-5_wp * exp(term3) * 10._wp
-          tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
-          tend%prw_sge(k) = min(0._dp, ((qc1d(k) - qc_mean*qcfrac1d(k))*eros_term))
-
-          if (present(nc1d)) then
-            tend%pnc_sgi(k) = tend%prw_sge(k) * nc1d(k)/qc1d(k)
-          endif 
-
-          if ((qcfrac1d(k) + tend%pra_sge(k)*global_dt) < 0.05) then
-            tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
-            tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
-            if (present(nc1d)) tend%pnc_sgi(k) = -nc1d(k)*global_inverse_dt
-          endif
-          if ((qc1d(k) + tend%prw_sge(k)*global_dt) <= r1) then
-            tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
-            tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
-            if (present(nc1d)) tend%pnc_sgi(k) = -nc1d(k)*global_inverse_dt
-          endif
-        ! endif
-
-        ! boundary layer 
-        if ((ssatw(k) > (cloud_fraction_rh-1.01_wp))) then
-          tend%pra_sbl(k) = gterm*al * &
-            (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
-          tend%prw_sbl(k) = qcfrac1d(k)*al * &
-              (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - &
-              lvap(k)*ocp(k)*qcten_bl1d(k)))
+        if (qcfrac_ + tend%pra_sge(k)*global_dt < 0.05) then
+          tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
+          tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
+          tend%prw_sbl(k) = 0.
+          tend%pra_sbl(k) = 0.
+          tend%pra_sgi(k) = 0.
+          tend%prw_sgi(k) = 0.
+          if (present(nc1d)) tend%pnc_sgi(k) = -nc1d(k)*global_inverse_dt
         endif
-      endif
-      if (tend%prw_sgi(k) + tend%prw_sbl(k) + tend%prw_sgf(k) + tend%prw_ssw(k) + tend%prw_slw(k) > eps) then
+        if ((qc1d(k) + tend%pra_sgi(k)*global_dt + tend%pra_sbl(k)*global_dt + tend%prw_sge(k)*global_dt) <= r1) then
+          tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
+          tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
+          tend%prw_sbl(k) = 0.
+          tend%pra_sbl(k) = 0.
+          tend%pra_sgi(k) = 0.
+          tend%prw_sgi(k) = 0.
+          if (present(nc1d)) tend%pnc_sgi(k) = -nc1d(k)*global_inverse_dt
+        endif
+      endif 
+
+      if (tend%prw_sgi(k) + tend%prw_sbl(k) > eps) then
         xnc = max(nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
         if (present(nc1d)) then
           tend%pnc_sgi(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
         endif 
       endif 
+
+      ! source/sinks
+
+      ! ! erosion
+      !   term3 = -3.1_wp*qc_mean/(al*qvs(k))
+      !   eros_term = -2.25e-5_wp * exp(term3) * 10._wp
+      !   tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
+      !   tend%prw_sge(k) = min(0._dp, ((qc1d(k)+tend%prw_sbl(k)*global_dt - qc_mean*qcfrac1d(k))*eros_term))
+
+      !   if (present(nc1d)) then
+      !     tend%pnc_sgi(k) = tend%prw_sge(k) * nc1d(k)/(qc1d(k)+tend%prw_sbl(k)*global_dt)
+      !   endif 
+
+      !   if ((qcfrac1d(k) + tend%pra_sge(k)*global_dt) < 0.05) then
+      !     tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
+      !     tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
+      !     if (present(nc1d)) tend%pnc_sgi(k) = -nc1d(k)*global_inverse_dt
+      !   endif
+      !   if ((qc1d(k) + tend%prw_sge(k)*global_dt) <= r1) then
+      !     tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
+      !     tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
+      !     if (present(nc1d)) tend%pnc_sgi(k) = -nc1d(k)*global_inverse_dt
+      !   endif
+      ! endif
+  
+      ! if (ssatw(k) > (cloud_fraction_rh-0.99_wp) .and. (qc1d(k)+tend%prw_sbl(k)*global_dt) > r1) then
+      !   tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+      ! endif 
+
+        ! large-scale forcing
+        ! if ((ssatw(k) > (cloud_fraction_rh-0.99_wp) .and. (omega < eps))) then
+        !   tend%pra_sgf(k) = gterm*ls_cond
+        !   tend%prw_sgf(k) = qcfrac1d(k)*ls_cond
+        ! else
+        !   tend%pra_sgf(k) = 0._dp
+        !   tend%prw_sgf(k) = 0._dp
+        ! endif
+
+        ! radiation
+        ! if ((ssatw(k) > (cloud_fraction_rh-0.99_wp))) then
+        !   tend%pra_slw(k) = -gterm*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
+        !   tend%pra_ssw(k) = -gterm*al*dqsdT*thten_swrad1d(k) * theta_to_temp
+        !   tend%prw_slw(k) = -qcfrac1d(k)*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
+        !   tend%prw_ssw(k) = -qcfrac1d(k)*al*dqsdT*thten_swrad1d(k) * theta_to_temp
+        ! endif 
+
+        ! if ((qcfrac1d(k) + &
+        !   (tend%pra_slw(k) + tend%pra_ssw(k) + tend%pra_sgf(k))*global_dt) < 0.05) then
+        !   tend%pra_slw(k) = 0._dp
+        !   tend%prw_slw(k) = 0._dp
+        !   tend%pra_ssw(k) = 0._dp
+        !   tend%prw_ssw(k) = 0._dp
+        !   tend%pra_sgf(k) = 0._dp
+        !   tend%prw_sgf(k) = 0._dp
+        ! endif   
+
+
+
+      ! boundary layer 
+      ! if (ssatw(k) > (cloud_fraction_rh-0.99_wp) .and. ) then
+        ! tend%pra_sbl(k) = gterm*al * (qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+        ! tend%prw_sbl(k) = qcfrac1d(k)*al * (qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+
+        !tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+        !tend%prw_sbl(k) = qcfrac1d(k)*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+        
+        !tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+        !tend%prw_sbl(k) = qcfrac1d(k)*al * (qvten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+      ! endif
+
+
       ! xnc = max(nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
       ! tend%pnc_sgi(k) = 0.5_wp*(xnc-nc(k) + abs(xnc-nc(k)))*global_inverse_dt*orho
     enddo 
   end subroutine prog_cloud_frac_condensation
+
+
+ subroutine prog_cloud_frac_condensation2(temp, pres, dz1d, l_qc, rho, qv, qvs, qc1d, nc1d, qcfrac1d, &
+      w1d, lvap, ocp, ssatw, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
+      thten_bl1d, nwfa, tend)
+    use module_mp_tempo_params, only : r1, rv, cloud_fraction_rh, eps, nt_c_min
+
+    real(wp), dimension(:), intent(in) :: temp, pres, rho, qv, qvs, qc1d, qcfrac1d, &
+      w1d, lvap, ocp, ssatw, nwfa, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
+      thten_bl1d, dz1d
+    real(wp), dimension(:), intent(in), optional :: nc1d
+    logical, dimension(:), intent(in) :: l_qc
+    type(ty_tend), intent(inout) :: tend
+    real(wp) :: orho, omega, dqsdT, al, bs, sd, qc_mean, qtot_mean, ls_cond, &
+      term1, term2, term3, gterm, eros_term, theta_to_temp, xnc, qcfrac_, hgt, cflocal
+    integer :: k, nz
+
+    hgt = 0._wp
+    nz = size(rho)
+    do k = 1, nz
+      hgt = hgt + dz1d(k)
+      cflocal = cloud_fraction_rh
+
+      theta_to_temp = (pres(k)/100000._wp)**0.286_wp
+      orho = 1._wp / rho(k)
+      omega = -9.8_wp * w1d(k) * rho(k)
+      dqsdT = lvap(k) * qvs(k) / (rv*temp(k)**2)
+      al = 1._wp / (1._wp + dqsdT*lvap(k)*ocp(k))
+      bs = al * (1._wp-cflocal) * qvs(k)
+      sd = al * (qvs(k)-qv(k))
+      qtot_mean = qv(k) + qc1d(k)
+      qc_mean = al * (qtot_mean-qvs(k))
+      ls_cond = -al * dqsdT * (omega*orho*ocp(k))
+        
+      ! initialization of cloud water and cloud fraction
+      ! tendencies are grid-mean
+      if (.not. l_qc(k)) then
+        if (ssatw(k) > (cflocal-0.99_wp) .and. ssatw(k) < 0._wp) then
+          tend%pra_sgi(k) = 0.5_dp/bs*(bs+qc_mean) * global_inverse_dt
+          tend%prw_sgi(k) = tend%pra_sgi(k)*0.5_dp*(bs+qc_mean) * rho(k) ! kg/m3/s
+          if ((qc1d(k)*rho(k) + tend%prw_sgi(k)*global_dt) <= r1) then
+            tend%pra_sgi(k) = 0._dp
+            tend%prw_sgi(k) = 0._dp
+          endif
+          if ((qcfrac1d(k) + tend%pra_sgi(k)*global_dt) < 0.05) then
+            tend%pra_sgi(k) = 0._dp
+            tend%prw_sgi(k) = 0._dp
+          endif          
+        endif
+      else 
+
+        if ((abs(sd) > 1.e-6_wp) .and. qc1d(k) > r1 .and. ssatw(k) < 0._wp .and. ssatw(k) > (cflocal-0.99_wp)) then
+          qcfrac_ = qcfrac1d(k)
+          term1 = ((1._wp-qcfrac_)**2*qcfrac_**2/qc1d(k)) + (qcfrac_**2*(1._wp-qcfrac_)**2/sd)
+          term2 = (1._wp-qcfrac_)**2 + qcfrac_**2
+          gterm = 0.5_wp*term1/term2
+
+          tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+          tend%prw_sbl(k) = qcfrac_*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+
+          if (tend%prw_sgi(k) + tend%prw_sbl(k) > eps) then
+            xnc = max(nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
+            if (present(nc1d)) then
+              tend%pnc_sgi(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
+            endif 
+          endif 
+
+          ! erosion
+          term3 = -3.1_wp*qc_mean/(al*qvs(k))
+          eros_term = -2.25e-5_wp * exp(term3)
+          tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
+          tend%prw_sge(k) = min(0._dp, ((qc1d(k)-qc_mean*qcfrac_)*eros_term))
+
+          if (present(nc1d)) then
+            if (qc1d(k) > r1) then
+              tend%pnc_sgi(k) = tend%pnc_sgi(k) + (tend%prw_sge(k) * nc1d(k)/qc1d(k))
+            endif 
+          endif 
+
+          if (qcfrac_ + tend%pra_sge(k)*global_dt < 0.05) then
+            tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
+            tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
+            tend%prw_sbl(k) = 0.
+            tend%pra_sbl(k) = 0.
+            tend%pra_sgi(k) = 0.
+            tend%prw_sgi(k) = 0.
+            if (present(nc1d)) tend%pnc_sgi(k) = -nc1d(k)*global_inverse_dt
+          endif
+
+          if ((qc1d(k) + tend%prw_sge(k)*global_dt) <= r1) then
+            tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
+            tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
+            tend%prw_sbl(k) = 0.
+            tend%pra_sbl(k) = 0.
+            tend%pra_sgi(k) = 0.
+            tend%prw_sgi(k) = 0.
+            if (present(nc1d)) tend%pnc_sgi(k) = -nc1d(k)*global_inverse_dt
+          endif
+        endif 
+      endif 
+    enddo 
+
+
+      ! source/sinks
+
+      ! ! erosion
+      !   term3 = -3.1_wp*qc_mean/(al*qvs(k))
+      !   eros_term = -2.25e-5_wp * exp(term3) * 10._wp
+      !   tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
+      !   tend%prw_sge(k) = min(0._dp, ((qc1d(k)+tend%prw_sbl(k)*global_dt - qc_mean*qcfrac1d(k))*eros_term))
+
+      !   if (present(nc1d)) then
+      !     tend%pnc_sgi(k) = tend%prw_sge(k) * nc1d(k)/(qc1d(k)+tend%prw_sbl(k)*global_dt)
+      !   endif 
+
+      !   if ((qcfrac1d(k) + tend%pra_sge(k)*global_dt) < 0.05) then
+      !     tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
+      !     tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
+      !     if (present(nc1d)) tend%pnc_sgi(k) = -nc1d(k)*global_inverse_dt
+      !   endif
+      !   if ((qc1d(k) + tend%prw_sge(k)*global_dt) <= r1) then
+      !     tend%pra_sge(k) = -qcfrac1d(k)*global_inverse_dt
+      !     tend%prw_sge(k) = -qc1d(k)*global_inverse_dt
+      !     if (present(nc1d)) tend%pnc_sgi(k) = -nc1d(k)*global_inverse_dt
+      !   endif
+      ! endif
+  
+      ! if (ssatw(k) > (cloud_fraction_rh-0.99_wp) .and. (qc1d(k)+tend%prw_sbl(k)*global_dt) > r1) then
+      !   tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+      ! endif 
+
+        ! large-scale forcing
+        ! if ((ssatw(k) > (cloud_fraction_rh-0.99_wp) .and. (omega < eps))) then
+        !   tend%pra_sgf(k) = gterm*ls_cond
+        !   tend%prw_sgf(k) = qcfrac1d(k)*ls_cond
+        ! else
+        !   tend%pra_sgf(k) = 0._dp
+        !   tend%prw_sgf(k) = 0._dp
+        ! endif
+
+        ! radiation
+        ! if ((ssatw(k) > (cloud_fraction_rh-0.99_wp))) then
+        !   tend%pra_slw(k) = -gterm*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
+        !   tend%pra_ssw(k) = -gterm*al*dqsdT*thten_swrad1d(k) * theta_to_temp
+        !   tend%prw_slw(k) = -qcfrac1d(k)*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
+        !   tend%prw_ssw(k) = -qcfrac1d(k)*al*dqsdT*thten_swrad1d(k) * theta_to_temp
+        ! endif 
+
+        ! if ((qcfrac1d(k) + &
+        !   (tend%pra_slw(k) + tend%pra_ssw(k) + tend%pra_sgf(k))*global_dt) < 0.05) then
+        !   tend%pra_slw(k) = 0._dp
+        !   tend%prw_slw(k) = 0._dp
+        !   tend%pra_ssw(k) = 0._dp
+        !   tend%prw_ssw(k) = 0._dp
+        !   tend%pra_sgf(k) = 0._dp
+        !   tend%prw_sgf(k) = 0._dp
+        ! endif   
+
+
+
+      ! boundary layer 
+      ! if (ssatw(k) > (cloud_fraction_rh-0.99_wp) .and. ) then
+        ! tend%pra_sbl(k) = gterm*al * (qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+        ! tend%prw_sbl(k) = qcfrac1d(k)*al * (qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+
+        !tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+        !tend%prw_sbl(k) = qcfrac1d(k)*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+        
+        !tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+        !tend%prw_sbl(k) = qcfrac1d(k)*al * (qvten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+      ! endif
+
+
+      ! xnc = max(nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
+      ! tend%pnc_sgi(k) = 0.5_wp*(xnc-nc(k) + abs(xnc-nc(k)))*global_inverse_dt*orho
+    ! enddo 
+  end subroutine prog_cloud_frac_condensation2
 
 
   subroutine freeze_cloud_melt_ice(temp, rho, ocp, lvap, qi1d, ni1d, qiten, niten, &
@@ -2585,7 +2840,7 @@ module module_mp_tempo_main
       !> [Berry and Reinhardt (1974)](https://doi.org/10.1175/1520-0469(1974)031<1814:AAOCDG>2.0.CO;2)
       !> with characteristic diameters correctly computed from gamma distribution of cloud droplets
       if (l_qc(k)) then
-        if (rc(k) > 0.01e-3_wp .and. qcfrac1d(k) > 0.05) then
+        if (rc(k)*qcfrac1d(k) > 0.01e-3_wp .and. qcfrac1d(k) > 0.95) then
           nu_c = get_nuc(nc(k))
           lamc = 1._dp / ilamc(k)       
           xdc = max(d0c*1.e6_wp, ((rc(k)/(am_r*nc(k)))**obmr) * 1.e6_wp)
@@ -2604,9 +2859,9 @@ module module_mp_tempo_main
           tend%pnc_wau(k) = min(real(nc(k)*global_inverse_dt, kind=dp), &
             tend%prr_wau(k) / (am_r*mvd_c(k)*mvd_c(k)*mvd_c(k)))
           
-          tend%prr_wau(k) = tend%prr_wau(k) * qcfrac1d(k)
-          tend%pnr_wau(k) = tend%pnr_wau(k) * qcfrac1d(k)
-          tend%pnc_wau(k) = tend%pnc_wau(k) * qcfrac1d(k)
+          tend%prr_wau(k) = tend%prr_wau(k) !* qcfrac1d(k)
+          tend%pnr_wau(k) = tend%pnr_wau(k) !* qcfrac1d(k)
+          tend%pnc_wau(k) = tend%pnc_wau(k) !* qcfrac1d(k)
         endif
       endif
 
@@ -2622,10 +2877,10 @@ module module_mp_tempo_main
           ef_rw = t_efrw(idx, int(mvd_c(k)*1.e6_wp))
           n0_r = nr(k)*org2*lamr**cre(2)
           tend%prr_rcw(k) = rhof(k)*t1_qr_qc*ef_rw*rc(k)*n0_r * &
-            ((lamr+fv_r)**(-cre(9))) * qcfrac1d(k)
+            ((lamr+fv_r)**(-cre(9))) !* qcfrac1d(k)
           tend%prr_rcw(k) = min(real(rc(k)*global_inverse_dt, kind=dp), tend%prr_rcw(k))
           tend%pnc_rcw(k) = rhof(k)*t1_qr_qc*ef_rw*nc(k)*n0_r * &
-            ((lamr+fv_r)**(-cre(9))) * qcfrac1d(k)
+            ((lamr+fv_r)**(-cre(9))) !* qcfrac1d(k)
           tend%pnc_rcw(k) = min(real(nc(k)*global_inverse_dt, kind=dp), tend%pnc_rcw(k))
         endif
       endif 
@@ -2668,9 +2923,9 @@ module module_mp_tempo_main
           idxs = 1 + int(nbs*log(real(xds/ds(1), kind=dp)) / log(real(ds(nbs)/ds(1), kind=dp)))
           idxs = min(idxs, nbs)
           ef_sw = t_efsw(idxs, int(mvd_c(k)*1.e6_wp))
-          tend%prs_scw(k) = rhof(k)*t1_qs_qc*ef_sw*rc(k)*smoe(k) * qcfrac1d(k)
+          tend%prs_scw(k) = rhof(k)*t1_qs_qc*ef_sw*rc(k)*smoe(k) !* qcfrac1d(k)
           tend%prs_scw(k) = min(real(rc(k)*global_inverse_dt, kind=dp), tend%prs_scw(k))
-          tend%pnc_scw(k) = rhof(k)*t1_qs_qc*ef_sw*nc(k)*smoe(k) * qcfrac1d(k)
+          tend%pnc_scw(k) = rhof(k)*t1_qs_qc*ef_sw*nc(k)*smoe(k) !* qcfrac1d(k)
           tend%pnc_scw(k) = min(real(nc(k)*global_inverse_dt, kind=dp), tend%pnc_scw(k))
 
           !>
@@ -2734,9 +2989,9 @@ module module_mp_tempo_main
             t1_qg_qc = pi*.25_wp*av_g(idx(k)) * cgg(9,idx(k))
             n0_g = ng(k)*ogg2*(1._wp/ilamg(k))**cge(2,1)
             tend%prg_gcw(k) = rhof(k)*t1_qg_qc*ef_gw*rc(k)* &
-              n0_g*ilamg(k)**cge(9,idx(k)) * qcfrac1d(k)
+              n0_g*ilamg(k)**cge(9,idx(k)) !* qcfrac1d(k)
             tend%pnc_gcw(k) = rhof(k)*t1_qg_qc*ef_gw*nc(k)* &
-              n0_g*ilamg(k)**cge(9,idx(k)) * qcfrac1d(k)
+              n0_g*ilamg(k)**cge(9,idx(k)) !* qcfrac1d(k)
             tend%pnc_gcw(k) = min(real(nc(k)*global_inverse_dt, kind=dp), tend%pnc_gcw(k))
             if (temp(k) < t0) tend%pbg_gcw(k) = meters3_to_liters*tend%prg_gcw(k)/rime_dens
 
@@ -3054,11 +3309,11 @@ module module_mp_tempo_main
 
         if (rc(k) > r_c(1)) then
           call get_cloud_table_index(rc(k), nc(k), idx_c, idx_n)
-          tend%pri_wfz(k) = tpi_qcfz(idx_c,idx_n,idx_tc,idx_in)*global_inverse_dt &
-            * qcfrac1d(k)
+          tend%pri_wfz(k) = tpi_qcfz(idx_c,idx_n,idx_tc,idx_in)*global_inverse_dt !&
+            !* qcfrac1d(k)
           tend%pri_wfz(k) = min(real(rc(k)*global_inverse_dt, kind=dp), tend%pri_wfz(k))
-          tend%pni_wfz(k) = tni_qcfz(idx_c,idx_n,idx_tc,idx_in)*global_inverse_dt &
-            * qcfrac1d(k)
+          tend%pni_wfz(k) = tni_qcfz(idx_c,idx_n,idx_tc,idx_in)*global_inverse_dt !&
+            !* qcfrac1d(k)
           tend%pni_wfz(k) = min(real(nc(k)*global_inverse_dt, kind=dp), &
             tend%pri_wfz(k)/(2.0_dp*xm0i), tend%pni_wfz(k))
         elseif (rc(k) > r1 .and. temp(k) < hgfrz) then
@@ -3097,8 +3352,8 @@ module module_mp_tempo_main
         tend%pri_iha(k) = tend%pri_iha(k) * qifrac1d(k)
         tend%pni_inu(k) = tend%pni_inu(k) * qifrac1d(k)
         tend%pri_inu(k) = tend%pri_inu(k) * qifrac1d(k)
-        tend%pri_wfz(k) = tend%pri_wfz(k) * qcfrac1d(k)
-        tend%pni_wfz(k) = tend%pni_wfz(k) * qcfrac1d(k)
+        tend%pri_wfz(k) = tend%pri_wfz(k) !* qcfrac1d(k)
+        tend%pni_wfz(k) = tend%pni_wfz(k) !* qcfrac1d(k)
       endif 
     enddo 
   end subroutine ice_nucleation

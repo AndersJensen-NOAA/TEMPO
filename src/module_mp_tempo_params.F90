@@ -118,6 +118,7 @@ module module_mp_tempo_params
 
   real(wp), parameter :: cloud_fraction_rh = 0.83 !! critical relative humidity for cloud fraction
   real(wp), parameter :: cf_low = 0.01 !! minimum cloud fraction
+
   ! parameters that should NOT be changed -----------------------------------------------------------------
   integer, parameter :: table_sp = real32 !! precision for lookup tables (machine independent)
   integer, parameter :: table_dp = real64 !! precision for lookup tables (machine independent)
