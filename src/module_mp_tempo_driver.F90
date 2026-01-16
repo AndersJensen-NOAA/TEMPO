@@ -35,7 +35,7 @@ module module_mp_tempo_driver
 
   contains
 
-  subroutine tempo_init(aerosolaware_flag, hailaware_flag, &
+  subroutine tempo_init(aerosolaware_flag, hailaware_flag, cldfra_flag, &
     ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, tempo_cfgs)
     !! initialize tempo microphysics
     use module_mp_tempo_params, only : get_version, tempo_version, t_efrw, &
@@ -46,7 +46,7 @@ module module_mp_tempo_driver
       initialize_bins_for_hail_size, initialize_bins_for_radar
 
     logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, &
-      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag
+      cldfra_flag, ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag
     type(ty_tempo_cfgs), intent(out) :: tempo_cfgs
 
     character(len=100) :: table_filename
@@ -70,6 +70,7 @@ module module_mp_tempo_driver
       if (present(hailaware_flag)) tempo_cfgs%hailaware_flag = hailaware_flag
       if (present(ml_for_bl_nc_flag)) tempo_cfgs%ml_for_bl_nc_flag = ml_for_bl_nc_flag
       if (present(ml_for_nc_flag)) tempo_cfgs%ml_for_nc_flag = ml_for_nc_flag
+      if (present(cldfra_flag)) tempo_cfgs%cldfra_flag = cldfra_flag
 
       if (tempo_cfgs%verbose) then
         write(*,'(A)') 'tempo_init() --- TEMPO microphysics configuration options: '
@@ -77,6 +78,7 @@ module module_mp_tempo_driver
         write(*,'(A,L)') 'tempo_init() --- hail aware = ', tempo_cfgs%hailaware_flag
         write(*,'(A,L)') 'tempo_init() --- ML for subgrid cloud number = ', tempo_cfgs%ml_for_bl_nc_flag
         write(*,'(A,L)') 'tempo_init() --- ML for cloud number = ', tempo_cfgs%ml_for_nc_flag
+        write(*,'(A,L)') 'tempo_init() --- CLoud fraction = ', tempo_cfgs%cldfra_flag
       endif 
 
       ! set graupel variables from hail_aware_flag
