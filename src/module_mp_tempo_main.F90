@@ -130,7 +130,7 @@ module module_mp_tempo_main
  
     real(wp), dimension(kts:kte) :: rc, ri, rr, rs, rg, rb !! local microphysical variables
     real(wp), dimension(kts:kte) :: ni, nr, nc, ng, nwfa, nifa !! local microphysics variables
-    real(wp), dimension(kts:kte) :: qia !! local ice cloud fraction
+    real(wp), dimension(kts:kte) :: qia1d, qca1d !! local ice cloud fraction
   
     real(dp), dimension(kts:kte) :: ilamc, ilami, ilamr, ilamg !! inverse lambda
     real(wp), dimension(kts:kte) :: mvd_r, mvd_c, mvd_g !! median volume diameter
@@ -321,15 +321,17 @@ module module_mp_tempo_main
       endif
     endif
 
-    qia = 1._wp
-    if (present(qifrac1d)) qia = qifrac1d
+    qia1d = 1._wp
+    qca1d = 1._wp
+    if (present(qifrac1d)) qia1d = qifrac1d
+    if (present(qcfrac1d)) qca1d = qcfrac1d
 
     call aerosol_check_and_update(rho=rho, nwfa1d=nwfa1d, nifa1d=nifa1d, &
       nwfa=nwfa, nifa=nifa, nwfaten=nwfaten, nifaten=nifaten)
 
     call rain_check_and_update(rho, l_qr, qr1d, nr1d, rr, nr, qrten, nrten, ilamr, mvd_r)
   
-    call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qia, qi1d=qi1d, ni1d=ni1d, &
+    call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qia1d, qi1d=qi1d, ni1d=ni1d, &
       ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
   
     call snow_check_and_update(rho, l_qs, qs1d, rs, qsten)
@@ -358,7 +360,7 @@ module module_mp_tempo_main
       endif
       allocate(ncsave(nz), source=nc)
     endif
-    call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=qc1d, nc1d=nc1d, qcfrac1d=qcfrac1d,  &
+    call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=qc1d, nc1d=nc1d, qcfrac1d=qca1d,  &
       rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
 
     ! init ng and qb
@@ -407,12 +409,12 @@ module module_mp_tempo_main
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, &
-        nifa, nwfa, ni, smo0, rc, nc, qia, rr, nr, ilamr, tend)
+        nifa, nwfa, ni, smo0, rc, nc, qia1d, rr, nr, ilamr, tend)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call ice_processes(rhof, rhof2, rho, w1d, temp, qv, qvsi, tcond, diffu, &
       vsc2, ssati, l_qi, ri, ni, ilami, l_qs, rs, smoe, smof, smo1, rr, nr, &
-      ilamr, mvd_r, l_qg, rg, ng, ilamg, idx_bg, qia, tend)
+      ilamr, mvd_r, l_qg, rg, ng, ilamg, idx_bg, qia1d, tend)
     endif
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call riming(temp, rhof, visco, l_qc, rc, nc, ilamc, mvd_c, l_qs, rs, &
@@ -455,7 +457,7 @@ module module_mp_tempo_main
       if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
       xncx = nc1d
     endif 
-    call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, qcfrac1d=qcfrac1d, &
+    call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, qcfrac1d=qca1d, &
       rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
 
     xrx = qr1d
@@ -464,7 +466,7 @@ module module_mp_tempo_main
 
     xrx = qi1d
     xnx = ni1d
-    call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qia, qi1d=xrx, ni1d=xnx, &
+    call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qia1d, qi1d=xrx, ni1d=xnx, &
       ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
 
     xrx = qs1d
@@ -516,7 +518,7 @@ module module_mp_tempo_main
         ncten(k) = ncten(k) + tend%pnc_wcd(k)
         nwfaten(k) = nwfaten(k) - tend%pnc_wcd(k)
         tten(k) = tten(k) + lvap(k)*ocp(k)*tend%prw_vcd(k)
-        if (tend%prw_vcd(k) > eps) qcfrac1d(k) = 1._wp
+        if (tend%prw_vcd(k) > eps) qca1d(k) = 1._wp
         endif
       enddo 
 
@@ -525,7 +527,7 @@ module module_mp_tempo_main
         if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
         xncx = nc1d
       endif 
-      call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, qcfrac1d=qcfrac1d, &
+      call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, qcfrac1d=qca1d, &
         rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
 
       do k = 1, nz
@@ -540,11 +542,11 @@ module module_mp_tempo_main
     endif 
 
    ! cloud fraction calls
-    call ice_cloud_fraction(temp, l_qi, rho, qv, qvsi, qi1d, qia, &
+    call ice_cloud_fraction(temp, l_qi, rho, qv, qvsi, qi1d, qia1d, &
       qcfrac1d, qiten_bl1d, qiten, w1d, ocp, tend)
 
     call liquid_cloud_fraction(temp=temp, pres=pres, dz1d=dz1d, l_qc=l_qc, rho=rho, qv=qv, &
-      qvs=qvs, qc1d=qc1d, nc1d=nc1d, qcfrac1d=qcfrac1d, w1d=w1d, lvap=lvap, ocp=ocp, &
+      qvs=qvs, qc1d=qc1d, nc1d=nc1d, qcfrac1d=qca1d, w1d=w1d, lvap=lvap, ocp=ocp, &
       ssatw=ssatw, thten_swrad1d=thten_swrad1d, thten_lwrad1d=thten_lwrad1d, &
       qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, thten_bl1d=thten_bl1d, nwfa=nwfa, tend=tend)
 
@@ -562,8 +564,8 @@ module module_mp_tempo_main
       qcfracten(k) = qcfracten(k) + tend%pra_sgi(k) + tend%pra_slw(k) + tend%pra_sbl(k)
 
       ! update actual cloud fraction here before next check
-      qcfrac1d(k) = qcfrac1d(k) + qcfracten(k)*global_dt
-      qia(k) = qia(k) + qifracten(k)*global_dt
+      qca1d(k) = qca1d(k) + qcfracten(k)*global_dt
+      qia1d(k) = qia1d(k) + qifracten(k)*global_dt
     enddo 
 
     xrx = qc1d
@@ -571,12 +573,12 @@ module module_mp_tempo_main
       if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
       xncx = nc1d
     endif 
-    call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, qcfrac1d=qcfrac1d, &
+    call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, qcfrac1d=qca1d, &
       rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
 
     xrx = qi1d
     xnx = ni1d
-    call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qia, qi1d=xrx, ni1d=xnx, &
+    call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qia1d, qi1d=xrx, ni1d=xnx, &
       ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
 
     do k = 1, nz
@@ -777,20 +779,20 @@ module module_mp_tempo_main
       call freeze_cloud_melt_ice(temp=temp, rho=rho, ocp=ocp, lvap=lvap, &
         qi1d=qi1d, ni1d=ni1d, qiten=qiten, niten=niten, qc1d=qc1d, nc1d=nc1d, &
         ncsave=ncsave, qcten=qcten, ncten=ncten, tten=tten, &
-        qcfrac1d=qcfrac1d, qifrac1d=qia)
+        qcfrac1d=qca1d, qifrac1d=qia1d)
 
       xrx = qc1d
       if (present(nc1d)) then
         if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
         xncx = nc1d
       endif 
-      call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, qcfrac1d=qcfrac1d, &
+      call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, qcfrac1d=qca1d, &
         rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
 
       xrx = qi1d
       xnx = ni1d
       ! qifrac1d = 1.
-      call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qia, qi1d=xrx, ni1d=xnx, &
+      call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qia1d, qi1d=xrx, ni1d=xnx, &
         ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
     endif 
 
@@ -808,13 +810,16 @@ module module_mp_tempo_main
     enddo
 
     ! back to grid-mean
+    if (present(qcfrac1d)) qcfrac1d = qca1d
     call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=qc1d, nc1d=nc1d, qcfrac1d=qcfrac1d, &
       rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
 
     call rain_check_and_update(rho, l_qr, qr1d, nr1d, rr, nr, qrten, nrten, ilamr, mvd_r) 
 
-    qifrac1d = qia
-    xqcfrac = 1._wp    
+    if (present(qifrac1d)) qifrac1d = qia1d
+    call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qifrac1d, qi1d=qi1d, ni1d=ni1d, &
+      ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
+    xqcfrac = 1._wp        
     call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=xqcfrac, qi1d=qi1d, ni1d=ni1d, &
       ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
 
@@ -986,6 +991,10 @@ module module_mp_tempo_main
         ! update mass
         rc(k) = (qc1d(k)+qcten(k)*global_dt)*rho(k)
         qc1d(k) = qc1d(k)+qcten(k)*global_dt
+        
+        if (present(qcfrac1d)) then
+          call cloud_fraction_check(qcfrac1d(k), rc(k)/rho(k))
+        endif
 
         ! update number
         if (present(nc1d)) then
@@ -2288,12 +2297,14 @@ module module_mp_tempo_main
             endif 
           endif 
 
-          ! erosion
-          term3 = -3.1_wp*qc_mean/(al*qvs(k))
-          eros_term = -2.25e-5_wp * exp(term3)
-          tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
-          tend%prw_sge(k) = min(0._dp, ((qc1d(k)-qc_mean*qcfrac_)*eros_term))
-
+          if (tend%prw_sbl(k) < eps) then
+            ! erosion
+            term3 = -3.1_wp*qc_mean/(al*qvs(k))
+            eros_term = -2.25e-5_wp * exp(term3)
+            tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
+            tend%prw_sge(k) = min(0._dp, ((qc1d(k)-qc_mean*qcfrac_)*eros_term))
+          endif
+          
           if (present(nc1d)) then
             if (qc1d(k) > r1) then
               tend%pnc_sgs(k) = tend%pnc_sgs(k) + (tend%prw_sge(k) * nc1d(k)/qc1d(k))

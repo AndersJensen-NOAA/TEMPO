@@ -123,7 +123,7 @@ module module_mp_tempo_params
   real(wp), parameter :: autocon_nr_factor = 10._wp !! factor controlling rain number tendency from autconversion (larger produces few drops)
   real(wp), parameter :: timestep_conversion_rime_to_rain = 120._wp !! timestep above which rime above freezing becomes rain (this timestep should be at least 120s)
 
-  real(wp), parameter :: cloud_fraction_rh = 0.83 !! critical relative humidity for cloud fraction
+  real(wp), parameter :: cloud_fraction_rh = 0.78 !! critical relative humidity for cloud fraction
   real(wp), parameter :: cf_low = 0.01 !! minimum cloud fraction
 
   ! parameters that should NOT be changed -----------------------------------------------------------------
