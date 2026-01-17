@@ -543,7 +543,7 @@ module module_mp_tempo_main
 
    ! cloud fraction calls
     call ice_cloud_fraction(temp, l_qi, rho, qv, qvsi, qi1d, qia1d, &
-      qcfrac1d, qiten_bl1d, qiten, w1d, ocp, tend)
+      qca1d, qiten_bl1d, qiten, w1d, ocp, tend)
 
     call liquid_cloud_fraction(temp=temp, pres=pres, dz1d=dz1d, l_qc=l_qc, rho=rho, qv=qv, &
       qvs=qvs, qc1d=qc1d, nc1d=nc1d, qcfrac1d=qca1d, w1d=w1d, lvap=lvap, ocp=ocp, &
@@ -816,12 +816,15 @@ module module_mp_tempo_main
 
     call rain_check_and_update(rho, l_qr, qr1d, nr1d, rr, nr, qrten, nrten, ilamr, mvd_r) 
 
-    if (present(qifrac1d)) qifrac1d = qia1d
-    call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qifrac1d, qi1d=qi1d, ni1d=ni1d, &
-      ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
+    ! if (present(qifrac1d)) qifrac1d = qia1d
+    ! call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qifrac1d, qi1d=qi1d, ni1d=ni1d, &
+    !   ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
     xqcfrac = 1._wp        
     call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=xqcfrac, qi1d=qi1d, ni1d=ni1d, &
       ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
+    
+    if (present(qifrac1d)) qifrac1d = qia1d
+    where(qi1d <= 1.e-12_wp) qifrac1d = 0._wp
 
     call snow_check_and_update(rho, l_qs, qs1d, rs, qsten)
     ! snow moments
