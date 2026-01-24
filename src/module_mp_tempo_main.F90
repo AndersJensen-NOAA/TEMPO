@@ -2341,8 +2341,8 @@ module module_mp_tempo_main
                tend%prw_sbl(k) = qcfrac_*al * (qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))                              
 !            endif
             
-            if (tend%prw_sgi(k) + tend%prw_sbl(k) > eps) then
-               xnc = max(nt_c_min, activate_cloud_number(temp(k), max(1._wp, w1d(k)), nwfa(k)))
+            if ((tend%prw_sgi(k) + tend%prw_sbl(k))*global_dt > r1) then
+               xnc = max(nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
                if (present(nc1d)) then
                   tend%pnc_sgs(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
                endif
@@ -2372,10 +2372,10 @@ module module_mp_tempo_main
              tend%prw_sbl(k) = qcfrac_*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
 !          endif
           
-          if (tend%prw_sgi(k) + tend%prw_sbl(k) > eps) then
+          if (tend%prw_sbl(k)*global_dt > r1) then
             xnc = max(nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
             if (present(nc1d)) then
-              tend%pnc_sgs(k) = tend%pnc_sgs(k) + 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
+              tend%pnc_sgs(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
             endif 
           endif 
 
@@ -2390,6 +2390,9 @@ module module_mp_tempo_main
           if (present(nc1d)) then
             if (qc1d(k) > r1) then
               tend%pnc_sgs(k) = tend%pnc_sgs(k) + (tend%prw_sge(k) * nc1d(k)/qc1d(k))
+              if (tend%prw_sbl(k) < 0.) then
+                tend%pnc_sgs(k) = tend%pnc_sgs(k) + (tend%prw_sbl(k) * nc1d(k)/qc1d(k))
+              endif 
             endif 
           endif 
 
