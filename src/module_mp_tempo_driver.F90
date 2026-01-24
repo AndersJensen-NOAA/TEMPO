@@ -180,7 +180,7 @@ module module_mp_tempo_driver
     qv, qc, qr, qi, qs, qg, ni, nr, &
     nc, nwfa, nifa, ng, qb, &
     qc_bl, qcfrac_bl, &
-    qcfrac, qifrac, &
+    qcfrac, qifrac, hpbl, &
     thten_bl, qvten_bl, qcten_bl, qiten_bl, &
     thten_lwrad, thten_swrad, &
     ids, ide, jds, jde, kds, kde, &
@@ -220,6 +220,7 @@ module module_mp_tempo_driver
     ! additional optional arguments
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: qcfrac
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: qifrac
+    real(wp), dimension(ims:ime, jms:jme), intent(in), optional :: hpbl    
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: qc_bl
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: qcfrac_bl
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: thten_bl
@@ -249,6 +250,7 @@ module module_mp_tempo_driver
     real(wp), dimension(:), allocatable :: ng1d !! 1D graupel number mixing ratio \([kg^{-1}]\) (hail-aware)
 
     ! additional optional 1d arrays
+    real(wp), dimension(:), allocatable :: hpbl1d
     real(wp), dimension(:), allocatable :: qcfrac1d
     real(wp), dimension(:), allocatable :: qifrac1d
     real(wp), dimension(:), allocatable :: qc_bl1d
@@ -275,6 +277,8 @@ module module_mp_tempo_driver
     if (present(qb)) allocate(qb1d(nz), source=0._wp)
 
     ! additional optional 1d arrays
+    if (present(hpbl)) allocate(hpbl1d(1), source=0._wp)
+    
     if (present(qcfrac)) allocate(qcfrac1d(nz), source=0._wp)
     if (present(qifrac)) allocate(qifrac1d(nz), source=0._wp)
     if (present(qc_bl)) allocate(qc_bl1d(nz), source=0._wp)
@@ -362,6 +366,8 @@ module module_mp_tempo_driver
           if (present(qiten_bl)) qiten_bl1d(k) = qiten_bl(i,k,j)
           if (present(thten_lwrad)) thten_lwrad1d(k) = thten_lwrad(i,k,j)
           if (present(thten_swrad)) thten_swrad1d(k) = thten_swrad(i,k,j)
+
+          if (present(hpbl)) hpbl1d(1) = hpbl(i,j)
         enddo
 
         ! main call to the 1d tempo microphysics
@@ -371,7 +377,7 @@ module module_mp_tempo_driver
           w1d=w1d, dz1d=dz1d, &
           qcfrac1d=qcfrac1d, qifrac1d=qifrac1d, qc_bl1d=qc_bl1d, qcfrac_bl1d=qcfrac_bl1d, &
           thten_bl1d=thten_bl1d, qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, qiten_bl1d=qiten_bl1d, &
-          thten_lwrad1d=thten_lwrad1d, thten_swrad1d=thten_swrad1d, &
+          thten_lwrad1d=thten_lwrad1d, thten_swrad1d=thten_swrad1d, hpbl1d=hpbl1d, &
           kts=kts, kte=kte, dt=dt, ii=i, jj=j, tempo_main_diags=tempo_main_diags)
           
         ! precipitation
