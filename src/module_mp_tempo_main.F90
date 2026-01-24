@@ -322,10 +322,10 @@ module module_mp_tempo_main
       endif
     endif
 
-    qia1d = 1._wp
     qca1d = 1._wp
-    if (present(qifrac1d)) qia1d = qifrac1d
+    qia1d = 1._wp
     if (present(qcfrac1d)) qca1d = qcfrac1d
+    if (present(qifrac1d)) qia1d = qifrac1d
 
     call aerosol_check_and_update(rho=rho, nwfa1d=nwfa1d, nifa1d=nifa1d, &
       nwfa=nwfa, nifa=nifa, nwfaten=nwfaten, nifaten=nifaten)
@@ -398,8 +398,18 @@ module module_mp_tempo_main
 
     ! check for hydrometeors or supersaturation --------------------------------------------------
     do_micro = any(l_qc) .or. any(l_qr) .or. any(l_qi) .or. any(l_qs) .or. any(l_qg)
-    if (.not. do_micro .and. .not. supersaturated .and. .not. above_cloud_fraction_rh) return
+    if (.not. do_micro .and. .not. supersaturated .and. .not. above_cloud_fraction_rh) then
 
+      qcfrac1d = 0.
+      qifrac1d = 0.
+      !  if (present(qcfrac1d)) qcfrac1d = qca1d
+      !  where(qc1d <= 1.e-12_wp) qcfrac1d = 0._wp
+      !  if (present(qifrac1d)) qifrac1d = qia1d
+      !  where(qi1d <= 1.e-12_wp) qifrac1d = 0._wp       
+       
+       return
+    endif
+    
     ! main microphysical processes ---------------------------------------------------------------
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call warm_rain(rhof, l_qc, rc, nc, ilamc, mvd_c, l_qr, rr, nr, mvd_r, tend, ssatw, qca1d)  
@@ -519,9 +529,13 @@ module module_mp_tempo_main
         ncten(k) = ncten(k) + tend%pnc_wcd(k)*qca1d(k)
         nwfaten(k) = nwfaten(k) - tend%pnc_wcd(k)*qca1d(k)
         tten(k) = tten(k) + lvap(k)*ocp(k)*tend%prw_vcd(k)*qca1d(k)
+!        if (tend%prw_vcd(k) > r1 .and. qca1d(k) < cf_low) then
         
-        if (tend%prw_vcd(k) > r1 .and. qca1d(k) < cf_low) then
-          qca1d(k) = cf_low
+        if (tend%prw_vcd(k)*qca1d(k) > r1) then
+          ! qca1d(k) = 1._wp
+            qcfracten(k) = qcfracten(k) + &
+              max((5.57_wp*(1000._wp*tend%pnc_wcd(k)*qca1d(k)*global_dt)**(0.78_wp) * &
+              global_inverse_dt), 0.05)
         endif
         endif
 
@@ -572,11 +586,11 @@ module module_mp_tempo_main
           (tend%prw_sgi(k) + tend%prw_slw(k) + tend%prw_sbl(k))
 !      endif
         qcfracten(k) = qcfracten(k) + tend%pra_sgi(k) + tend%pra_slw(k) + tend%pra_sbl(k)
-        ! qca1d(k) = min((qca1d(k) + qcfracten(k)*global_dt), 0.9)
+        qca1d(k) = qca1d(k) + qcfracten(k)*global_dt
 !     endif
       qifracten(k) = qifracten(k) + tend%pra_ini(k)
       ! update actual cloud fraction here before next check
-      ! qia1d(k) = qia1d(k) + qifracten(k)*global_dt
+      qia1d(k) = qia1d(k) + qifracten(k)*global_dt
     enddo 
 
     xrx = qc1d
@@ -825,7 +839,7 @@ module module_mp_tempo_main
     call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=qc1d, nc1d=nc1d, qcfrac1d=xqcfrac, &
          rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
 
-    qca1d(k) = max(min((qca1d(k) + qcfracten(k)*global_dt), 1.0), cf_low)
+    ! qca1d(k) = max(min((qca1d(k) + qcfracten(k)*global_dt), 1.0), cf_low)
     if (present(qcfrac1d)) qcfrac1d = qca1d
     where(qc1d <= 1.e-12_wp) qcfrac1d = 0._wp
 
@@ -838,7 +852,7 @@ module module_mp_tempo_main
     call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=xqcfrac, qi1d=qi1d, ni1d=ni1d, &
       ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami)
 
-    qia1d(k) = max(min((qia1d(k) + qifracten(k)*global_dt), 1.0), cf_low)
+    ! qia1d(k) = max(min((qia1d(k) + qifracten(k)*global_dt), 1.0), cf_low)
     
     if (present(qifrac1d)) qifrac1d = qia1d
     where(qi1d <= 1.e-12_wp) qifrac1d = 0._wp
@@ -952,14 +966,18 @@ module module_mp_tempo_main
 
 
   subroutine cloud_fraction_check(qcfrac, qc)
-    use module_mp_tempo_params, only : cf_low
+    use module_mp_tempo_params, only : cf_low, r1
 
     real(wp), intent(inout) :: qcfrac
     real(wp), intent(in) :: qc
 
     ! estimate from Gultepe and Isaac, 2007
     ! write(*,*) 'aaj', qc, qcfrac
-    qcfrac = max(qcfrac, (5.57_wp*(1000._wp*qc)**(0.78_wp)))
+    
+    if (qc > r1 .and. qcfrac <= cf_low) then
+      qcfrac = max(qcfrac, (5.57_wp*(1000._wp*qc)**(0.78_wp)))
+    endif 
+
     qcfrac = max(min(qcfrac, 1._wp), cf_low)
   end subroutine cloud_fraction_check
 
@@ -2601,7 +2619,9 @@ module module_mp_tempo_main
       !> [Berry and Reinhardt (1974)](https://doi.org/10.1175/1520-0469(1974)031<1814:AAOCDG>2.0.CO;2)
       !> with characteristic diameters correctly computed from gamma distribution of cloud droplets
       if (l_qc(k)) then
-        if (rc(k)*qcfrac1d(k) > 0.01e-3_wp .and. ssatw(k) > 0._wp .and. qcfrac1d(k) > 0.99) then
+        if (rc(k)*qcfrac1d(k) > 0.01e-3_wp) then ! .and. qcfrac1d(k) > 0.99) then
+
+!         if (rc(k)*qcfrac1d(k) > 0.01e-3_wp .and. ssatw(k) > 0._wp .and. qcfrac1d(k) > 0.99) then
           nu_c = get_nuc(nc(k))
           lamc = 1._dp / ilamc(k)       
           xdc = max(d0c*1.e6_wp, ((rc(k)/(am_r*nc(k)))**obmr) * 1.e6_wp)
