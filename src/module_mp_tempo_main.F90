@@ -2343,7 +2343,7 @@ module module_mp_tempo_main
             
             if ((tend%prw_sgi(k) + tend%prw_sbl(k))*global_dt > r1) then
                xnc = max(nt_c_min, qcfrac_ * &
-                activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
+                activate_cloud_number(temp(k), max(0.01_wp, w1d(k)), nwfa(k)))
                if (present(nc1d)) then
                   tend%pnc_sgs(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
                endif
@@ -2375,7 +2375,7 @@ module module_mp_tempo_main
           
           if (tend%prw_sbl(k)*global_dt > r1) then
             xnc = max(nt_c_min, qcfrac_ * &
-              activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
+              activate_cloud_number(temp(k), max(0.01_wp, w1d(k)), nwfa(k)))
             if (present(nc1d)) then
               tend%pnc_sgs(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
             endif 
