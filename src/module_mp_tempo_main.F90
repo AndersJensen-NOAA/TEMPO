@@ -577,7 +577,7 @@ module module_mp_tempo_main
       qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, thten_bl1d=thten_bl1d, nwfa=nwfa, tend=tend, hpbl1d=hpbl1d)
 
     do k = 1, nz
-!      if (satw(k) > cloud_fraction_rh .and. satw(k) < 1. .and. w1d(k) > 0.) then
+      if (satw(k) > cloud_fraction_rh .and. satw(k) < 1.) then ! .and. w1d(k) > 0.) then
         qvten(k) = qvten(k) - tend%prw_sgi(k) - tend%prw_slw(k) - tend%prw_sbl(k)
         qcten(k) = qcten(k) + tend%prw_sgi(k) + tend%prw_slw(k) + tend%prw_sbl(k)
         ncten(k) = ncten(k) + tend%pnc_sgs(k)
@@ -591,6 +591,7 @@ module module_mp_tempo_main
       qifracten(k) = qifracten(k) + tend%pra_ini(k)
       ! update actual cloud fraction here before next check
       qia1d(k) = qia1d(k) + qifracten(k)*global_dt
+   endif
     enddo 
 
     xrx = qc1d
@@ -2327,28 +2328,28 @@ module module_mp_tempo_main
             tend%prw_sgi(k) = 0._dp
           endif
 
-         if ((abs(sd) > 1.e-6_wp) .and. tend%prw_sgi(k)*global_dt > r1 .and. ssatw(k) < 0._wp .and. ssatw(k) > (cflocal-0.99_wp)) then
-            qcfrac_ = max(min(tend%pra_sgi(k)*global_dt, 1.), cf_low)
-            term1 = ((1._wp-qcfrac_)**2*qcfrac_**2/(tend%prw_sgi(k)*global_dt)) + (qcfrac_**2*(1._wp-qcfrac_)**2/sd)
-            term2 = (1._wp-qcfrac_)**2 + qcfrac_**2
-            gterm = 0.5_wp*term1/term2
+!          if ((abs(sd) > 1.e-6_wp) .and. tend%prw_sgi(k)*global_dt > r1 .and. ssatw(k) < 0._wp .and. ssatw(k) > (cflocal-0.99_wp)) then
+!             qcfrac_ = max(min(tend%pra_sgi(k)*global_dt, 1.), cf_low)
+!             term1 = ((1._wp-qcfrac_)**2*qcfrac_**2/(tend%prw_sgi(k)*global_dt)) + (qcfrac_**2*(1._wp-qcfrac_)**2/sd)
+!             term2 = (1._wp-qcfrac_)**2 + qcfrac_**2
+!             gterm = 0.5_wp*term1/term2
             
-!            if (temp(k) > 253.15 .and. w1d(k) > 0.) then
-!               tend%pra_sbl(k) = gterm*al * (qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
-!               tend%prw_sbl(k) = qcfrac_*al * (qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
-               tend%pra_sbl(k) = gterm*al * (qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
-!               tend%prw_sbl(k) = qcten_bl1d(k) ! qcfrac_*al * (qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
-               tend%prw_sbl(k) = qcfrac_*al * (qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))                              
-!            endif
+! !            if (temp(k) > 253.15 .and. w1d(k) > 0.) then
+! !               tend%pra_sbl(k) = gterm*al * (qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+! !               tend%prw_sbl(k) = qcfrac_*al * (qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+!                tend%pra_sbl(k) = gterm*al * (qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+! !               tend%prw_sbl(k) = qcten_bl1d(k) ! qcfrac_*al * (qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+!                tend%prw_sbl(k) = qcfrac_*al * (qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))                              
+! !            endif
             
-            if ((tend%prw_sgi(k) + tend%prw_sbl(k))*global_dt > r1) then
-               xnc = max(nt_c_min, qcfrac_ * &
-                activate_cloud_number(temp(k), max(0.01_wp, w1d(k)), nwfa(k)))
-               if (present(nc1d)) then
-                  tend%pnc_sgs(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
-               endif
-            endif
-         endif
+!             if ((tend%prw_sgi(k) + tend%prw_sbl(k))*global_dt > r1) then
+!                xnc = max(nt_c_min, qcfrac_ * &
+!                 activate_cloud_number(temp(k), max(0.01_wp, w1d(k)), nwfa(k)))
+!                if (present(nc1d)) then
+!                   tend%pnc_sgs(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
+!                endif
+!             endif
+!          endif
        
       endif
 
@@ -2369,8 +2370,8 @@ module module_mp_tempo_main
 !          tend%prw_sbl(k) = min(0., qcten_bl1d(k)) ! min(0., qcfrac_*al * (qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k))))
 
 !          if (temp(k) > 253.15 .and. w1d(k) > 0.) then
-             tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
-             tend%prw_sbl(k) = qcfrac_*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
+          tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
+          tend%prw_sbl(k) = qcfrac_*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
 !          endif
           
           if (tend%prw_sbl(k)*global_dt > r1) then
