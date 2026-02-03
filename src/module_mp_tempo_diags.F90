@@ -1,12 +1,12 @@
 module module_mp_tempo_diags
   !! diagnostic output
   use module_mp_tempo_params, only : wp, sp, dp, create_bins, r1, pi
-  use module_mp_tempo_utils, only : get_nuc, snow_moments
+  use module_mp_tempo_utils, only : get_nuc, snow_moments, calc_rslf
   
   implicit none
   private
   
-  public :: reflectivity_10cm, effective_radius, max_hail_diam, freezing_rain
+  public :: reflectivity_10cm, effective_radius, max_hail_diam, freezing_rain, calc_fram
 
   contains 
 
@@ -454,5 +454,133 @@ module module_mp_tempo_diags
       endif 
     endif   
   end subroutine freezing_rain
+
+
+  subroutine calc_fram(temp, pres, qv, satw, rainncv, frz_rain)
+    !! calculates freezing rain rate using Tripp et al. (2024)
+    !! and Sanders and Barjenbruch (2016)
+    use module_mp_tempo_params, only : t0
+
+    real(wp), intent(in) :: temp, pres, qv, satw, rainncv
+    real(wp) :: wetbulb_temp, dewpoint, temperature_lcl, theta_e
+    real(wp) :: ilr_p, ilr_t, ilr
+    real(wp), intent(out) :: frz_rain
+
+    wetbulb_temp = temp
+    frz_rain = 0._wp
+    if (satw < 0.999_wp) then                                                       
+      dewpoint = min(temp-0.001_wp, calc_dewpoint(pres, qv))                               
+      temperature_lcl = calc_lcl_temperature(temp, dewpoint)
+      theta_e = calc_theta_e(pres, temp, qv, temperature_lcl)                                    
+      wetbulb_temp = min(temp, calc_wetbulb(theta_e, pres))                              
+    endif
+
+    ilr = 0._wp
+    ilr_p = 0.1395_wp * rainncv**(-0.541_wp)
+    ilr_t = -0.0071_wp*wetbulb_temp**3 - 0.1039_wp*wetbulb_temp**2 - &
+      0.3904_wp*wetbulb_temp + 0.5545_wp
+
+    ! original method, though developers suggest a threshold of 0.6C
+    ! if (wetbulb_temp-t0 > -0.35_wp) then
+    !   ilr = 0.71_wp*ilr_p + 0.29_wp*ilr_t
+    ! else
+    !   ilr = 0.80_wp*ilr_p + 0.20_wp*ilr_t
+    ! endif
+    if (wetbulb_temp-t0 < -0.6_wp) ilr = 0.80_wp*ilr_p + 0.20_wp*ilr_t
+    frz_rain = ilr * rainncv
+  end subroutine calc_fram
+
+
+  function calc_dewpoint(pres, qv) result(dewpoint_temperature)
+    !! calculates dewpoint temperature (Kelvin) from pressure (Pa)
+    !! and water vapor mixing ratio (kg/kg)
+
+    real(wp), intent(in) :: pres, qv
+    real(wp) :: rr, es, esln, dewpoint_temperature
+
+    rr = qv + 1.e-8_wp
+    es = pres * rr / (0.622_wp+rr)
+    esln = log(es)
+    dewpoint_temperature = (35.86_wp*esln-4947.2325_wp)/(esln-23.6837_wp)
+  end function calc_dewpoint
+
+
+  function calc_lcl_temperature(temp, dewpoint) result(lcl_temperature)
+    !! calcuates LCL temperatrue from Bolton (1980) equation 15
+    !! using temperature (K) and dewpoint temperature (K)
+
+    real(wp), intent(in) :: temp, dewpoint
+    real(wp) :: denom, lcl_temperature
+
+    denom = (1._wp/(dewpoint-56._wp)) + (log(temp/dewpoint)/800._wp)
+    lcl_temperature = (1._wp / denom) + 56._wp
+  end function calc_lcl_temperature
+
+  
+  function calc_theta_e(pres, temp, qv, lcl_temp) result(theta_e)
+    !! calculates theta-e using Bolton (1980) equation 43
+    !! using pressure (Pa), temperature (K), water vapor mixing ratio (kg/kg)
+    !! and LCL temperature (K)
+
+    real(wp), intent(in) :: pres, temp, qv, lcl_temp
+    real(wp) :: rr, xx, p1, p2, power, theta_e
+
+    rr = qv + 1.e-8_wp
+    power = (0.2854_wp*(1._wp - (0.28_wp*rr)))
+    xx = temp * (100000._wp/pres)**power
+    p1 = (3.376_wp/lcl_temp) - 0.00254_wp
+    p2 = (rr*1000._wp) * (1._wp + 0.81_wp*rr)
+    theta_e = xx * exp(p1*p2)
+  end function calc_theta_e
+                                                                                        
+                                                                                    
+  function calc_theta_w(theta_e) result(theta_w)
+    !! calculates wet-bulb potential temperature from theta-e
+    !! using polynomial fit from Smithsonial Meteorological Tables
+    use module_mp_tempo_params, only : t0
+    
+    real(wp), intent(in) :: theta_e
+    real(wp), parameter :: c(7) = [-1.00922292e-10_wp, -1.47945344e-8_wp, -1.7303757e-6_wp, &
+      -0.00012709_wp, 1.15849867e-6_wp, -3.518296861e-9_wp, 3.5741522e-12_wp]
+    real(wp), parameter :: d(7) = [0._wp, -3.5223513e-10_wp, -5.7250807e-8_wp, &
+      -5.83975422e-6_wp, 4.72445163e-8_wp, -1.13402845e-10_wp, 8.729580402e-14_wp]
+    real(wp) :: x, theta_w
+
+    x = min(475._wp, theta_e)
+
+    if(x <= 335.5_wp) then
+      theta_w = c(1)+x*(c(2)+x*(c(3)+x*(c(4)+x*(c(5)+x*(c(6)+ x*c(7))))))
+    else
+      theta_w = d(1)+x*(d(2)+x*(d(3)+x*(d(4)+x*(d(5)+x*(d(6)+x*d(7))))))
+    endif
+    theta_w = theta_w + t0
+  end function calc_theta_w
+
+  
+  function calc_wetbulb(theta_e_lcl,pres) result(wetbulb_temperature)
+
+    real(wp), intent(in) :: theta_e_lcl, pres
+    real(wp), parameter :: epsilon = 0.01_wp
+    integer :: iter
+    real(wp) :: guess, w1, w2, cor, theta_w_lcl, theta_e_tmp1, theta_e_tmp2
+    real(wp) :: wetbulb_temperature
+
+    guess = (theta_e_lcl - 0.5_wp * (max(theta_e_lcl-270._wp, 0._wp))**1.05_wp) * &
+      (pres/100000._wp)**.2_wp
+    do iter = 1, 100
+      w1 = calc_rslf(pres, guess)
+      w2 = calc_rslf(pres, guess+1._wp)
+      theta_e_tmp1 = calc_theta_e(pres, guess, w1, guess)
+      theta_e_tmp2 = calc_theta_e(pres, guess+1._wp, w2, guess+1._wp)
+      cor = (theta_e_lcl - theta_e_tmp1) / (theta_e_tmp2- theta_e_tmp1)
+      guess = guess + cor
+      if ((cor < epsilon) .and. (-cor < epsilon)) then
+        wetbulb_temperature = guess
+        return
+      endif
+    enddo
+    theta_w_lcl = calc_theta_w(theta_e_lcl)
+    wetbulb_temperature = theta_w_lcl*((pres/100000._wp)**0.286_wp)
+  end function calc_wetbulb
 
 end module module_mp_tempo_diags
