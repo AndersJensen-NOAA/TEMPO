@@ -1,11 +1,7 @@
 module tests
   !! TEMPO tests
   use module_mp_tempo_cfgs, only : ty_tempo_cfgs
-<<<<<<< HEAD
-  use module_mp_tempo_driver, only : tempo_init, tempo_driver, ty_tempo_driver_diags
-=======
   use module_mp_tempo_driver, only : tempo_init, tempo_run, ty_tempo_driver_diags
->>>>>>> main
   implicit none
   private
 
@@ -94,15 +90,6 @@ module tests
       status="new", action="write")
 
     do itimestep = 1, total_timesteps
-<<<<<<< HEAD
-      call  tempo_driver(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
-                        ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
-                        jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
-                        kds=kds, kde=kde, kms=kms, kme=kme, kts=kts, kte=kte, &
-                        t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
-                        qc=qc, qr=qr, qi=qi, qs=qs, qg=qg,  ni=ni, nr=nr, ng=ng, qb=qb, &
-                        tempo_diags=tempo_driver_diags)
-=======
       call  tempo_run(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
                       ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
                       jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
@@ -110,7 +97,6 @@ module tests
                       t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
                       qc=qc, qr=qr, qi=qi, qs=qs, qg=qg,  ni=ni, nr=nr, ng=ng, qb=qb, &
                       tempo_diags=tempo_driver_diags)
->>>>>>> main
       precip_sum = precip_sum + tempo_driver_diags%graupel_liquid_equiv_precip(1,1)
       write(io2,'(I7, 1E12.4)') int(itimestep*dt), precip_sum
 
@@ -201,15 +187,6 @@ module tests
       status="new", action="write")
 
     do itimestep = 1, total_timesteps
-<<<<<<< HEAD
-      call  tempo_driver(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
-                        ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
-                        jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
-                        kds=kds, kde=kde, kms=kms, kme=kme, kts=kts, kte=kte, &
-                        t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
-                        qc=qc, qr=qr, qi=qi, qs=qs, qg=qg,  ni=ni, nr=nr, ng=ng, qb=qb, &
-                        tempo_diags=tempo_driver_diags)
-=======
       call  tempo_run(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
                       ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
                       jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
@@ -217,7 +194,6 @@ module tests
                       t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
                       qc=qc, qr=qr, qi=qi, qs=qs, qg=qg,  ni=ni, nr=nr, ng=ng, qb=qb, &
                       tempo_diags=tempo_driver_diags)
->>>>>>> main
       precip_sum = precip_sum + tempo_driver_diags%snow_liquid_equiv_precip(1,1)
       write(io2,'(I7, 1E12.4)') int(itimestep*dt), precip_sum
 
@@ -294,15 +270,6 @@ module tests
     total_timesteps = int(integration_time/dt)
 
     do itimestep = 1, total_timesteps
-<<<<<<< HEAD
-      call  tempo_driver(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
-                        ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
-                        jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
-                        kds=kds, kde=kde, kms=kms, kme=kme, kts=kts, kte=kte, &
-                        t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
-                        qc=qc, nc=nc, qr=qr, qi=qi, qs=qs, qg=qg, ni=ni, nr=nr, &
-                        tempo_diags=tempo_driver_diags)
-=======
       call  tempo_run(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
                       ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
                       jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
@@ -310,7 +277,6 @@ module tests
                       t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
                       qc=qc, nc=nc, qr=qr, qi=qi, qs=qs, qg=qg, ni=ni, nr=nr, &
                       tempo_diags=tempo_driver_diags)
->>>>>>> main
 
       if (itimestep == 1) then
         open(newunit=io3, file="cloud_number_init.txt", status="new", action="write")
@@ -387,15 +353,6 @@ module tests
     total_timesteps = int(integration_time/dt)
 
     do itimestep = 1, total_timesteps
-<<<<<<< HEAD
-      call  tempo_driver(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
-                        ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
-                        jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
-                        kds=kds, kde=kde, kms=kms, kme=kme, kts=kts, kte=kte, &
-                        t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
-                        qc=qc, qr=qr, qi=qi, qs=qs, qg=qg, ni=ni, nr=nr, &
-                        tempo_diags=tempo_driver_diags)
-=======
       call  tempo_run(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
                       ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
                       jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
@@ -403,7 +360,6 @@ module tests
                       t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
                       qc=qc, qr=qr, qi=qi, qs=qs, qg=qg, ni=ni, nr=nr, &
                       tempo_diags=tempo_driver_diags)
->>>>>>> main
 
       if (itimestep == 1) then
         open(newunit=io3, file="cloud_number_constant_init.txt", status="new", action="write")
@@ -480,15 +436,6 @@ module tests
     total_timesteps = int(integration_time/dt)
 
     do itimestep = 1, total_timesteps
-<<<<<<< HEAD
-      call  tempo_driver(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
-                        ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
-                        jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
-                        kds=kds, kde=kde, kms=kms, kme=kme, kts=kts, kte=kte, &
-                        t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
-                        qc=qc, qr=qr, qi=qi, qs=qs, qg=qg, ni=ni, nr=nr, &
-                        tempo_diags=tempo_driver_diags)
-=======
       call  tempo_run(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
                       ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
                       jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
@@ -496,7 +443,6 @@ module tests
                       t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
                       qc=qc, qr=qr, qi=qi, qs=qs, qg=qg, ni=ni, nr=nr, &
                       tempo_diags=tempo_driver_diags)
->>>>>>> main
 
       if (itimestep == 1) then
         open(newunit=io3, file="cloud_number_ml_init.txt", status="new", action="write")
@@ -584,16 +530,6 @@ module tests
     total_timesteps = int(integration_time/dt)
 
     do itimestep = 1, total_timesteps
-<<<<<<< HEAD
-      call  tempo_driver(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
-                        ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
-                        jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
-                        kds=kds, kde=kde, kms=kms, kme=kme, kts=kts, kte=kte, &
-                        t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
-                        qc_bl=qc_bl, qcfrac_bl=qcfrac_bl, &
-                        qc=qc, nc=nc, qr=qr, qi=qi, qs=qs, qg=qg, ni=ni, nr=nr, &
-                        tempo_diags=tempo_driver_diags)
-=======
       call  tempo_run(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
                       ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
                       jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
@@ -602,7 +538,6 @@ module tests
                       qc_bl=qc_bl, qcfrac_bl=qcfrac_bl, &
                       qc=qc, nc=nc, qr=qr, qi=qi, qs=qs, qg=qg, ni=ni, nr=nr, &
                       tempo_diags=tempo_driver_diags)
->>>>>>> main
 
       if (itimestep == 1) then
         open(newunit=io3, file="cloud_re_init.txt", status="new", action="write")

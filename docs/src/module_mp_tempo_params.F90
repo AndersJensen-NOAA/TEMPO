@@ -635,34 +635,18 @@ module module_mp_tempo_params
     ! bins of cloud ice (from min diameter up to 2x min snow size)
     call create_bins(numbins=nbi, lowbin=real(d0i, kind=dp), &
       highbin=2.0_dp*d0s, bins=di, deltabins=dti)
-<<<<<<< HEAD
-    call check_bins(real(d0i, kind=dp), 2.0_dp*d0s, di)
-=======
->>>>>>> main
 
     ! bins of rain (from min diameter up to 5 mm)
     call create_bins(numbins=nbr, lowbin=real(d0r, kind=dp), &
       highbin=0.005_dp, bins=dr, deltabins=dtr)
-<<<<<<< HEAD
-    call check_bins(real(d0r, kind=dp), 0.005_dp, dr)
-=======
->>>>>>> main
 
     ! bins of snow (from min diameter up to 2 cm)
     call create_bins(numbins=nbs, lowbin=real(d0s, kind=dp), &
       highbin=0.02_dp, bins=ds, deltabins=dts)
-<<<<<<< HEAD
-    call check_bins(real(d0s, kind=dp), 0.02_dp, ds)
-=======
->>>>>>> main
 
     ! bins of graupel (from min diameter up to 5 cm)
     call create_bins(numbins=nbg, lowbin=real(d0g, kind=dp), &
       highbin=0.05_dp, bins=dg, deltabins=dtg)
-<<<<<<< HEAD
-    call check_bins(real(d0g, kind=dp), 0.05_dp, dg)
-=======
->>>>>>> main
 
     ! bins of cloud droplet number concentration (1 to 3000 per cc)
     call create_bins(numbins=nbc, lowbin=1.0_dp, &
@@ -672,26 +656,6 @@ module module_mp_tempo_params
   end subroutine initialize_bins_for_tables
 
 
-<<<<<<< HEAD
-  subroutine check_bins(lowval, highval, bins)
-    real(dp), intent(in) :: lowval, highval
-    real(dp), dimension(:), intent(in) :: bins
-    integer :: k, nz
-
-    nz = size(bins)
-    do k = 1, nz
-      if ((bins(k) < lowval) .or. (bins(k) > highval)) then
-        error stop 'error calculating hydrometer bin values used for lookup tables'
-      endif 
-    enddo
-    if (all(bins==0.0_dp)) then
-      error stop 'hydrometer bin values used for lookup tables are all zero'
-    endif 
-  end subroutine
-
-
-=======
->>>>>>> main
   subroutine initialize_bins_for_hail_size()
     !! initialize log-spaced bins for hail size calculation
 

@@ -366,10 +366,7 @@ module module_mp_tempo_utils
           yc0 = 2.0_dp / pi * atan(h)
           ef_rw = (yc0+p)*(yc0+p) / ((1.+p)*(1.+p))
         endif
-<<<<<<< HEAD
-=======
 
->>>>>>> main
         t_efrw(i,j) = max(0.0_dp, min(ef_rw, 0.95_dp))
       enddo
     enddo
