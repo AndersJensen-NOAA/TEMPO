@@ -11,7 +11,7 @@ module module_mp_tempo_driver
   implicit none
   private
 
-  public :: tempo_init, tempo_driver, ty_tempo_driver_diags, tempo_aerosol_surface_emissions
+  public :: tempo_init, tempo_run, ty_tempo_driver_diags, tempo_aerosol_surface_emissions
   
   type(ty_tempo_table_cfgs) :: tempo_table_cfgs
 
@@ -35,6 +35,10 @@ module module_mp_tempo_driver
 
   contains
 
+!> initialize tempo microphysics
+!! \section arg_table_tempo_init Argument Table
+!! \htmlinclude tempo_init.html
+!!
   subroutine tempo_init(aerosolaware_flag, hailaware_flag, cldfra_flag, &
     ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, tempo_cfgs)
     !! initialize tempo microphysics
@@ -174,8 +178,10 @@ module module_mp_tempo_driver
     endif
   end subroutine tempo_init
 
-
-  subroutine tempo_driver(tempo_cfgs, dt, itimestep, &
+!> \section arg_table_tempo_run Argument Table
+!! \htmlinclude tempo_run.html
+!!
+  subroutine tempo_run(tempo_cfgs, dt, itimestep, &
     t, th, pii, p, w, dz, &
     qv, qc, qr, qi, qs, qg, ni, nr, &
     nc, nwfa, nifa, ng, qb, &
@@ -296,9 +302,9 @@ module module_mp_tempo_driver
     if (tempo_cfgs%rain_med_vol_diam_flag) allocate(tempo_diags%rain_med_vol_diam(its:ite, kts:kte, jts:jte), source=0._wp)
     if (tempo_cfgs%graupel_med_vol_diam_flag) allocate(tempo_diags%graupel_med_vol_diam(its:ite, kts:kte, jts:jte), source=0._wp)
     if (tempo_cfgs%refl10cm_flag) allocate(tempo_diags%refl10cm(its:ite, kts:kte, jts:jte), source=-35._wp)
-    if (tempo_cfgs%re_cloud_flag) allocate(tempo_diags%re_cloud(its:ite, kts:kte, jts:jte), source=2.49e-6_wp)
-    if (tempo_cfgs%re_ice_flag) allocate(tempo_diags%re_ice(its:ite, kts:kte, jts:jte), source=4.99e-6_wp)
-    if (tempo_cfgs%re_snow_flag) allocate(tempo_diags%re_snow(its:ite, kts:kte, jts:jte), source=9.99e-6_wp)
+    if (tempo_cfgs%re_cloud_flag) allocate(tempo_diags%re_cloud(its:ite, kts:kte, jts:jte), source=0._wp)
+    if (tempo_cfgs%re_ice_flag) allocate(tempo_diags%re_ice(its:ite, kts:kte, jts:jte), source=0._wp)
+    if (tempo_cfgs%re_snow_flag) allocate(tempo_diags%re_snow(its:ite, kts:kte, jts:jte), source=0._wp)
     if (tempo_cfgs%max_hail_diameter_flag) allocate(tempo_diags%max_hail_diameter_sfc(its:ite, jts:jte), source=0._wp)
     if (tempo_cfgs%max_hail_diameter_flag) allocate(tempo_diags%max_hail_diameter_column(its:ite, jts:jte), source=0._wp)
 
@@ -316,7 +322,7 @@ module module_mp_tempo_driver
     elseif (present(th) .and. present(pii)) then
       use_temperature = .false.
     else  
-      error stop "tempo_driver() --- requires either temperature or theta and Exner function"
+      error stop "tempo_run() --- requires either temperature or theta and Exner function"
     endif 
 
     ! tempo driver code
@@ -404,11 +410,10 @@ module module_mp_tempo_driver
         endif 
         if (allocated(tempo_diags%re_ice) .and. allocated(tempo_main_diags%re_ice)) then
           tempo_diags%re_ice(i,:,j) = tempo_main_diags%re_ice
-        endif
+        endif 
         if (allocated(tempo_diags%re_snow) .and. allocated(tempo_main_diags%re_snow)) then
           tempo_diags%re_snow(i,:,j) = tempo_main_diags%re_snow
         endif 
-  
         if (allocated(tempo_diags%refl10cm) .and. allocated(tempo_main_diags%refl10cm)) then
           tempo_diags%refl10cm(i,:,j) = tempo_main_diags%refl10cm
         endif
@@ -448,7 +453,7 @@ module module_mp_tempo_driver
         enddo
       enddo
     enddo
-  end subroutine tempo_driver
+  end subroutine tempo_run
 
 
   subroutine tempo_aerosol_surface_emissions(dt, nwfa, nwfa2d, ims, ime, jms, jme, kms, kme, kts)
