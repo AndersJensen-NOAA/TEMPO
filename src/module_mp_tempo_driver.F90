@@ -383,7 +383,7 @@ module module_mp_tempo_driver
           w1d=w1d, dz1d=dz1d, &
           qcfrac1d=qcfrac1d, qifrac1d=qifrac1d, qc_bl1d=qc_bl1d, qcfrac_bl1d=qcfrac_bl1d, &
           thten_bl1d=thten_bl1d, qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, qiten_bl1d=qiten_bl1d, &
-          thten_lwrad1d=thten_lwrad1d, thten_swrad1d=thten_swrad1d, hpbl1d=hpbl1d, &
+          thten_lwrad1d=thten_lwrad1d, thten_swrad1d=thten_swrad1d, &
           kts=kts, kte=kte, dt=dt, ii=i, jj=j, tempo_main_diags=tempo_main_diags)
           
         ! precipitation
