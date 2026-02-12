@@ -483,7 +483,7 @@ module module_mp_tempo_main
 
     ! after update do cloud condensation / rain evaporation --------------------------------------
     ! cloud condensation
-    if (.not. tempo_cfgs%turn_off_micro_flag) then
+    if (.not. tempo_cfgs%turn_off_micro_flag .and. tempo_cfgs%cloud_condensation_flag) then
       call cloud_condensation(rho, temp, w1d, ssatw, lvap, tcond, diffu, lvt2, &
         nwfa, qv, qvs, l_qc, rc, nc, tend)
 

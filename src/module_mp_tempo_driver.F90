@@ -39,7 +39,7 @@ module module_mp_tempo_driver
 !! \section arg_table_tempo_init Argument Table
 !! \htmlinclude tempo_init.html
 !!
-  subroutine tempo_init(aerosolaware_flag, hailaware_flag, &
+  subroutine tempo_init(aerosolaware_flag, hailaware_flag, semi_sedi_flag, cloud_condensation_flag, &
     ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, tempo_cfgs)
     !! initialize tempo microphysics
     use module_mp_tempo_params, only : get_version, tempo_version, t_efrw, &
@@ -50,7 +50,7 @@ module module_mp_tempo_driver
       initialize_bins_for_hail_size, initialize_bins_for_radar
 
     logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, &
-      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag
+      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, semi_sedi_flag, cloud_condensation_flag
     type(ty_tempo_cfgs), intent(out) :: tempo_cfgs
 
     character(len=100) :: table_filename
@@ -74,6 +74,9 @@ module module_mp_tempo_driver
       if (present(hailaware_flag)) tempo_cfgs%hailaware_flag = hailaware_flag
       if (present(ml_for_bl_nc_flag)) tempo_cfgs%ml_for_bl_nc_flag = ml_for_bl_nc_flag
       if (present(ml_for_nc_flag)) tempo_cfgs%ml_for_nc_flag = ml_for_nc_flag
+
+      if (present(semi_sedi_flag)) tempo_cfgs%semi_sedi_flag = semi_sedi_flag
+      if (present(cloud_condensation_flag)) tempo_cfgs%cloud_condensation_flag = cloud_condensation_flag
 
       if (tempo_cfgs%verbose) then
         write(*,'(A)') 'tempo_init() --- TEMPO microphysics configuration options: '
