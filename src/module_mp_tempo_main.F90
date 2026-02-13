@@ -300,6 +300,13 @@ module module_mp_tempo_main
       vtrg(k) = 0._wp
       vtng(k) = 0._wp
     enddo
+
+    tempo_main_diags%rain_precip = 0._wp
+    tempo_main_diags%cloud_precip = 0._wp
+    tempo_main_diags%ice_liquid_equiv_precip = 0._wp
+    tempo_main_diags%snow_liquid_equiv_precip = 0._wp
+    tempo_main_diags%graupel_liquid_equiv_precip = 0._wp
+    tempo_main_diags%frz_rain_precip = 0._wp
   
     ! initialization -----------------------------------------------------------------------------
     hgt = 0.
@@ -644,12 +651,6 @@ module module_mp_tempo_main
     endif 
 
     ! sedimentation ------------------------------------------------------------------------------
-    tempo_main_diags%rain_precip = 0._wp
-    tempo_main_diags%cloud_precip = 0._wp
-    tempo_main_diags%ice_liquid_equiv_precip = 0._wp
-    tempo_main_diags%snow_liquid_equiv_precip = 0._wp
-    tempo_main_diags%graupel_liquid_equiv_precip = 0._wp
-    tempo_main_diags%frz_rain_precip = 0._wp
     
     ! rain
     ktop_sedi = 1
