@@ -234,7 +234,6 @@ module module_mp_tempo_driver
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: qiten_bl
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: thten_lwrad
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: thten_swrad
-
     real(wp), dimension(ims:ime, jms:jme), intent(in), optional :: hpbl
     real(wp), dimension(ims:ime, jms:jme), intent(in), optional :: xland
 
@@ -407,7 +406,6 @@ module module_mp_tempo_driver
         if (allocated(tempo_diags%graupel_med_vol_diam) .and. allocated(tempo_main_diags%graupel_med_vol_diam)) then
           tempo_diags%graupel_med_vol_diam(i,:,j) = tempo_main_diags%graupel_med_vol_diam
         endif
-
         if (allocated(tempo_diags%re_cloud) .and. allocated(tempo_main_diags%re_cloud)) then
           tempo_diags%re_cloud(i,:,j) = tempo_main_diags%re_cloud
         endif 
