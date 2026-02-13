@@ -75,7 +75,7 @@ module module_mp_tempo_main
 
   subroutine tempo_main(tempo_cfgs, &
     qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
-    nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, &
+    nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, hpbl1d, xland1d, &
     qcfrac1d, qifrac1d, qc_bl1d, qcfrac_bl1d, &
     thten_bl1d, qvten_bl1d, qcten_bl1d, qiten_bl1d, &
     thten_lwrad1d, thten_swrad1d, &
@@ -117,7 +117,8 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(in), optional :: qiten_bl1d !! cloud ice mixing ratio from boundary layer scheme
     real(wp), dimension(:), intent(in), optional :: thten_lwrad1d !! potential temperature tendency from longwave radiation scheme
     real(wp), dimension(:), intent(in), optional :: thten_swrad1d !! potential temperature tendency from shortwave radiation scheme
-  
+    real(wp), dimension(:), intent(in), optional :: hpbl1d, xland1d
+    
     real(wp), dimension(kts:kte) :: tten, qvten, qcten, qiten, qrten, qsten, &
       qgten, qbten, niten, nrten, ncten, ngten, nwfaten, nifaten, qcfracten, &
       qifracten !! tendencies
@@ -149,7 +150,8 @@ module module_mp_tempo_main
     real(wp) :: semi_sedi_factor !! semi-lagrangian sedimentation factor
 
     ! local variables
-    real(wp) :: tempc, tc0
+    real(wp) :: tempc, tc0, hgt
+    real(wp), dimension(kts:kte) :: cf_local
     logical :: do_micro, supersaturated, above_cloud_fraction_rh
     logical, save :: first_call_main = .true.
     integer :: k, nz
@@ -300,7 +302,20 @@ module module_mp_tempo_main
     enddo
   
     ! initialization -----------------------------------------------------------------------------
+    hgt = 0.
     do k = 1, nz
+!       if (k == 1) then
+!          write(*,*) 'aaj land/water point', xland1d(1)
+!       endif
+      cf_local(k) = cloud_fraction_rh
+      hgt = hgt + dz1d(k)
+!!!      if ((xland1d(1) > 1.5) .and. (hgt <= hpbl1d(1))) cf_local(k) = 0.99
+!      if (xland1d(1) > 1.5) then
+!         cf_local(k) = 0.95
+!!         write(*,*) 'aaj water point', xland1d(1)
+!      endif
+      if ((xland1d(1) > 1.5) .and. (hgt <= hpbl1d(1))) cf_local(k) = 0.95
+      
       temp(k) = t1d(k)
       qv(k) = max(min_qv, qv1d(k))
       pres(k) = p1d(k)
@@ -393,7 +408,7 @@ module module_mp_tempo_main
 
     call thermo_vars(qv, temp, pres, rho, rhof, rhof2, qvs, delqvs, qvsi, &
       satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
-      supersaturated, above_cloud_fraction_rh)
+      supersaturated, cf_local, above_cloud_fraction_rh)
 
     if (first_call_main) first_call_main = .false.
 
@@ -509,7 +524,7 @@ module module_mp_tempo_main
 
     call thermo_vars(qv, temp, pres, rho, rhof, rhof2, qvs, delqvs, qvsi, &
       satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
-      supersaturated, above_cloud_fraction_rh)
+      supersaturated, cf_local, above_cloud_fraction_rh)
 
     ! after update do cloud condensation / rain evaporation --------------------------------------
     ! cloud condensation
@@ -518,7 +533,7 @@ module module_mp_tempo_main
         nwfa, qv, qvs, l_qc, rc, nc, tend)
 
       do k = 1, nz
-        if (satw(k) <= cloud_fraction_rh .or. satw(k) >= 1.) then ! .or. w1d(k) < 0.) then
+        if (satw(k) <= cf_local(k) .or. satw(k) >= 1.) then ! .or. w1d(k) < 0.) then
           qvten(k) = qvten(k) - tend%prw_vcd(k)*qca1d(k)
           qcten(k) = qcten(k) + tend%prw_vcd(k)*qca1d(k)
           ncten(k) = ncten(k) + tend%pnc_wcd(k)*qca1d(k)
@@ -556,13 +571,13 @@ module module_mp_tempo_main
     call ice_cloud_fraction(temp, l_qi, rho, qv, qvsi, qi1d, qia1d, &
       qca1d, qiten_bl1d, qiten, w1d, ocp, tend)
 
-    call liquid_cloud_fraction(temp=temp, pres=pres, dz1d=dz1d, l_qc=l_qc, rho=rho, qv=qv, &
+    call liquid_cloud_fraction(cf_local=cf_local, hpbl1d=hpbl1d, xland1d=xland1d, temp=temp, pres=pres, dz1d=dz1d, l_qc=l_qc, rho=rho, qv=qv, &
       qvs=qvs, qc1d=qc1d, nc1d=nc1d, qcfrac1d=qca1d, w1d=w1d, lvap=lvap, ocp=ocp, &
       ssatw=ssatw, thten_swrad1d=thten_swrad1d, thten_lwrad1d=thten_lwrad1d, &
       qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, thten_bl1d=thten_bl1d, nwfa=nwfa, tend=tend)
 
     do k = 1, nz
-      if (satw(k) > cloud_fraction_rh .and. satw(k) < 1.) then
+      if (satw(k) > cf_local(k) .and. satw(k) < 1.) then
         qvten(k) = qvten(k) - tend%prw_sgi(k) - tend%prw_slw(k) - tend%prw_sbl(k)
         qcten(k) = qcten(k) + tend%prw_sgi(k) + tend%prw_slw(k) + tend%prw_sbl(k)
         ncten(k) = ncten(k) + tend%pnc_sgs(k)
@@ -598,7 +613,7 @@ module module_mp_tempo_main
     
     call thermo_vars(qv, temp, pres, rho, rhof, rhof2, qvs, delqvs, qvsi, &
     satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
-    supersaturated, above_cloud_fraction_rh)
+    supersaturated, cf_local, above_cloud_fraction_rh)
 
     ! rain evaporation
     if (.not. tempo_cfgs%turn_off_micro_flag) then
@@ -625,7 +640,7 @@ module module_mp_tempo_main
         
       call thermo_vars(qv, temp, pres, rho, rhof, rhof2, qvs, delqvs, qvsi, &
         satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
-        supersaturated, above_cloud_fraction_rh)
+        supersaturated, cf_local, above_cloud_fraction_rh)
     endif 
 
     ! sedimentation ------------------------------------------------------------------------------
@@ -1361,12 +1376,12 @@ module module_mp_tempo_main
 
   subroutine thermo_vars(qv, temp, pres, rho, rhof, rhof2, qvs, delqvs, qvsi, &
     satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
-    supersaturated, above_cloud_fraction_rh)
+    supersaturated, cf_local, above_cloud_fraction_rh)
     !! computes thermodynamic variables
     use module_mp_tempo_params, only : t0, rho_not, eps, cp, lvap0, orv, &
       cloud_fraction_rh
 
-    real(wp), dimension(:), intent(in) :: qv, temp, pres, rho
+    real(wp), dimension(:), intent(in) :: qv, temp, pres, rho, cf_local
     real(wp), dimension(:), intent(out) :: rhof, rhof2, qvs, &
       delqvs, qvsi, satw, sati, ssatw, ssati, diffu, visco, vsc2, &
       ocp, lvap, tcond, lvt2
@@ -1395,7 +1410,7 @@ module module_mp_tempo_main
       if (abs(ssatw(k)) < eps) ssatw(k) = 0._wp
       if (abs(ssati(k)) < eps) ssati(k) = 0._wp
       if (ssati(k) > 0._wp) supersaturated = .true.
-      if (satw(k) > cloud_fraction_rh) above_cloud_fraction_rh = .true.
+      if (satw(k) > cf_local(k)) above_cloud_fraction_rh = .true.
       diffu(k) = 2.11e-5_wp*(temp(k)/t0)**1.94_wp * (101325._wp/pres(k))
       if (tempc >= 0._wp) then
         visco(k) = (1.718_wp+0.0049_wp*tempc)*1.0e-5_wp
@@ -2245,11 +2260,13 @@ module module_mp_tempo_main
   end subroutine ice_cloud_fraction
 
 
-  subroutine liquid_cloud_fraction(temp, pres, dz1d, l_qc, rho, qv, qvs, qc1d, nc1d, qcfrac1d, &
+  subroutine liquid_cloud_fraction(cf_local, hpbl1d, xland1d, temp, pres, dz1d, l_qc, rho, qv, qvs, qc1d, nc1d, qcfrac1d, &
       w1d, lvap, ocp, ssatw, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
       thten_bl1d, nwfa, tend)
     use module_mp_tempo_params, only : r1, rv, cloud_fraction_rh, eps, nt_c_min
 
+    real(wp), dimension(:), intent(in) :: cf_local
+    real(wp), dimension(:), intent(in) :: hpbl1d, xland1d
     real(wp), dimension(:), intent(in) :: temp, pres, rho, qv, qvs, qc1d, qcfrac1d, &
       w1d, lvap, ocp, ssatw, nwfa, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
       thten_bl1d, dz1d
@@ -2257,20 +2274,33 @@ module module_mp_tempo_main
     logical, dimension(:), intent(in) :: l_qc
     type(ty_tend), intent(inout) :: tend
     real(wp) :: orho, omega, dqsdt, al, bs, sd, qc_mean, qtot_mean, ls_cond, &
-      term1, term2, term3, gterm, eros_term, theta_to_temp, xnc, qcfrac_, hgt, cflocal
+      term1, term2, term3, gterm, eros_term, theta_to_temp, xnc, qcfrac_, hgt !, cflocal
     integer :: k, nz
+!    logical :: water_flag
+
 
     hgt = 0._wp
     nz = size(rho)
     do k = 1, nz
+
       hgt = hgt + dz1d(k)
-      cflocal = cloud_fraction_rh
+!!      cflocal = cloud_fraction_rh
+
+!      water_flag = .true.       
+      ! over water and w < 0.1
+!      if (xland1d(1) > 1.5) then
+!         if (w1d(k) < 0.25) water_flag = .false.
+!      endif
+
+      
+!!      if ((xland1d(1) > 1.5) .and. (hgt <= hpbl1d(1))) cflocal = 0.99
+
       theta_to_temp = (pres(k)/100000._wp)**0.286_wp
       orho = 1._wp / rho(k)
       omega = -9.8_wp * w1d(k) * rho(k)
       dqsdt = lvap(k) * qvs(k) / (rv*temp(k)**2)
       al = 1._wp / (1._wp + dqsdt*lvap(k)*ocp(k))
-      bs = al * (1._wp-cflocal) * qvs(k)
+      bs = al * (1._wp-cf_local(k)) * qvs(k)
       sd = al * (qvs(k)-qv(k))
       qtot_mean = qv(k) + qc1d(k)
       qc_mean = al * (qtot_mean-qvs(k))
@@ -2280,7 +2310,7 @@ module module_mp_tempo_main
       ! tendencies are grid-mean
       if (.not. l_qc(k)) then
 
-        if (ssatw(k) > (cflocal-0.99_wp) .and. ssatw(k) < 0._wp) then                      
+        if (ssatw(k) > (cf_local(k)-0.99_wp) .and. ssatw(k) < 0._wp) then 
             tend%pra_sgi(k) = 0.5_dp/bs*(bs+qc_mean) * global_inverse_dt
             tend%prw_sgi(k) = tend%pra_sgi(k)*0.5_dp*(bs+qc_mean) * rho(k) ! kg/m3/s
             if ((qc1d(k)*rho(k) + tend%prw_sgi(k)*global_dt) <= r1) then
@@ -2313,15 +2343,38 @@ module module_mp_tempo_main
         ! radiation
           tend%pra_slw(k) = -gterm*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
           tend%prw_slw(k) = -qcfrac_*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
+
+!          if (.not. water_flag) then
+!             tend%pra_slw(k) = min(tend%pra_slw(k), 0._wp)
+!             tend%prw_slw(k) = min(tend%prw_slw(k), 0._wp)
+!             tend%pra_sbl(k) = min(tend%pra_sbl(k), 0._wp)
+!             tend%prw_sbl(k) = min(tend%prw_sbl(k), 0._wp)    
+!          endif
+          
           ! tend%pra_ssw(k) = -gterm*al*dqsdT*thten_swrad1d(k) * theta_to_temp
           ! tend%prw_ssw(k) = -qcfrac1d(k)*al*dqsdT*thten_swrad1d(k) * theta_to_temp
 
+          !          if ((xland1d(1) > 1.5) .and. (hgt <= hpbl1d(1))) then
+!          if (cf_local(k) > 0.9) then
+!             tend%pra_slw(k) = 0._wp
+!             tend%prw_slw(k) = 0._wp
+!             tend%pra_sbl(k) = 0._wp
+!             tend%prw_sbl(k) = 0._wp             
+!          endif
+!          if (xland1d(1) > 1.5) then
+!             tend%pra_slw(k) = 0._wp
+!             tend%prw_slw(k) = 0._wp
+!!             tend%pra_sbl(k) = 0._wp
+!!             tend%prw_sbl(k) = 0._wp             
+!          endif          
+          
           if ((tend%prw_slw(k)+tend%prw_sbl(k))*global_dt > r1) then
             xnc = max(qcfrac_*nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
             if (present(nc1d)) then
               tend%pnc_sgs(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*global_inverse_dt
             endif 
           endif 
+
 
           ! erosions
           term3 = -3.1_wp*qc_mean/(al*qvs(k))
@@ -2360,8 +2413,9 @@ module module_mp_tempo_main
             tend%prw_slw(k) = 0.
             tend%pra_slw(k) = 0.
             if (present(nc1d)) tend%pnc_sgs(k) = -nc1d(k)*global_inverse_dt
-          endif
-        endif 
+         endif
+
+       endif
       endif 
     enddo 
   end subroutine liquid_cloud_fraction
