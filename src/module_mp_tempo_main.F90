@@ -295,18 +295,26 @@ module module_mp_tempo_main
       pres(k) = p1d(k)
       rho(k) = roverrv*pres(k)/(rdry*temp(k)*(qv(k)+roverrv))
     enddo
-    
-    if (first_call_main) then
-      if (present(nwfa1d)) then 
+
+    if (present(nwfa1d)) then
+      if (first_call_main) then
         if (sum(nwfa1d) < eps) call init_water_friendly_aerosols(dz1d, nwfa)
-      endif 
-      if (present(nifa1d)) then
+      endif
+    else
+      call init_water_friendly_aerosols(dz1d, nwfa)
+    endif
+    
+    if (present(nifa1d)) then
+      if (first_call_main) then
         if (sum(nifa1d) < eps) call init_ice_friendly_aerosols(dz1d, nifa)
-      endif 
-    endif 
+      endif
+    else
+      call init_ice_friendly_aerosols(dz1d, nifa)    
+    endif
+   
     call aerosol_check_and_update(rho=rho, nwfa1d=nwfa1d, nifa1d=nifa1d, &
       nwfa=nwfa, nifa=nifa, nwfaten=nwfaten, nifaten=nifaten)
-    
+
     call rain_check_and_update(rho, l_qr, qr1d, nr1d, rr, nr, qrten, nrten, ilamr, mvd_r)
   
     call ice_check_and_update(rho, l_qi, qi1d, ni1d, ri, ni, qiten, niten, ilami)
@@ -832,7 +840,7 @@ module module_mp_tempo_main
       endif 
       if (present(nifa1d)) then
         nifa(k) = (nifa1d(k)+nifaten(k)*global_dt)*rho(k)
-      endif 
+      endif
       nwfa(k) = max(nwfa_default*rho(k), min(aero_max*rho(k), nwfa(k)))
       nifa(k) = max(nifa_default*rho(k), min(aero_max*rho(k), nifa(k)))
     enddo 
