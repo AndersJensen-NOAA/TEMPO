@@ -26,6 +26,7 @@ module module_mp_tempo_main
 #endif
  
   real(wp) :: global_dt, global_inverse_dt
+  real(wp), dimension(:), allocatable :: ncsave
 
   type :: ty_tempo_main_diags
     real(wp) :: rain_precip
@@ -137,7 +138,7 @@ module module_mp_tempo_main
     real(dp), dimension(kts:kte) :: smob, smo2, smo1, smo0, smoc, smoe, smof, smog, ns, smoz !! snow moments
     
     real(wp), dimension(kts:kte) :: xrx, xnx !! temporary arrays
-    real(wp), dimension(:), allocatable :: xncx, xngx, xqbx, ncsave !! temporary arrays
+    real(wp), dimension(:), allocatable :: xncx, xngx, xqbx !! temporary arrays
 
     real(wp), dimension(kts:kte+1) :: vtrr, vtnr, vtrs, vtri, vtni, vtrg, vtng, vtrc, vtnc !! fallspeeds
     real(wp), dimension(kts:kte) :: vtboost !! snow fallspeed boost factor
@@ -295,18 +296,26 @@ module module_mp_tempo_main
       pres(k) = p1d(k)
       rho(k) = roverrv*pres(k)/(rdry*temp(k)*(qv(k)+roverrv))
     enddo
-    
-    if (first_call_main) then
-      if (present(nwfa1d)) then 
+
+    if (present(nwfa1d)) then
+      if (first_call_main) then
         if (sum(nwfa1d) < eps) call init_water_friendly_aerosols(dz1d, nwfa)
-      endif 
-      if (present(nifa1d)) then
+      endif
+    else
+      call init_water_friendly_aerosols(dz1d, nwfa)
+    endif
+    
+    if (present(nifa1d)) then
+      if (first_call_main) then
         if (sum(nifa1d) < eps) call init_ice_friendly_aerosols(dz1d, nifa)
-      endif 
-    endif 
+      endif
+    else
+      call init_ice_friendly_aerosols(dz1d, nifa)    
+    endif
+   
     call aerosol_check_and_update(rho=rho, nwfa1d=nwfa1d, nifa1d=nifa1d, &
       nwfa=nwfa, nifa=nifa, nwfaten=nwfaten, nifaten=nifaten)
-    
+
     call rain_check_and_update(rho, l_qr, qr1d, nr1d, rr, nr, qrten, nrten, ilamr, mvd_r)
   
     call ice_check_and_update(rho, l_qi, qi1d, ni1d, ri, ni, qiten, niten, ilami)
@@ -374,7 +383,10 @@ module module_mp_tempo_main
 
     ! check for hydrometeors or supersaturation --------------------------------------------------
     do_micro = any(l_qc) .or. any(l_qr) .or. any(l_qi) .or. any(l_qs) .or. any(l_qg)
-    if (.not. do_micro .and. .not. supersaturated) return
+    if (.not. do_micro .and. .not. supersaturated) then
+      if (allocated(ncsave)) deallocate(ncsave)
+      return
+    endif
 
     ! main microphysical processes ---------------------------------------------------------------
     if (.not. tempo_cfgs%turn_off_micro_flag) then
@@ -483,7 +495,7 @@ module module_mp_tempo_main
 
     ! after update do cloud condensation / rain evaporation --------------------------------------
     ! cloud condensation
-    if (.not. tempo_cfgs%turn_off_micro_flag) then
+    if (.not. tempo_cfgs%turn_off_micro_flag .and. tempo_cfgs%cloud_condensation_flag) then
       call cloud_condensation(rho, temp, w1d, ssatw, lvap, tcond, diffu, lvt2, &
         nwfa, qv, qvs, l_qc, rc, nc, tend)
 
@@ -685,7 +697,7 @@ module module_mp_tempo_main
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call freeze_cloud_melt_ice(temp=temp, rho=rho, ocp=ocp, lvap=lvap, &
         qi1d=qi1d, ni1d=ni1d, qiten=qiten, niten=niten, qc1d=qc1d, nc1d=nc1d, &
-        ncsave=ncsave, qcten=qcten, ncten=ncten, tten=tten)
+        qcten=qcten, ncten=ncten, tten=tten)
     endif 
 
     ! final update -------------------------------------------------------------------------------
@@ -812,7 +824,8 @@ module module_mp_tempo_main
       endif 
       call effective_radius(temp, l_qc, nc, ilamc, l_qi, ilami, l_qs, rs, &
         tempo_main_diags%re_cloud, tempo_main_diags%re_ice, tempo_main_diags%re_snow)
-    endif
+   endif
+   if (allocated(ncsave)) deallocate(ncsave)
   end subroutine tempo_main
 
 
@@ -832,7 +845,7 @@ module module_mp_tempo_main
       endif 
       if (present(nifa1d)) then
         nifa(k) = (nifa1d(k)+nifaten(k)*global_dt)*rho(k)
-      endif 
+      endif
       nwfa(k) = max(nwfa_default*rho(k), min(aero_max*rho(k), nwfa(k)))
       nifa(k) = max(nifa_default*rho(k), min(aero_max*rho(k), nifa(k)))
     enddo 
@@ -840,33 +853,42 @@ module module_mp_tempo_main
 
 
   subroutine cloud_check_and_update(rho, l_qc, qc1d, nc1d, rc, nc, &
-    qcten, ncten, ilamc, mvd_c)
+    qcten, ncten, ilamc, mvd_c, dt)
     !! computes cloud water contents, ilamc, and mvd_c and checks bounds
     use module_mp_tempo_params, only : r1, nt_c_max, nt_c_min, nu_c_scale, &
       am_r, bm_r, cce, ccg, d0c, d0r, ocg1, ocg2, obmr, nt_c_l, d0r
 
+    real(wp), intent(in), optional :: dt
     real(wp), dimension(:), intent(in) :: rho
     real(wp), dimension(:), intent(inout) :: qc1d, qcten, ncten, rc, nc
     real(wp), dimension(:), intent(out) :: mvd_c
     real(dp), dimension(:), intent(out) :: ilamc
     real(wp), dimension(:), intent(inout), optional :: nc1d
     logical, dimension(:), intent(inout) :: l_qc
+    real(wp) :: dt_, odt_
     integer :: k, nz, nu_c
     real(dp) :: lamc, xdc
     logical :: hit_limit
 
+    if (present(dt)) then
+      dt_ = dt
+    else
+      dt_ = global_dt
+    endif
+    odt_ = 1._wp / dt_
+
     nz = size(qc1d)
     do k = 1, nz
       hit_limit = .false.
-      if (qc1d(k)+qcten(k)*global_dt > r1) then
+      if (qc1d(k)+qcten(k)*dt_ > r1) then
         l_qc(k) = .true.
         ! update mass
-        rc(k) = (qc1d(k)+qcten(k)*global_dt)*rho(k)
-        qc1d(k) = qc1d(k)+qcten(k)*global_dt
+        rc(k) = (qc1d(k)+qcten(k)*dt_)*rho(k)
+        qc1d(k) = qc1d(k)+qcten(k)*dt_
 
         ! update number
         if (present(nc1d)) then
-          nc(k) = max(nt_c_min, (nc1d(k)+ncten(k)*global_dt)*rho(k))
+          nc(k) = max(nt_c_min, (nc1d(k)+ncten(k)*dt_)*rho(k))
           
           ! number check
           if (nc(k) <= nt_c_min) then
@@ -892,11 +914,11 @@ module module_mp_tempo_main
           ! update number to be consistent with lamc
           nc(k) = ccg(1,nu_c)*ocg2(nu_c)*rc(k) / am_r*lamc**bm_r
 
-          if (hit_limit) ncten(k) = (nc(k)/rho(k) - nc1d(k)) * global_inverse_dt
+          if (hit_limit) ncten(k) = (nc(k)/rho(k) - nc1d(k)) * odt_
           nc1d(k) = max(nt_c_min/rho(k), &
             min(ccg(1,nu_c)*ocg2(nu_c)*qc1d(k)/am_r*lamc**bm_r, nt_c_max/rho(k)))
-        ! else
-          ! nc(k) = get_cloud_number()
+        else
+          if (allocated(ncsave)) nc(k) = ncsave(k)
         endif
         nu_c = get_nuc(nc(k))
         lamc = (nc(k)*am_r*ccg(2,nu_c)*ocg1(nu_c)/rc(k))**obmr
@@ -908,10 +930,10 @@ module module_mp_tempo_main
         nc(k) = nt_c_min
         mvd_c(k) = d0c
         ilamc(k) = 0._dp
-        qcten(k) = -qc1d(k) * global_inverse_dt
+        qcten(k) = -qc1d(k) * odt_
         qc1d(k) = 0.0_wp
         if (present(nc1d)) then
-          ncten(k) = -nc1d(k) * global_inverse_dt
+          ncten(k) = -nc1d(k) * odt_
           nc1d(k) = 0.0_wp
         endif 
       endif
@@ -988,30 +1010,39 @@ module module_mp_tempo_main
 
 
  subroutine ice_check_and_update(rho, l_qi, qi1d, ni1d, ri, ni, &
-      qiten, niten, ilami)
+      qiten, niten, ilami, dt)
     !! computes ice contents, ilami and checks bounds
     use module_mp_tempo_params, only : max_ni, r1, r2, cie, cig, &
       mu_i, am_i, bm_i, oig1, oig2, obmi , d0s
 
+    real(wp), intent(in), optional :: dt
     real(wp), dimension(:), intent(in) :: rho
     real(wp), dimension(:), intent(inout) :: qi1d, ni1d, qiten, niten, ri, ni
     real(dp), dimension(:), intent(out) :: ilami
     logical, dimension(:), intent(inout) :: l_qi
+    real(wp) :: dt_, odt_
     integer :: k, nz
     real(dp) :: lami, xdi
     logical :: hit_limit
 
+    if (present(dt)) then
+      dt_ = dt
+    else
+      dt_ = global_dt
+    endif
+    odt_ = 1._wp / dt_
+
     nz = size(qi1d)
     do k = 1, nz 
       hit_limit = .false.
-      if (qi1d(k)+qiten(k)*global_dt > r1) then
+      if (qi1d(k)+qiten(k)*dt_ > r1) then
         l_qi(k) = .true.
         !update mass
-        ri(k) = (qi1d(k)+qiten(k)*global_dt)*rho(k)
-        qi1d(k) = qi1d(k)+qiten(k)*global_dt
+        ri(k) = (qi1d(k)+qiten(k)*dt_)*rho(k)
+        qi1d(k) = qi1d(k)+qiten(k)*dt_
 
         !update number
-        ni(k) = max(r2, (ni1d(k)+niten(k)*global_dt)*rho(k))
+        ni(k) = max(r2, (ni1d(k)+niten(k)*dt_)*rho(k))
     
         ! check number
         if (ni(k) <= r2) then
@@ -1033,7 +1064,7 @@ module module_mp_tempo_main
           ni(k) = cig(1)*oig2*ri(k)/am_i*lami**bm_i
         endif
         
-        if (hit_limit) niten(k) = (ni(k)/rho(k) - ni1d(k))*global_inverse_dt
+        if (hit_limit) niten(k) = (ni(k)/rho(k) - ni1d(k))*odt_
         ni1d(k) = max(r2/rho(k), &
           min(cig(1)*oig2*qi1d(k)/am_i*lami**bm_i, max_ni/rho(k)))
         ilami(k) = 1._dp / lami
@@ -1042,8 +1073,8 @@ module module_mp_tempo_main
         ri(k) = r1
         ni(k) = r2
         ilami(k) = 0._dp
-        qiten(k) = -qi1d(k) * global_inverse_dt
-        niten(k) = -ni1d(k) * global_inverse_dt
+        qiten(k) = -qi1d(k) * odt_
+        niten(k) = -ni1d(k) * odt_
         qi1d(k) = 0.0_wp
         ni1d(k) = 0.0_wp
       endif
@@ -1051,26 +1082,35 @@ module module_mp_tempo_main
   end subroutine ice_check_and_update
 
 
-  subroutine snow_check_and_update(rho, l_qs, qs1d, rs, qsten)
+  subroutine snow_check_and_update(rho, l_qs, qs1d, rs, qsten, dt)
     !! computes snow mass
     use module_mp_tempo_params, only : max_ni, r1, r2
 
+    real(wp), intent(in), optional :: dt
     real(wp), dimension(:), intent(in) :: rho
     real(wp), dimension(:), intent(inout) :: qs1d, rs, qsten
     logical, dimension(:), intent(inout) :: l_qs
+    real(wp) :: dt_, odt_
     integer :: k, nz
+
+    if (present(dt)) then
+      dt_ = dt
+    else
+      dt_ = global_dt
+    endif
+    odt_ = 1._wp / dt_
 
     nz = size(qs1d)
     do k = 1, nz
-      if (qs1d(k)+qsten(k)*global_dt > r1) then
+      if (qs1d(k)+qsten(k)*dt_ > r1) then
         l_qs(k) = .true.
         ! update mass
-        rs(k) = (qs1d(k)+qsten(k)*global_dt)*rho(k)
-        qs1d(k) = qs1d(k)+qsten(k)*global_dt
+        rs(k) = (qs1d(k)+qsten(k)*dt_)*rho(k)
+        qs1d(k) = qs1d(k)+qsten(k)*dt_
       else
         l_qs(k) = .false.
         rs(k) = r1
-        qsten(k) = -qs1d(k) * global_inverse_dt
+        qsten(k) = -qs1d(k) * odt_
         qs1d(k) = 0.0_wp
       endif
     enddo 
@@ -2051,12 +2091,11 @@ module module_mp_tempo_main
 
 
   subroutine freeze_cloud_melt_ice(temp, rho, ocp, lvap, qi1d, ni1d, qiten, niten, &
-    qc1d, nc1d, ncsave, qcten, ncten, tten)
+    qc1d, nc1d, qcten, ncten, tten)
     ! freezes all cloud water and melts all cloud ice instantly given the temperature
     use module_mp_tempo_params, only : t0, lfus, lsub, hgfrz, nt_c_l
 
     real(wp), dimension(:), intent(in) :: temp, rho, ocp, lvap, qi1d, ni1d, qc1d
-    real(wp), dimension(:), intent(in), optional :: ncsave
     real(wp), dimension(:), intent(inout) :: qiten, niten, qcten, ncten, tten
     real(wp), dimension(:), intent(in), optional :: nc1d
     real(wp) :: xri, xrc, lfus2, xnc
@@ -2079,7 +2118,7 @@ module module_mp_tempo_main
         lfus2 = lsub - lvap(k)
         if (present(nc1d)) then
           xnc = nc1d(k) + ncten(k)*global_dt
-        elseif (present(ncsave)) then
+        elseif (allocated(ncsave)) then
           xnc = ncsave(k)/rho(k) + ncten(k)*global_dt
         else
           xnc = nt_c_l/rho(k) + ncten(k)*global_dt

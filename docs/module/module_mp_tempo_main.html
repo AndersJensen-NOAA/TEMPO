@@ -91,7 +91,7 @@
 
             <li class="list-inline-item" id="statements"><i class="fa fa-list-ol"></i>
               <a data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-html="true"
-                 title="45.2% of total for modules and submodules.">2239 statements</a>
+                 title="45.5% of total for modules and submodules.">2275 statements</a>
             </li>
 
             <li class="list-inline-item" id="source-file">
@@ -134,6 +134,7 @@
         <div class="list-group list-group-flush">
             <a class="list-group-item" href="../module/module_mp_tempo_main.html#variable-global_dt">global_dt</a>
             <a class="list-group-item" href="../module/module_mp_tempo_main.html#variable-global_inverse_dt">global_inverse_dt</a>
+            <a class="list-group-item" href="../module/module_mp_tempo_main.html#variable-ncsave">ncsave</a>
         </div>
       </div>
     </div>
@@ -252,12 +253,12 @@
         <ul class="list-group list-group-flush">
             <li class="list-group-item">
               <ul class="list-inline">
-                  <li class="list-inline-item"><a href='module_mp_tempo_cfgs.html'>module_mp_tempo_cfgs</a></li>
-                  <li class="list-inline-item"><a href='module_mp_tempo_utils.html'>module_mp_tempo_utils</a></li>
                   <li class="list-inline-item"><a href='module_mp_tempo_aerosols.html'>module_mp_tempo_aerosols</a></li>
                   <li class="list-inline-item"><a href='module_mp_tempo_ml.html'>module_mp_tempo_ml</a></li>
-                  <li class="list-inline-item"><a href='module_mp_tempo_params.html'>module_mp_tempo_params</a></li>
+                  <li class="list-inline-item"><a href='module_mp_tempo_cfgs.html'>module_mp_tempo_cfgs</a></li>
                   <li class="list-inline-item"><a href='module_mp_tempo_diags.html'>module_mp_tempo_diags</a></li>
+                  <li class="list-inline-item"><a href='module_mp_tempo_utils.html'>module_mp_tempo_utils</a></li>
+                  <li class="list-inline-item"><a href='module_mp_tempo_params.html'>module_mp_tempo_params</a></li>
               </ul>
             </li>
             <li class="list-group-item">
@@ -727,6 +728,23 @@ modules which it uses.
                 
             </td>
         </tr>
+        <tr>
+            <td>
+              <span class="anchor" id="variable-ncsave"></span>
+              real(kind=wp),
+            </td>
+              <td>private,</td>
+            <td>
+              dimension(:), allocatable
+            </td>
+            <td>::</td>
+            <td><strong>ncsave</strong></td>
+                <td></td>
+                <td></td>
+            <td>
+                
+            </td>
+        </tr>
     </tbody>
   </table>
 
@@ -764,7 +782,7 @@ modules which it uses.
     <tbody>
         <tr>
             <td>
-              <span class="anchor" id="variable-qc~8"></span>
+              <span class="anchor" id="variable-qc"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -779,7 +797,7 @@ modules which it uses.
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-qr~8"></span>
+              <span class="anchor" id="variable-qr"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -794,7 +812,7 @@ modules which it uses.
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-qi~8"></span>
+              <span class="anchor" id="variable-qi"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -809,7 +827,7 @@ modules which it uses.
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-qs~8"></span>
+              <span class="anchor" id="variable-qs"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -854,7 +872,7 @@ modules which it uses.
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-w~8"></span>
+              <span class="anchor" id="variable-w"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -909,7 +927,7 @@ when aerosol-aware = false if land = 1, else returns ocean-specific value</p>
     <tbody>
         <tr>
             <td>
-              <span class="anchor" id="variable-land~2"></span>
+              <span class="anchor" id="variable-land"></span>
               integer,
             </td>
 <td>intent(in),</td>
@@ -924,7 +942,7 @@ when aerosol-aware = false if land = 1, else returns ocean-specific value</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-nc~15"></span>
+              <span class="anchor" id="variable-nc"></span>
               real(kind=wp),
             </td>
 <td>intent(out),</td>
@@ -2676,7 +2694,7 @@ than original paper, so J_rate is reduced by two orders of magnitude</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-land"></span>
+              <span class="anchor" id="variable-land~2"></span>
               integer,
             </td>
 <td>intent(in),</td>
@@ -3464,7 +3482,7 @@ than original paper, so J_rate is reduced by two orders of magnitude</p>
   </div>
 
               <div class="card">
-    <div class="card-header codesum"><span class="anchor" id="proc-cloud_check_and_update"></span> <h3>public  subroutine <a href='../proc/cloud_check_and_update.html'>cloud_check_and_update</a>(rho, l_qc, qc1d, nc1d, rc, nc, qcten, ncten, ilamc, mvd_c)  
+    <div class="card-header codesum"><span class="anchor" id="proc-cloud_check_and_update"></span> <h3>public  subroutine <a href='../proc/cloud_check_and_update.html'>cloud_check_and_update</a>(rho, l_qc, qc1d, nc1d, rc, nc, qcten, ncten, ilamc, mvd_c, dt)  
 </h3></div>
     <div class="card-body">
           
@@ -3558,7 +3576,7 @@ than original paper, so J_rate is reduced by two orders of magnitude</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-nc~7"></span>
+              <span class="anchor" id="variable-nc~9"></span>
               real(kind=wp),
             </td>
 <td>intent(inout),</td>
@@ -3627,6 +3645,21 @@ than original paper, so J_rate is reduced by two orders of magnitude</p>
             </td>
             <td>::</td>
             <td><strong>mvd_c</strong></td>
+            <td>
+
+            </td>
+        </tr>
+        <tr>
+            <td>
+              <span class="anchor" id="variable-dt~10"></span>
+              real(kind=wp),
+            </td>
+<td>intent(in),</td>
+              <td>optional</td>            <td>
+              
+            </td>
+            <td>::</td>
+            <td><strong>dt</strong></td>
             <td>
 
             </td>
@@ -3814,7 +3847,7 @@ than original paper, so J_rate is reduced by two orders of magnitude</p>
   </div>
 
               <div class="card">
-    <div class="card-header codesum"><span class="anchor" id="proc-ice_check_and_update"></span> <h3>public  subroutine <a href='../proc/ice_check_and_update.html'>ice_check_and_update</a>(rho, l_qi, qi1d, ni1d, ri, ni, qiten, niten, ilami)  
+    <div class="card-header codesum"><span class="anchor" id="proc-ice_check_and_update"></span> <h3>public  subroutine <a href='../proc/ice_check_and_update.html'>ice_check_and_update</a>(rho, l_qi, qi1d, ni1d, ri, ni, qiten, niten, ilami, dt)  
 </h3></div>
     <div class="card-body">
           
@@ -3966,6 +3999,21 @@ than original paper, so J_rate is reduced by two orders of magnitude</p>
 
             </td>
         </tr>
+        <tr>
+            <td>
+              <span class="anchor" id="variable-dt~11"></span>
+              real(kind=wp),
+            </td>
+<td>intent(in),</td>
+              <td>optional</td>            <td>
+              
+            </td>
+            <td>::</td>
+            <td><strong>dt</strong></td>
+            <td>
+
+            </td>
+        </tr>
     </tbody>
   </table>
 
@@ -3974,7 +4022,7 @@ than original paper, so J_rate is reduced by two orders of magnitude</p>
   </div>
 
               <div class="card">
-    <div class="card-header codesum"><span class="anchor" id="proc-snow_check_and_update"></span> <h3>public  subroutine <a href='../proc/snow_check_and_update.html'>snow_check_and_update</a>(rho, l_qs, qs1d, rs, qsten)  
+    <div class="card-header codesum"><span class="anchor" id="proc-snow_check_and_update"></span> <h3>public  subroutine <a href='../proc/snow_check_and_update.html'>snow_check_and_update</a>(rho, l_qs, qs1d, rs, qsten, dt)  
 </h3></div>
     <div class="card-body">
           
@@ -4038,7 +4086,7 @@ than original paper, so J_rate is reduced by two orders of magnitude</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-rs~2"></span>
+              <span class="anchor" id="variable-rs~3"></span>
               real(kind=wp),
             </td>
 <td>intent(inout),</td>
@@ -4062,6 +4110,21 @@ than original paper, so J_rate is reduced by two orders of magnitude</p>
             </td>
             <td>::</td>
             <td><strong>qsten</strong></td>
+            <td>
+
+            </td>
+        </tr>
+        <tr>
+            <td>
+              <span class="anchor" id="variable-dt~12"></span>
+              real(kind=wp),
+            </td>
+<td>intent(in),</td>
+              <td>optional</td>            <td>
+              
+            </td>
+            <td>::</td>
+            <td><strong>dt</strong></td>
             <td>
 
             </td>
@@ -4920,7 +4983,7 @@ adjusts tendencies if needed</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-rs~3"></span>
+              <span class="anchor" id="variable-rs~4"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -6035,7 +6098,7 @@ and optionally the substepping required and the top k-level of sedimentation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-rs~4"></span>
+              <span class="anchor" id="variable-rs~5"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -6065,7 +6128,7 @@ and optionally the substepping required and the top k-level of sedimentation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smob~2"></span>
+              <span class="anchor" id="variable-smob~3"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -6080,7 +6143,7 @@ and optionally the substepping required and the top k-level of sedimentation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smoc~2"></span>
+              <span class="anchor" id="variable-smoc~3"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -6447,7 +6510,7 @@ and the top k-level of sedimentation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-nc~8"></span>
+              <span class="anchor" id="variable-nc~10"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -6757,7 +6820,7 @@ and the top k-level of sedimentation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-nc~9"></span>
+              <span class="anchor" id="variable-nc~11"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -7044,7 +7107,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
   </div>
 
               <div class="card">
-    <div class="card-header codesum"><span class="anchor" id="proc-freeze_cloud_melt_ice"></span> <h3>private  subroutine <a href='../proc/freeze_cloud_melt_ice.html'>freeze_cloud_melt_ice</a>(temp, rho, ocp, lvap, qi1d, ni1d, qiten, niten, qc1d, nc1d, ncsave, qcten, ncten, tten)  
+    <div class="card-header codesum"><span class="anchor" id="proc-freeze_cloud_melt_ice"></span> <h3>private  subroutine <a href='../proc/freeze_cloud_melt_ice.html'>freeze_cloud_melt_ice</a>(temp, rho, ocp, lvap, qi1d, ni1d, qiten, niten, qc1d, nc1d, qcten, ncten, tten)  
 </h3></div>
     <div class="card-body">
           
@@ -7213,21 +7276,6 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-ncsave~2"></span>
-              real(kind=wp),
-            </td>
-<td>intent(in),</td>
-              <td>optional,</td>            <td>
-              dimension(:)
-            </td>
-            <td>::</td>
-            <td><strong>ncsave</strong></td>
-            <td>
-
-            </td>
-        </tr>
-        <tr>
-            <td>
               <span class="anchor" id="variable-qcten~4"></span>
               real(kind=wp),
             </td>
@@ -7343,7 +7391,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-nc~10"></span>
+              <span class="anchor" id="variable-nc~12"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -7563,7 +7611,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-nc~11"></span>
+              <span class="anchor" id="variable-nc~13"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -7623,7 +7671,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-rs~5"></span>
+              <span class="anchor" id="variable-rs~6"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -7638,7 +7686,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smo0~2"></span>
+              <span class="anchor" id="variable-smo0~3"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -7653,7 +7701,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smob~3"></span>
+              <span class="anchor" id="variable-smob~4"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -7668,7 +7716,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smoc~3"></span>
+              <span class="anchor" id="variable-smoc~4"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -7683,7 +7731,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smoe~2"></span>
+              <span class="anchor" id="variable-smoe~3"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -7828,7 +7876,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
     <tbody>
         <tr>
             <td>
-              <span class="anchor" id="variable-rs~6"></span>
+              <span class="anchor" id="variable-rs~7"></span>
               real(kind=wp),
             </td>
 <td>intent(in)</td>
@@ -8138,7 +8186,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-nc~12"></span>
+              <span class="anchor" id="variable-nc~14"></span>
               real(kind=wp),
             </td>
 <td>intent(in)</td>
@@ -8383,7 +8431,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-rs~7"></span>
+              <span class="anchor" id="variable-rs~8"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -8663,7 +8711,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smo0~3"></span>
+              <span class="anchor" id="variable-smo0~4"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -8693,7 +8741,7 @@ in the presence of melting graupel</p><a href="../proc/rain_evaporation.html" cl
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-nc~13"></span>
+              <span class="anchor" id="variable-nc~15"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -9220,7 +9268,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-rs~8"></span>
+              <span class="anchor" id="variable-rs~9"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -9235,7 +9283,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smoe~3"></span>
+              <span class="anchor" id="variable-smoe~4"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -9250,7 +9298,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smof~2"></span>
+              <span class="anchor" id="variable-smof~3"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -9265,7 +9313,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smo1~2"></span>
+              <span class="anchor" id="variable-smo1~3"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -9605,7 +9653,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-rs~9"></span>
+              <span class="anchor" id="variable-rs~10"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -9620,7 +9668,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smof~3"></span>
+              <span class="anchor" id="variable-smof~4"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -9635,7 +9683,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smo0~4"></span>
+              <span class="anchor" id="variable-smo0~5"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -9650,7 +9698,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smo1~3"></span>
+              <span class="anchor" id="variable-smo1~4"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -9945,7 +9993,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-rs~10"></span>
+              <span class="anchor" id="variable-rs~11"></span>
               real(kind=wp),
             </td>
 <td>intent(in),</td>
@@ -9960,7 +10008,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smob~4"></span>
+              <span class="anchor" id="variable-smob~5"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -9975,7 +10023,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smoc~4"></span>
+              <span class="anchor" id="variable-smoc~5"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
@@ -9990,7 +10038,7 @@ and graupel sublimation</p>
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-smoe~4"></span>
+              <span class="anchor" id="variable-smoe~5"></span>
               real(kind=dp),
             </td>
 <td>intent(in),</td>
