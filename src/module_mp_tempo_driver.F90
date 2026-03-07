@@ -188,8 +188,9 @@ module module_mp_tempo_driver
     t, th, pii, p, w, dz, &
     qv, qc, qr, qi, qs, qg, ni, nr, &
     nc, nwfa, nifa, ng, qb, &
+    qh, &
     qc_bl, qcfrac_bl, &
-    qcfrac, qifrac, qh, &
+    qcfrac, qifrac, &
     thten_bl, qvten_bl, qcten_bl, qiten_bl, &
     thten_lwrad, thten_swrad, &
     ids, ide, jds, jde, kds, kde, &
@@ -220,13 +221,12 @@ module module_mp_tempo_driver
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: ni !! 3D cloud ice number mixing ratio \([kg^{-1}]\)
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: nr !! 3D rain water number mixing ratio \([kg^{-1}]\)
 
-    real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: qh !! 3D graupel mass mixing ratio \([kg\; kg^{-1}]\)
-    
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nc !! 3D cloud water number mixing ratio \([kg^{-1}]\) (aerosol-aware)
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nwfa !! 3D water-friendly aerosol number mixing ratio \([kg^{-1}]\) (aerosol-aware)
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nifa !! 3D ice-friendly aerosol number mixing ratio \([kg^{-1}]\) (aerosol-aware)
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: qb !! 3D graupel volume mixing ratio \([m^{-3}\; kg^{-1}]\) (hail-aware)
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: ng !! 3D graupel number mixing ratio \([kg^{-1}]\) (hail-aware)
+    real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: qh !! 3D hail mass mixing ratio \([kg\; kg^{-1}]\)
 
     ! additional optional arguments
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: qcfrac
@@ -252,14 +252,13 @@ module module_mp_tempo_driver
     real(wp), dimension(kts:kte) :: nr1d !! 1D rain water number mixing ratio \([kg^{-1}]\)
     real(wp), dimension(kts:kte) :: w1d !! 1D vertical velocity \(m\; s^{-1}]\)
     real(wp), dimension(kts:kte) :: dz1d !! 1D vertical grid spacing \([m]\)
-
-    real(wp), dimension(:), allocatable :: qh1d !! 1D graupel mass mixing ratio \([kg\; kg^{-1}]\)    
     
     real(wp), dimension(:), allocatable :: nc1d !! 1D cloud water number mixing ratio \([kg^{-1}]\) (aerosol-aware)
     real(wp), dimension(:), allocatable :: nwfa1d !! 1D water-friendly aerosol number mixing ratio \([kg^{-1}]\) (aerosol-aware)
     real(wp), dimension(:), allocatable :: nifa1d !! 1D ice-friendly aerosol number mixing ratio \([kg^{-1}]\) (aerosol-aware)
     real(wp), dimension(:), allocatable :: qb1d !! 1D graupel volume mixing ratio \([m^{-3}\; kg^{-1}]\) (hail-aware)
     real(wp), dimension(:), allocatable :: ng1d !! 1D graupel number mixing ratio \([kg^{-1}]\) (hail-aware)
+    real(wp), dimension(:), allocatable :: qh1d !! 1D hail mass mixing ratio \([kg\; kg^{-1}]\)    
 
     ! additional optional 1d arrays
     real(wp), dimension(:), allocatable :: qcfrac1d
@@ -420,13 +419,12 @@ module module_mp_tempo_driver
           if (present(nifa)) nifa1d(k) = nifa(i,k,j)
           if (present(nc)) nc1d(k) = nc(i,k,j)
 
-         if (present(qh)) qh1d(k) = qh(i,k,j)          
-
           ! ng and qb are optional hail-aware variables
           if ((present(ng)) .and. (present(qb))) then
             ng1d(k) = ng(i,k,j)
             qb1d(k) = qb(i,k,j)
           endif 
+          if (present(qh)) qh1d(k) = qh(i,k,j)
 
           ! machine learning for pbl clouds
           if (present(qc_bl) .and. present(qcfrac_bl)) then
@@ -437,9 +435,9 @@ module module_mp_tempo_driver
 
         ! main call to the 1d tempo microphysics
         call tempo_main(tempo_cfgs=tempo_cfgs, &
-          qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
+          qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, qh1d=qh1d, &
           ni1d=ni1d, nr1d=nr1d, nc1d=nc1d, ng1d=ng1d, nwfa1d=nwfa1d, nifa1d=nifa1d, t1d=t1d, p1d=p1d, &
-          w1d=w1d, dz1d=dz1d, qh=qh, &
+          w1d=w1d, dz1d=dz1d, &
           qcfrac1d=qcfrac1d, qifrac1d=qifrac1d, qc_bl1d=qc_bl1d, qcfrac_bl1d=qcfrac_bl1d, &
           thten_bl1d=thten_bl1d, qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, qiten_bl1d=qiten_bl1d, &
           thten_lwrad1d=thten_lwrad1d, thten_swrad1d=thten_swrad1d, &
@@ -483,13 +481,13 @@ module module_mp_tempo_driver
         ! return variables to model
         do k = kts, kte
           if (present(nc)) nc(i,k,j) = nc1d(k)
-          if (present(qh)) qh(i,k,j) = qh1d(k)           
           if (present(nwfa)) nwfa(i,k,j) = nwfa1d(k)
           if (present(nifa)) nifa(i,k,j) = nifa1d(k)
           if ((present(ng)) .and. (present(qb))) then
             ng(i,k,j) = ng1d(k)
             qb(i,k,j) = qb1d(k)
           endif 
+          if (present(qh)) qh(i,k,j) = qh1d(k)
           qv(i,k,j) = qv1d(k)
           qc(i,k,j) = qc1d(k)
           qi(i,k,j) = qi1d(k)
