@@ -50,6 +50,9 @@ module module_mp_tempo_main
       pri_ihm, pni_ihm, prs_ihm, prg_ihm, prg_scw, & ! riming
       prr_rcs, pnr_rcs, prg_rcs, png_rcs, prs_rcs, pbg_rcs, & ! rain-snow
       prr_rcg, pnr_rcg, prg_rcg, png_rcg, pbg_rcg, & ! rain-graupel
+      prh_rcg, prh_rcs, prh_rci, prh_hwc, prh_rfz, &
+      prr_hml, pnr_hml, prh_hde, &
+      prh_rch, prr_rch, pnr_rch, &
       pri_inu, pni_inu, pri_iha, pni_iha, & ! ice nucleation
       pri_wfz, pni_wfz, & ! water freezing
       prg_rfz, png_rfz, pnr_rfz, pri_rfz, pni_rfz, pbg_rfz, & ! rain freezing
@@ -73,7 +76,7 @@ module module_mp_tempo_main
     qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
     nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, &
     qcfrac1d, qifrac1d, qc_bl1d, qcfrac_bl1d, &
-    thten_bl1d, qvten_bl1d, qcten_bl1d, qiten_bl1d, &
+    thten_bl1d, qvten_bl1d, qcten_bl1d, qiten_bl1d, qh1d, &
     thten_lwrad1d, thten_swrad1d, &
     kts, kte, dt, ii, jj, tempo_main_diags)
     !! tempo main
@@ -95,6 +98,7 @@ module module_mp_tempo_main
     real(wp), dimension(kts:kte), intent(inout) :: ni1d !! 1D cloud ice number mixing ratio \([kg^{-1}]\)
     real(wp), dimension(kts:kte), intent(inout) :: nr1d !! 1D rain water number mixing ratio \([kg^{-1}]\)
     real(wp), dimension(:), intent(inout), optional :: nc1d !! 1D cloud water number mixing ratio \([kg^{-1}]\)
+    real(wp), dimension(:), intent(inout), optional :: qh1d !! 1D cloud water number mixing ratio \([kg^{-1}]\)    
     real(wp), dimension(:), intent(inout), optional :: nwfa1d !! 1D water-friendly aerosol number mixing ratio \([kg^{-1}]\)
     real(wp), dimension(:), intent(inout), optional :: nifa1d !! 1D ice-friendly aerosol number mixing ratio \([kg^{-1}]\)
     real(wp), dimension(:), intent(inout), optional :: qb1d !! 1D graupel volume mixing ratio \([m^{-3}\; kg^{-1}]\)
@@ -115,9 +119,9 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(in), optional :: thten_swrad1d !! potential temperature tendency from shortwave radiation scheme
   
     real(wp), dimension(kts:kte) :: tten, qvten, qcten, qiten, qrten, qsten, &
-      qgten, qbten, niten, nrten, ncten, ngten, nwfaten, nifaten !! tendencies
+      qgten, qhten, qbten, niten, nrten, ncten, ngten, nwfaten, nifaten !! tendencies
 
-    logical, dimension(kts:kte) :: l_qc, l_qi, l_qr, l_qs, l_qg !! hydrometeor existence logicals
+    logical, dimension(kts:kte) :: l_qc, l_qi, l_qr, l_qs, l_qg, l_qh !! hydrometeor existence logicals
     integer, dimension(kts:kte) :: idx_bg !! graupel density index
 
     ! thermodynamic variables
@@ -128,21 +132,21 @@ module module_mp_tempo_main
     real(wp), dimension(kts:kte) :: diffu, visco, vsc2, tcond, lvap, ocp, lvt2 !! thermodynamic variables
  
     real(wp), dimension(kts:kte) :: rc, ri, rr, rs, rg, rb !! local microphysical variables
-    real(wp), dimension(kts:kte) :: ni, nr, nc, ng, nwfa, nifa !! local microphysics variables
+    real(wp), dimension(kts:kte) :: ni, nr, nc, ng, nh, nwfa, nifa !! local microphysics variables
 
-    real(dp), dimension(kts:kte) :: ilamc, ilami, ilamr, ilamg !! inverse lambda
+    real(dp), dimension(kts:kte) :: ilamc, ilami, ilamr, ilamg, ilamh !! inverse lambda
     real(wp), dimension(kts:kte) :: mvd_r, mvd_c, mvd_g !! median volume diameter
     real(dp), dimension(kts:kte) :: smob, smo2, smo1, smo0, smoc, smoe, smof, smog, ns, smoz !! snow moments
     
     real(wp), dimension(kts:kte) :: xrx, xnx !! temporary arrays
     real(wp), dimension(:), allocatable :: xncx, xngx, xqbx, ncsave !! temporary arrays
 
-    real(wp), dimension(kts:kte+1) :: vtrr, vtnr, vtrs, vtri, vtni, vtrg, vtng, vtrc, vtnc !! fallspeeds
+    real(wp), dimension(kts:kte+1) :: vtrr, vtnr, vtrs, vtri, vtni, vtrg, vtng, vtrc, vtnc vtrh, !! fallspeeds
     real(wp), dimension(kts:kte) :: vtboost !! snow fallspeed boost factor
     integer :: substeps_sedi, ktop_sedi, n !! sedimentation substepping variables
     real(wp) :: semi_sedi_factor !! semi-lagrangian sedimentation factor
 
-    real(dp), target, dimension(kts:kte, 74) :: tend_work !! array to store tendencies
+    real(dp), target, dimension(kts:kte, 85) :: tend_work !! array to store tendencies
     
     ! local variables
     real(wp) :: tempc, tc0, odt
@@ -260,6 +264,19 @@ module module_mp_tempo_main
     tend%pnd_scd => tend_work(:, 73)
     tend%pnd_gcd => tend_work(:, 74)
 
+    ! hail
+    tend%prh_rcg => tend_work(:, 75)
+    tend%prh_rcs => tend_work(:, 76)
+    tend%prh_rci => tend_work(:, 77)
+    tend%prh_hwc => tend_work(:, 78)    
+    tend%prh_rfz => tend_work(:, 79)
+    tend%prr_hml => tend_work(:, 90)
+    tend%pnr_hml => tend_work(:, 81)    
+    tend%prh_hde => tend_work(:, 82)
+    tend%prh_rch => tend_work(:, 83)
+    tend%prr_rch => tend_work(:, 84)
+    tend%pnr_rch => tend_work(:, 85)        
+
     ! zero out all mp tendencies
     tend_work = 0._dp
     
@@ -272,6 +289,7 @@ module module_mp_tempo_main
       qrten(k) = 0._wp
       qsten(k) = 0._wp
       qgten(k) = 0._wp
+      qhten(k) = 0._wp      
       ngten(k) = 0._wp
       qbten(k) = 0._wp
       niten(k) = 0._wp
@@ -295,6 +313,7 @@ module module_mp_tempo_main
     ! fallspeeds and sedimentation
     do k = 1, nz+1
       vtrr(k) = 0._wp
+      vtrh(k) = 0._wp       
       vtnr(k) = 0._wp
       vtrs(k) = 0._wp
       vtri(k) = 0._wp
@@ -344,6 +363,8 @@ module module_mp_tempo_main
     call ice_check_and_update(rho, l_qi, qi1d, ni1d, ri, ni, qiten, niten, ilami, dt, odt)
   
     call snow_check_and_update(rho, l_qs, qs1d, rs, qsten, dt, odt)
+
+    if (present(qh1d)) call hail_check_and_update(rho, l_qh, qh1d, rh, nh, qhten, dt, odt)    
     ! snow moments
     do k = 1, nz
       if (l_qs(k)) then
@@ -393,6 +414,7 @@ module module_mp_tempo_main
       qrten(k) = 0._wp
       qsten(k) = 0._wp
       qgten(k) = 0._wp
+      qhten(k) = 0._wp      
       ngten(k) = 0._wp
       qbten(k) = 0._wp
       niten(k) = 0._wp
@@ -1100,7 +1122,7 @@ module module_mp_tempo_main
 
   subroutine snow_check_and_update(rho, l_qs, qs1d, rs, qsten, dt, odt)
     !! computes snow mass
-    use module_mp_tempo_params, only : max_ni, r1, r2
+    use module_mp_tempo_params, only : r1, r2
 
     real(wp), intent(in) :: dt, odt
     real(wp), dimension(:), intent(in) :: rho
@@ -1125,7 +1147,39 @@ module module_mp_tempo_main
   end subroutine snow_check_and_update
 
 
- subroutine graupel_check_and_update(rho, l_qg, qg1d, ng1d, qb1d, rg, ng, rb, &
+  subroutine hail_check_and_update(rho, l_qh, qh1d, rh, nh, qhten, dt, odt)
+    !! computes snow mass
+    use module_mp_tempo_params, only : r1, r2
+
+    real(wp), intent(in) :: dt, odt
+    real(wp), dimension(:), intent(in) :: rho
+    real(wp), dimension(:), intent(inout) :: qh1d, rh, nh, qhten
+    logical, dimension(:), intent(inout) :: l_qh
+    integer :: k, nz
+
+    nz = size(qh1d)
+    do k = 1, nz
+      if (qh1d(k)+qhten(k)*dt > r1) then
+        l_qh(k) = .true.
+        ! update mass
+        rh(k) = (qh1d(k)+qhten(k)*dt)*rho(k)
+!               lamh = (am_h*N0_h*cgg(3,1)/rh(k))**(1./cge(3,1))
+!               nh(k) = N0_h / lamh
+!               nh(k) = max(R2, nh(k))
+                       
+        qh1d(k) = qh1d(k)+qhten(k)*dt
+      else
+        l_qh(k) = .false.
+        rh(k) = r1
+        nh(k) = r2
+        qhten(k) = -qh1d(k) * odt
+        qh1d(k) = 0.0_wp
+      endif
+    enddo 
+  end subroutine hail_check_and_update
+  
+
+  subroutine graupel_check_and_update(rho, l_qg, qg1d, ng1d, qb1d, rg, ng, rb, &
       idx, qgten, ngten, qbten, ilamg, mvd_g, dt, odt)
     !! computes graupel contents, ilamg, and mvd_g and checks bounds
     use module_mp_tempo_params, only : r1, r2, nrhg, rho_g, mu_g, &
