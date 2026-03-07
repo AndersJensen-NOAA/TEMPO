@@ -66,6 +66,7 @@ module module_mp_tempo_params
   real(wp), parameter :: bm_g = 3.0_wp !! graupel mass power-law coefficient
   real(wp), parameter :: bm_i = 3.0_wp !! ice mass power-law coefficient
   real(wp), parameter :: bm_r = 3.0_wp !! rain mass power-law coefficient
+  real(wp), parameter :: n0_h = 1.e4_wp !! hail intercept parameter \([m^{-4}]\)
 
   real(wp), parameter :: rho_i = 890._wp !! density of cloud ice \([kg\, m^{-3}]\)
   real(wp), parameter :: xm0i = 1.e-12_wp !! ice initiates with this mass \([kg]\)
@@ -144,7 +145,6 @@ module module_mp_tempo_params
 
   real(wp), dimension(nrhg), parameter :: rho_g = [50._wp, 100._wp, 200._wp, 300._wp, 400._wp, &
     500._wp, 600._wp, 700._wp, 800._wp] !! !! densities of graupel when hail_aware = true \([kg\, m^{-3}]\)
-  real(wp), parameter :: rho_h = rho_h(nrhg)
 
   real(wp), parameter :: sc = 0.632_wp !! [schmidt number](https://glossary.ametsoc.org/wiki/Schmidt_number)
 
@@ -302,14 +302,8 @@ module module_mp_tempo_params
     0.640961647_wp, 0.640961647_wp, 0.640961647_wp, &
     0.640961647_wp, 0.640961647_wp, 0.640961647_wp] !! graupel fallspeed power-law coefficients (hail_aware = true)
 
-  ! Use the last graupel value for these
-  real(wp), parameter :: av_h = 209.225876
-  real(wp), parameter :: bv_h = 0.640961647
-  real(wp), parameter :: n0_h = 1.e4
-
   real(wp), protected :: am_i !! ice mass-diameter power-law coefficient
   real(wp), protected :: am_r !! rain mass-diameter power-law coefficient
-  real(wp), protected :: am_h
   real(wp), protected, dimension (nrhg) :: am_g !! graupel mass-diameter power-law coefficient
   real(wp), protected :: lfus !! enthalpy of fusion \([J\, kg^{-1}]\)
   real(wp), protected :: olfus !! 1 / lfus \([kg\, J^{-1}]\)
@@ -440,7 +434,6 @@ module module_mp_tempo_params
     ! pi could be set by a host model, thus these parameters need to be calculated here
     am_i = pi * rho_i / 6.0_wp
     am_r = pi * rho_w / 6.0_wp
-    am_h = pi * rho_h / 6.0_wp
     am_g = [pi * rho_g(1) / 6.0_wp, &
       pi * rho_g(2) / 6.0_wp, &
       pi * rho_g(3) / 6.0_wp, &
