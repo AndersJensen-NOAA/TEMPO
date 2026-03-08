@@ -58,21 +58,25 @@ module module_mp_tempo_diags
 
   subroutine reflectivity_10cm(refl10cm_from_melting_flag, &
     temp, l_qr, rr, nr, ilamr, l_qs, rs, smoc, smob, smoz, &
-    l_qg, rg, ng, idx, ilamg, dbz)
+    l_qg, rg, ng, idx, ilamg, l_qh, rh, ilamh, dbz)
     !! 10-cm radar reflectivity
     !! 
     !! contributions from melting snow and graupel are optionally included
     !!
     !! \(Z_{e} = \int_0^\infty D^{6}n(D)dD\) and \(dbz = 10*log10(Z_{e}*1\times 10^{18})\)
-    use module_mp_tempo_params, only : pi, org2, cre, crg, am_s, am_g, cge, cgg, ogg2
+    use module_mp_tempo_params, only : pi, org2, cre, crg, am_s, am_g, cge, cgg, ogg2, &
+      nrhg, n0_h
 
     logical, intent(in) :: refl10cm_from_melting_flag
-    logical, dimension(:), intent(in) :: l_qr, l_qs, l_qg
+    logical, dimension(:), intent(in) :: l_qr, l_qs, l_qg, l_qh
     real(wp), dimension(:), intent(in) :: temp, rg, ng, rr, nr, rs
+    real(wp), dimension(:), intent(in), optional :: rh
     real(dp), dimension(:), intent(in) :: ilamr, smoc, smob, smoz, ilamg
+    real(dp), dimension(:), intent(in), optional :: ilamh
     integer, dimension(:), intent(in) :: idx
     real(wp), dimension(:), intent(out) :: dbz
-    real(wp) :: ze_rain(size(temp)), ze_snow(size(temp)), ze_graupel(size(temp))
+    real(wp) :: ze_rain(size(temp)), ze_snow(size(temp)), ze_graupel(size(temp)), &
+      ze_hail(size(temp))
     real(dp) :: n0_r, lamr, n0_g
     integer :: k, nz, k_melt
 
@@ -80,6 +84,7 @@ module module_mp_tempo_diags
     ze_rain = 1.e-22_wp
     ze_snow = 1.e-22_wp
     ze_graupel = 1.e-22_wp
+    ze_hail = 1.e-22_wp
 
     if (refl10cm_from_melting_flag) then
       k_melt = find_melting_level(temp, l_qr, l_qs, l_qg)
@@ -116,7 +121,11 @@ module module_mp_tempo_diags
           endif
         endif 
       endif
-      dbz(k) = max(-35._wp, 10._wp*log10((ze_rain(k)+ze_snow(k)+ze_graupel(k))*1.e18_dp))
+      if (l_qh(k)) then
+        ze_hail(k) = (0.176_wp/0.93_wp) * (6._wp/pi)*(6._wp/pi) * &
+          (am_g(nrhg)/900._wp)*(am_g(nrhg)/900._wp) * n0_h*cgg(4,1)*ilamh(k)**cge(4,1)
+      endif
+      dbz(k) = max(-35._wp, 10._wp*log10((ze_rain(k)+ze_snow(k)+ze_graupel(k)+ze_hail(k))*1.e18_dp))
     enddo
   end subroutine reflectivity_10cm
 
