@@ -574,7 +574,7 @@ module module_mp_tempo_main
     call liquid_cloud_fraction(cf_rh=cf_rh, temp=temp, pres=pres, dz1d=dz1d, l_qc=l_qc, rho=rho, qv=qv, &
       qvs=qvs, qc1d=qc1d, nc1d=nc1d, qcfrac1d=qca1d, w1d=w1d, lvap=lvap, ocp=ocp, &
       ssatw=ssatw, thten_swrad1d=thten_swrad1d, thten_lwrad1d=thten_lwrad1d, &
-      qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, thten_bl1d=thten_bl1d, nwfa=nwfa, tend=tend)
+      qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, thten_bl1d=thten_bl1d, nwfa=nwfa, qc_bl1d=qc_bl1d, qcfrac_bl1d=qcfrac_bl1d, tend=tend)
 
     do k = 1, nz
       if (satw(k) > cf_rh(k) .and. satw(k) < 1.) then
@@ -2257,13 +2257,13 @@ module module_mp_tempo_main
 
   subroutine liquid_cloud_fraction(cf_rh, temp, pres, dz1d, l_qc, rho, qv, qvs, qc1d, nc1d, qcfrac1d, &
       w1d, lvap, ocp, ssatw, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
-      thten_bl1d, nwfa, tend)
+      thten_bl1d, nwfa, qc_bl1d, qcfrac_bl1d, tend)
     use module_mp_tempo_params, only : rv, cloud_fraction_rh, eps, nt_c_min
 
     real(wp), dimension(:), intent(in) :: cf_rh
     real(wp), dimension(:), intent(in) :: temp, pres, rho, qv, qvs, qc1d, qcfrac1d, &
       w1d, lvap, ocp, ssatw, nwfa, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
-      thten_bl1d, dz1d
+      thten_bl1d, dz1d, qc_bl1d, qcfrac_bl1d
     real(wp), dimension(:), intent(in), optional :: nc1d
     logical, dimension(:), intent(in) :: l_qc
     type(ty_tend), intent(inout) :: tend
@@ -2287,10 +2287,15 @@ module module_mp_tempo_main
       ! initialization of cloud water and cloud fraction
       ! tendencies are grid-mean
       if (.not. l_qc(k)) then
+         
+!        if (ssatw(k) > (cf_rh(k)-0.99_wp) .and. ssatw(k) < 0._wp) then 
+!            tend%pra_sgi(k) = 0.5_dp/bs*(bs+qc_mean) * global_inverse_dt
+!            tend%prw_sgi(k) = tend%pra_sgi(k)*0.5_dp*(bs+qc_mean) * rho(k) ! kg/m3/s
 
-        if (ssatw(k) > (cf_rh(k)-0.99_wp) .and. ssatw(k) < 0._wp) then 
-            tend%pra_sgi(k) = 0.5_dp/bs*(bs+qc_mean) * global_inverse_dt
-            tend%prw_sgi(k) = tend%pra_sgi(k)*0.5_dp*(bs+qc_mean) * rho(k) ! kg/m3/s
+         if (ssatw(k) > (cf_rh(k)-0.99_wp) .and. ssatw(k) < 0._wp) then
+            tend%pra_sgi(k) = qcfrac_bl1d(k) * global_inverse_dt
+            tend%prw_sgi(k) = qc_bl1d(k) * global_inverse_dt * rho(k)
+            
             if ((qc1d(k)*rho(k) + tend%prw_sgi(k)*global_dt) <= r1) then
               tend%pra_sgi(k) = 0._dp
               tend%prw_sgi(k) = 0._dp
@@ -2299,7 +2304,7 @@ module module_mp_tempo_main
               tend%pra_sgi(k) = 0._dp
               tend%prw_sgi(k) = 0._dp
             endif
-            
+!            
           if (tend%prw_sgi(k)*global_dt > r1) then
             xnc = max(tend%pra_sgi(k)*global_dt*nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
             if (present(nc1d)) then
