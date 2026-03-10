@@ -20,6 +20,7 @@ module module_mp_tempo_driver
     real(wp), dimension(:,:), allocatable :: ice_liquid_equiv_precip
     real(wp), dimension(:,:), allocatable :: snow_liquid_equiv_precip
     real(wp), dimension(:,:), allocatable :: graupel_liquid_equiv_precip
+    real(wp), dimension(:,:), allocatable :: hail_liquid_equiv_precip
     real(wp), dimension(:,:), allocatable :: frozen_fraction
     real(wp), dimension(:,:), allocatable :: frz_rain_precip
     real(wp), dimension(:,:), allocatable :: max_hail_diameter_sfc
@@ -373,6 +374,7 @@ module module_mp_tempo_driver
       allocate(tempo_diags%ice_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%snow_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%graupel_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
+      allocate(tempo_diags%hail_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%frozen_fraction(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%frz_rain_precip(its:ite, jts:jte), source=0._wp)
     else
@@ -380,6 +382,7 @@ module module_mp_tempo_driver
       tempo_diags%ice_liquid_equiv_precip = 0._wp
       tempo_diags%snow_liquid_equiv_precip = 0._wp
       tempo_diags%graupel_liquid_equiv_precip = 0._wp
+      tempo_diags%hail_liquid_equiv_precip = 0._wp
       tempo_diags%frozen_fraction = 0._wp
       tempo_diags%frz_rain_precip = 0._wp
     endif
@@ -450,6 +453,7 @@ module module_mp_tempo_driver
         tempo_diags%ice_liquid_equiv_precip(i,j) = tempo_main_diags%ice_liquid_equiv_precip
         tempo_diags%snow_liquid_equiv_precip(i,j) = tempo_main_diags%snow_liquid_equiv_precip
         tempo_diags%graupel_liquid_equiv_precip(i,j) = tempo_main_diags%graupel_liquid_equiv_precip
+        tempo_diags%hail_liquid_equiv_precip(i,j) = tempo_main_diags%hail_liquid_equiv_precip
         tempo_diags%frozen_fraction(i,j) = tempo_main_diags%frozen_fraction
         tempo_diags%frz_rain_precip(i,j) = tempo_main_diags%frz_rain_precip
 

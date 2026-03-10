@@ -31,6 +31,7 @@ module module_mp_tempo_main
     real(wp) :: ice_liquid_equiv_precip
     real(wp) :: snow_liquid_equiv_precip
     real(wp) :: graupel_liquid_equiv_precip
+    real(wp) :: hail_liquid_equiv_precip
     real(wp) :: frozen_fraction
     real(wp) :: frz_rain_precip
     real(wp), dimension(:), allocatable :: rain_med_vol_diam
@@ -317,6 +318,7 @@ module module_mp_tempo_main
     tempo_main_diags%ice_liquid_equiv_precip = 0._wp
     tempo_main_diags%snow_liquid_equiv_precip = 0._wp
     tempo_main_diags%graupel_liquid_equiv_precip = 0._wp
+    tempo_main_diags%hail_liquid_equiv_precip = 0._wp
     tempo_main_diags%frz_rain_precip = 0._wp
   
     ! initialization -----------------------------------------------------------------------------
@@ -705,6 +707,40 @@ module module_mp_tempo_main
       endif 
     endif
 
+    ! hail
+    ktop_sedi = 1
+    substeps_sedi = 1
+    semi_sedi_factor = 10._wp
+    if (any(l_qh)) then ! all false if qh1d not present
+      call hail_fallspeed(rhof=rhof, rho=rho, visco=visco, &
+      l_qh=l_qh, rh=rh, ilamh=ilamh, dz1d=dz1d, vt=vtrh, &
+      substeps_sedi=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
+
+      if (tempo_cfgs%semi_sedi_flag) then
+        substeps_sedi = max(int(substeps_sedi/semi_sedi_factor) + 1, 1)
+        do n = 1, substeps_sedi
+          call semilagrangian_sedimentation(dz1d=dz1d, rho=rho, xr=rh, xten=qhten, &
+            vt=vtrh, steps=substeps_sedi, limit=r1, precip=tempo_main_diags%hail_liquid_equiv_precip, &
+            dt=dt, odt=odt)
+          vtrh = 0._wp
+          xrx = qh1d
+          call hail_check_and_update(rho, l_qh, xrx, rh, nh, qhten, ilamh, dt, odt)
+          call hail_fallspeed(rhof=rhof, rho=rho, visco=visco, &
+          l_qh=l_qh, rh=rh, ilamh=ilamh, dz1d=dz1d, vt=vtrh, dt=dt)
+        enddo
+      else
+        do n = 1, substeps_sedi
+          call sedimentation(xr=rh, vt=vtrh, dz1d=dz1d, rho=rho, xten=qhten, limit=r1, &
+            steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%hail_liquid_equiv_precip, dt=dt)
+          vtrh = 0._wp
+          xrx = qh1d
+          call hail_check_and_update(rho, l_qh, xrx, rh, nh, qhten, ilamh, dt, odt)
+          call hail_fallspeed(rhof=rhof, rho=rho, visco=visco, &
+          l_qh=l_qh, rh=rh, ilamh=ilamh, dz1d=dz1d, vt=vtrh, dt=dt)
+        enddo
+      endif
+    endif
+
     ! snow
     ktop_sedi = 1
     substeps_sedi = 1
@@ -802,9 +838,10 @@ module module_mp_tempo_main
     ! frozen fraction
     tempo_main_diags%frozen_fraction = &
       (tempo_main_diags%ice_liquid_equiv_precip + tempo_main_diags%snow_liquid_equiv_precip + &
-      tempo_main_diags%graupel_liquid_equiv_precip) / &
+      tempo_main_diags%graupel_liquid_equiv_precip + tempo_main_diags%hail_liquid_equiv_precip) / &
       (tempo_main_diags%ice_liquid_equiv_precip + tempo_main_diags%snow_liquid_equiv_precip + &
-      tempo_main_diags%graupel_liquid_equiv_precip + tempo_main_diags%rain_precip + r1)
+      tempo_main_diags%graupel_liquid_equiv_precip + tempo_main_diags%hail_liquid_equiv_precip + &
+      tempo_main_diags%rain_precip + r1)
 
     ! freezing rain
     call freezing_rain(temp=temp(1), rain_precip=tempo_main_diags%rain_precip, &
@@ -1547,7 +1584,7 @@ module module_mp_tempo_main
         tend%pbg_rci(k) + tend%pbg_rcs(k) + tend%pbg_rcg(k) + tend%pbg_sml(k) - &
         tend%pbg_gml(k) + meters3_to_liters * (tend%prg_gde(k) - tend%prg_ihm(k)) / rho_g(idx(k))) * orho
 
-      qhten(k) = qhten(k) * (tend%prh_rfz(k)) * orho
+      qhten(k) = qhten(k) + (tend%prh_rfz(k)) * orho
 
       if (temp(k) < t0) then
         tten(k) = tten(k) + &
@@ -1844,6 +1881,46 @@ module module_mp_tempo_main
       if (ktop_sedi == nz) ktop_sedi = nz-1 
     endif 
   end subroutine rain_fallspeed
+
+
+  subroutine hail_fallspeed(rhof, rho, visco, l_qh, rh, ilamh, &
+      dz1d, vt, substeps_sedi, ktop_sedi, dt)
+    !! calculates mass weighted fall speeds for hail
+    !! and optionally the substepping required and the top k-level of sedimentation
+    use module_mp_tempo_params, only : nrhg, av_g, bv_g, cgg, t0, ogg2, ogg3
+
+    real(wp), intent(in) :: dt
+    real(wp), dimension(:), intent(in) :: rhof, rho, visco, dz1d, rh
+    real(dp), dimension(:), intent(in) :: ilamh
+    logical, dimension(:), intent(in) :: l_qh
+    real(wp), dimension(:), intent(inout) :: vt
+    integer, intent(out), optional :: substeps_sedi, ktop_sedi
+    real(wp) :: dz_by_vt, vth
+    integer :: k, nz
+
+    nz = size(l_qh)
+    if (present(ktop_sedi)) ktop_sedi = 1
+    if (present(substeps_sedi)) substeps_sedi = 1
+    do k = nz, 1, -1
+      if (rh(k) > r1) then
+        vth = rhof(k)*av_g(nrhg)*cgg(6,nrhg)*ogg3 * ilamh(k)**bv_g(nrhg)
+        vt(k) = vth
+      else
+        vt(k) = vt(k+1)
+      endif
+
+      if (vt(k) > 1.e-3_wp) then
+        if (present(ktop_sedi)) ktop_sedi = max(ktop_sedi, k)
+        dz_by_vt = dz1d(k) / vt(k)
+        if (present(substeps_sedi)) then
+          substeps_sedi = max(substeps_sedi, int(dt/dz_by_vt + 1._wp))
+        endif
+      endif
+    enddo
+    if (present(ktop_sedi)) then
+      if (ktop_sedi == nz) ktop_sedi = nz-1
+    endif
+  end subroutine hail_fallspeed
 
 
   subroutine graupel_fallspeed(rhof, rho, visco, l_qg, rg, rb, qb1d, idx, ilamg, &
