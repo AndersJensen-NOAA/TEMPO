@@ -62,7 +62,7 @@ module module_mp_tempo_main
       prw_vcd, pnc_wcd, prv_rev, pnr_rev, & ! condensation/evaporation
       pna_rca, pna_sca, pna_gca, pnd_rcd, pnd_scd, pnd_gcd, & ! aerosol
       prh_rfz, prr_hml, pnr_hml, prh_hcw, pnc_hcw, &
-      prh_rch, prr_rch, pnr_rch
+      prh_rch, prr_rch, pnr_rch, prh_hde
   end type
 
   interface get_cloud_number
@@ -146,7 +146,7 @@ module module_mp_tempo_main
     integer :: substeps_sedi, ktop_sedi, n !! sedimentation substepping variables
     real(wp) :: semi_sedi_factor !! semi-lagrangian sedimentation factor
 
-    real(dp), target, dimension(kts:kte, 82) :: tend_work !! array to store tendencies
+    real(dp), target, dimension(kts:kte, 83) :: tend_work !! array to store tendencies
     
     ! local variables
     real(wp) :: tempc, tc0, odt
@@ -273,6 +273,7 @@ module module_mp_tempo_main
     tend%prh_rch => tend_work(:, 80)
     tend%prr_rch => tend_work(:, 81)
     tend%pnr_rch => tend_work(:, 82)
+    tend%prh_hde => tend_work(:, 83)
 
     ! zero out all mp tendencies
     tend_work = 0._dp
@@ -453,7 +454,7 @@ module module_mp_tempo_main
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call ice_processes(rhof, rhof2, rho, w1d, temp, qv, qvsi, tcond, diffu, &
         vsc2, ssati, l_qi, ri, ni, ilami, l_qs, rs, smoe, smof, smo1, rr, nr, &
-        ilamr, mvd_r, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
+        ilamr, mvd_r, l_qg, rg, ng, ilamg, idx_bg, l_qh, rh, ilamh, tend, odt)
     endif
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call riming(temp, rhof, visco, l_qc, rc, nc, ilamc, mvd_c, l_qs, rs, &
@@ -1526,12 +1527,13 @@ module module_mp_tempo_main
       endif
 
       ! losses to hail include sublimation; melting
-      sump = - tend%prr_hml(k)
+      sump = tend%prh_hde(k) - tend%prr_hml(k)
       rate_max = -rh(k)*odt
       if (l_qh(k)) then
         if (sump < rate_max) then
           ratio = rate_max/sump
           tend%prr_hml(k) = tend%prr_hml(k) * ratio
+          tend%prh_hde(k) = tend%prh_hde(k) * ratio
         endif
       endif
 
@@ -1577,7 +1579,7 @@ module module_mp_tempo_main
       lfus2 = lsub - lvap(k)
 
       qvten(k) = qvten(k) + (-tend%pri_inu(k) - tend%pri_iha(k) - tend%pri_ide(k) - &
-        tend%prs_ide(k) - tend%prs_sde(k) - tend%prg_gde(k)) * orho
+        tend%prs_ide(k) - tend%prs_sde(k) - tend%prg_gde(k) - tend%prh_hde(k)) * orho
 
       qcten(k) = qcten(k) + (-tend%prr_wau(k) - tend%pri_wfz(k) - tend%prr_rcw(k) - &
         tend%prs_scw(k) - tend%prg_scw(k) - tend%prg_gcw(k) - tend%prh_hcw(k)) * orho
@@ -1616,12 +1618,13 @@ module module_mp_tempo_main
         tend%pbg_rci(k) + tend%pbg_rcs(k) + tend%pbg_rcg(k) + tend%pbg_sml(k) - &
         tend%pbg_gml(k) + meters3_to_liters * (tend%prg_gde(k) - tend%prg_ihm(k)) / rho_g(idx(k))) * orho
 
-      qhten(k) = qhten(k) + (tend%prh_rch(k) + tend%prh_hcw(k) + tend%prh_rfz(k) - tend%prr_hml(k)) * orho
+      qhten(k) = qhten(k) + (tend%prh_rch(k) + tend%prh_hcw(k) + &
+        tend%prh_hde(k) + tend%prh_rfz(k) - tend%prr_hml(k)) * orho
 
       if (temp(k) < t0) then
         tten(k) = tten(k) + &
           (lsub*ocp(k)*(tend%pri_inu(k) + tend%pri_ide(k) + &
-          tend%prs_ide(k) + tend%prs_sde(k) + tend%prg_gde(k) + tend%pri_iha(k)) + &
+          tend%prs_ide(k) + tend%prs_sde(k) + tend%prg_gde(k) + tend%prh_hde(k) + tend%pri_iha(k)) + &
           lfus2*ocp(k)*(tend%pri_wfz(k) + tend%pri_rfz(k) + tend%prg_rfz(k) + &
           tend%prs_scw(k) + tend%prg_scw(k) + tend%prg_gcw(k) + tend%prh_hcw(k) + tend%prg_rcs(k) + &
           tend%prs_rcs(k) + tend%prr_rci(k) + tend%prg_rcg(k) - tend%prr_rch(k)))*orho
@@ -1629,7 +1632,7 @@ module module_mp_tempo_main
         tten(k) = tten(k) + &
           (lfus*ocp(k)*(-tend%prr_sml(k) - tend%prr_gml(k) - tend%prr_hml(k) - &
           tend%prr_rcg(k) - tend%prr_rcs(k)) + &
-          lsub*ocp(k)*(tend%prs_sde(k) + tend%prg_gde(k)))*orho
+          lsub*ocp(k)*(tend%prs_sde(k) + tend%prg_gde(k) + tend%prh_hde(k)))*orho
       endif
     enddo
   end subroutine sum_tendencies
@@ -3089,7 +3092,7 @@ module module_mp_tempo_main
 
   subroutine ice_processes(rhof, rhof2, rho, w1d, temp, qv, qvsi, tcond, diffu, &
     vsc2, ssati, l_qi, ri, ni, ilami, l_qs, rs, smoe, smof, smo1, rr, nr, ilamr, &
-    mvd_r, l_qg, rg, ng, ilamg, idx, tend, odt)
+    mvd_r, l_qg, rg, ng, ilamg, idx, l_qh, rh, ilamh, tend, odt)
     !! ice processes including cloud ice depositional growth, conversion of cloud ice
     !! to snow, snow collecting cloud ice, rain collecting cloud ice, snow depositional growth, 
     !! and graupel sublimation
@@ -3097,16 +3100,16 @@ module module_mp_tempo_main
       c_sqrd, c_cube, oig1, cig, d0s, ntb_i, tpi_ide, tps_iaus, tni_iaus, &
       obmi, r_s, ef_si, t1_qs_qi, r_r, org2, cre, t1_qr_qi, t2_qr_qi, &
       fv_r, ef_ri, rho_i, t1_qs_sd, t2_qs_sd, eps, t1_qg_sd, &
-      sc3, ogg2, cge, cgg, av_g, rho_w, rho_g
+      sc3, ogg2, cge, cgg, av_g, rho_w, rho_g, n0_h, nrhg
 
     real(wp), intent(in) :: odt    
     type(ty_tend), intent(inout) :: tend
-    logical, dimension(:), intent(in) :: l_qi, l_qs, l_qg
+    logical, dimension(:), intent(in) :: l_qi, l_qs, l_qg, l_qh
     real(wp), dimension(:), intent(in) :: rhof, rhof2, rho, w1d, ri, ni, rs, rr, nr, &
-      temp, qv, qvsi, tcond, diffu, ssati, vsc2, mvd_r, rg, ng
-    real(dp), dimension(:), intent(in) :: ilami, smoe, smof, smo1, ilamr, ilamg
+      temp, qv, qvsi, tcond, diffu, ssati, vsc2, mvd_r, rg, ng, rh
+    real(dp), dimension(:), intent(in) :: ilami, smoe, smof, smo1, ilamr, ilamg, ilamh
     integer, dimension(:), intent(in) :: idx
-    real(wp) :: xdi, xmi, oxmi, c_snow, rate_max, otemp, rvs, t2_qg_sd
+    real(wp) :: xdi, xmi, oxmi, c_snow, rate_max, otemp, rvs, t2_qg_sd, t2_qh_sd
     real(dp) :: lami, lamr, n0_r, n0_g
     integer :: k, nz, idx_i, idx_i1
     real(wp), dimension(:), allocatable :: t1_subl
@@ -3211,6 +3214,20 @@ module module_mp_tempo_main
                 tend%prg_gde(k) = min(tend%prg_gde(k), real(rate_max, kind=dp))
             endif
           endif 
+        endif
+        if (l_qh(k)) then
+          if (ssati(k).lt. -eps) then
+            t2_qg_sd = 0.28_wp*sc3*sqrt(av_g(nrhg)) * cgg(11,nrhg)
+            tend%prh_hde(k) = c_cube*t1_subl(k)*diffu(k)*ssati(k)*rvs &
+              * n0_h * (t1_qg_sd*ilamh(k)**cge(10,1) &
+              + t2_qg_sd*vsc2(k)*rhof2(k)*ilamh(k)**cge(11,nrhg))
+            if (tend%prh_hde(k) < 0._wp) then
+              tend%prh_hde(k) = max(real(-rh(k)*odt, kind=dp), &
+                tend%prh_hde(k), real(rate_max, kind=dp))
+            else
+              tend%prh_hde(k) = min(tend%prh_hde(k), real(rate_max, kind=dp))
+            endif
+          endif
         endif
       endif 
     enddo
