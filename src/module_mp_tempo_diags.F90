@@ -77,10 +77,10 @@ module module_mp_tempo_diags
     integer :: k, nz, k_melt
 
     nz = size(temp)
-    ze_rain = 1.e-22_wp
-    ze_snow = 1.e-22_wp
-    ze_graupel = 1.e-22_wp
-    ze_hail = 1.e-22_wp
+    ze_rain = 0.75e-22_wp
+    ze_snow = 0.75e-22_wp
+    ze_graupel = 0.75e-22_wp
+    ze_hail = 0.75e-22_wp
 
     if (refl10cm_from_melting_flag) then
       k_melt = find_melting_level(temp, l_qr, l_qs, l_qg)

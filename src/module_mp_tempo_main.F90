@@ -62,7 +62,7 @@ module module_mp_tempo_main
       prw_vcd, pnc_wcd, prv_rev, pnr_rev, & ! condensation/evaporation
       pna_rca, pna_sca, pna_gca, pnd_rcd, pnd_scd, pnd_gcd, & ! aerosol
       prh_rfz, prr_hml, pnr_hml, prh_hcw, pnc_hcw, &
-      prh_rch, prr_rch, pnr_rch, prh_hde
+      prh_rch, prr_rch, pnr_rch, prh_hde, prh_rcs, prh_rcg
   end type
 
   interface get_cloud_number
@@ -146,7 +146,7 @@ module module_mp_tempo_main
     integer :: substeps_sedi, ktop_sedi, n !! sedimentation substepping variables
     real(wp) :: semi_sedi_factor !! semi-lagrangian sedimentation factor
 
-    real(dp), target, dimension(kts:kte, 83) :: tend_work !! array to store tendencies
+    real(dp), target, dimension(kts:kte, 85) :: tend_work !! array to store tendencies
     
     ! local variables
     real(wp) :: tempc, tc0, odt
@@ -274,6 +274,8 @@ module module_mp_tempo_main
     tend%prr_rch => tend_work(:, 81)
     tend%pnr_rch => tend_work(:, 82)
     tend%prh_hde => tend_work(:, 83)
+    tend%prh_rcs => tend_work(:, 84)
+    tend%prh_rcg => tend_work(:, 85)
 
     ! zero out all mp tendencies
     tend_work = 0._dp
@@ -444,7 +446,7 @@ module module_mp_tempo_main
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call rain_snow_rain_graupel(temp, l_qr, rr, nr, ilamr, l_qs, rs, &
-        l_qg, rg, ng, ilamg, idx_bg, l_qh, rh, ilamh, tend, odt)
+        l_qg, rg, ng, ilamg, idx_bg, l_qh, qh1d, rh, ilamh, tend, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call ice_nucleation(temp=temp, rho=rho, w1d=w1d, qv=qv, qvsi=qvsi, ssati=ssati, ssatw=ssatw, &
@@ -471,8 +473,9 @@ module module_mp_tempo_main
     endif 
 
     ! check and sum tendencies -------------------------------------------------------------------
-    call check_over_depletion(rho, temp, qvsi, qv, l_qc, rc, l_qi, ri, &
-      l_qr, rr, l_qs, rs, l_qg, rg, l_qh, rh, tend, odt)
+    call check_over_depletion(rho=rho, temp=temp, qvsi=qvsi, qv=qv, l_qc=l_qc, rc=rc, &
+      l_qi=l_qi, ri=ri, l_qr=l_qr, rr=rr, l_qs=l_qs, rs=rs, l_qg=l_qg, rg=rg, &
+      l_qh=l_qh, qh1d=qh1d, rh=rh, tend=tend, odt=odt)
 
     call sum_tendencies(rho, temp, idx_bg, lvap, ocp, tend, tten, qvten, qcten, &
       ncten, qiten, niten, qsten, qrten, nrten, qgten, ngten, qbten, qhten)
@@ -1415,7 +1418,7 @@ module module_mp_tempo_main
 
 
   subroutine check_over_depletion(rho, temp, qvsi, qv, l_qc, rc, l_qi, ri, &
-    l_qr, rr, l_qs, rs, l_qg, rg, l_qh, rh, tend, odt)
+    l_qr, rr, l_qs, rs, l_qg, rg, l_qh, qh1d, rh, tend, odt)
     !! check to ensure that loss terms don't over-deplete a category and
     !! adjusts tendencies if needed
     use module_mp_tempo_params, only : eps, rho_i, t0, meters3_to_liters
@@ -1424,6 +1427,7 @@ module module_mp_tempo_main
     type(ty_tend), intent(inout) :: tend
     logical, dimension(:), intent(in) :: l_qc, l_qi, l_qr, l_qs, l_qg, l_qh
     real(wp), dimension(:), intent(in) :: rho, temp, qvsi, qv, rc, ri, rr, rs, rg, rh
+    real(wp), dimension(:), intent(in), optional :: qh1d
     real(wp) :: sump, rate_max, ratio
     integer :: k, nz
 
@@ -1540,13 +1544,19 @@ module module_mp_tempo_main
       ! updates after adjustments
       ! reset sum of rime splintering
       tend%pri_ihm(k) = tend%prs_ihm(k) + tend%prg_ihm(k)
+
       ! reset total rain-graupel collection amount if reduced
-      ratio = min(abs(tend%prr_rcg(k)), abs(tend%prg_rcg(k)))
-      tend%prr_rcg(k) = ratio * sign(1.0_dp, tend%prr_rcg(k))
-      tend%prg_rcg(k) = -tend%prr_rcg(k)
-      tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_i ! scale density change
+      if (present(qh1d)) then
+        if (temp(k) < t0) tend%prh_rcg(k) = -(tend%prr_rcg(k) + tend%prg_rcg(k))
+      else
+        ratio = min(abs(tend%prr_rcg(k)), abs(tend%prg_rcg(k)))
+        tend%prr_rcg(k) = ratio * sign(1.0_dp, tend%prr_rcg(k))
+        tend%prg_rcg(k) = -tend%prr_rcg(k)
+        tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_i ! scale density change
+      endif
+
       ! reset total rain-snow collection amount if reduced
-      if (temp(k) > t0) then
+      if (temp(k) >= t0) then
         ratio = min(abs(tend%prr_rcs(k)), abs(tend%prs_rcs(k)))
         tend%prr_rcs(k) = ratio * sign(1.0_dp, tend%prr_rcs(k))
         tend%prs_rcs(k) = -tend%prr_rcs(k)
@@ -1618,7 +1628,7 @@ module module_mp_tempo_main
         tend%pbg_rci(k) + tend%pbg_rcs(k) + tend%pbg_rcg(k) + tend%pbg_sml(k) - &
         tend%pbg_gml(k) + meters3_to_liters * (tend%prg_gde(k) - tend%prg_ihm(k)) / rho_g(idx(k))) * orho
 
-      qhten(k) = qhten(k) + (tend%prh_rch(k) + tend%prh_hcw(k) + &
+      qhten(k) = qhten(k) + (tend%prh_rch(k) + tend%prh_hcw(k) + tend%prh_rcs(k) + tend%prh_rcg(k) + &
         tend%prh_hde(k) + tend%prh_rfz(k) - tend%prr_hml(k)) * orho
 
       if (temp(k) < t0) then
@@ -1626,8 +1636,8 @@ module module_mp_tempo_main
           (lsub*ocp(k)*(tend%pri_inu(k) + tend%pri_ide(k) + &
           tend%prs_ide(k) + tend%prs_sde(k) + tend%prg_gde(k) + tend%prh_hde(k) + tend%pri_iha(k)) + &
           lfus2*ocp(k)*(tend%pri_wfz(k) + tend%pri_rfz(k) + tend%prg_rfz(k) + &
-          tend%prs_scw(k) + tend%prg_scw(k) + tend%prg_gcw(k) + tend%prh_hcw(k) + tend%prg_rcs(k) + &
-          tend%prs_rcs(k) + tend%prr_rci(k) + tend%prg_rcg(k) - tend%prr_rch(k)))*orho
+          tend%prs_scw(k) + tend%prg_scw(k) + tend%prg_gcw(k) + tend%prh_hcw(k) - tend%prr_rcs(k) + &
+          tend%prs_rcs(k) + tend%prr_rci(k) - tend%prr_rcg(k) - tend%prr_rch(k)))*orho
       else
         tten(k) = tten(k) + &
           (lfus*ocp(k)*(-tend%prr_sml(k) - tend%prr_gml(k) - tend%prr_hml(k) - &
@@ -2814,7 +2824,7 @@ module module_mp_tempo_main
 
 
   subroutine rain_snow_rain_graupel(temp, l_qr, rr, nr, ilamr, l_qs, rs, &
-    l_qg, rg, ng, ilamg, idx, l_qh, rh, ilamh, tend, odt)
+    l_qg, rg, ng, ilamg, idx, l_qh, qh1d, rh, ilamh, tend, odt)
     !! calculates rain-snow and rain-graupel collection
     use module_mp_tempo_params, only : t0, r_r, r_s, r_g, rho_i, rho_g, meters3_to_liters, &
       tmr_racs2, tcr_sacr2, tmr_racs1, tcr_sacr1, tms_sacr1, tcs_racs1, &
@@ -2824,6 +2834,7 @@ module module_mp_tempo_main
     real(wp), intent(in) :: odt    
     type(ty_tend), intent(inout) :: tend
     real(wp), dimension(:), intent(in) :: temp, rr, rs, rg, nr, ng, rh
+    real(wp), dimension(:), intent(in), optional :: qh1d
     real(dp), dimension(:), intent(in) :: ilamr, ilamg, ilamh
     logical, dimension(:), intent(in) :: l_qr, l_qs, l_qg, l_qh
     integer, dimension(:), intent(in) :: idx
@@ -2861,6 +2872,12 @@ module module_mp_tempo_main
             tend%pnr_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rcs(k))
             tend%png_rcs(k) = tend%pnr_rcs(k)
             tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
+            if (present(qh1d)) then
+              tend%prh_rcs(k) = tend%prg_rcs(k)
+              tend%prg_rcs(k) = 0._dp
+              tend%png_rcs(k) = 0._dp
+              tend%pbg_rcs(k) = 0._dp
+            endif
           else
             tend%prs_rcs(k) = -tcs_racs1(idx_s,idx_t,idx_r1,idx_r) &
               - tms_sacr1(idx_s,idx_t,idx_r1,idx_r) &
@@ -2878,14 +2895,34 @@ module module_mp_tempo_main
           call get_rain_table_index(rr(k), ilamr(k), idx_r, idx_r1)
           call get_graupel_table_index(rg(k), ilamg(k), idx(k), idx_g, idx_g1)
           if (temp(k) < t0) then
-            tend%prg_rcg(k) = tmr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r) &
-              + tcr_gacr(idx_g1,idx_g,idx(k),idx_r1,idx_r)
-            tend%prg_rcg(k) = min(real(rr(k)*odt, kind=dp), tend%prg_rcg(k))
-            tend%prr_rcg(k) = -tend%prg_rcg(k)
-            tend%pnr_rcg(k) = tnr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r) &
-              + tnr_gacr(idx_g1,idx_g,idx(k),idx_r1,idx_r)
-            tend%pnr_rcg(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rcg(k))
-            tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_i
+            if (present(qh1d)) then
+              ! rain mass/number loss
+              tend%prr_rcg(k) = -(tmr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r) &
+                + tcr_gacr(idx_g1,idx_g,idx(k),idx_r1,idx_r))
+              tend%prr_rcg(k) = max(real(-rr(k)*odt, kind=dp), tend%prr_rcg(k))
+              tend%pnr_rcg(k) = tnr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r)  &
+                + tnr_gacr(idx_g1,idx_g,idx(k),idx_r1,idx_r)
+              tend%pnr_rcg(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rcg(k))
+
+              ! graupel mass/number/volume loss
+              tend%prg_rcg(k) = -tcg_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r)
+              tend%prg_rcg(k) = max(real(-rg(k)*odt, kind=dp), tend%prg_rcg(k))
+              tend%png_rcg(k) = tnr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r)
+              tend%png_rcg(k) = min(real(ng(k)*odt, kind=dp), tend%png_rcg(k))
+              tend%pbg_rcg(k) = tend%prg_rcg(k)/rho_i
+
+              tend%prh_rcg(k) = -(tend%prr_rcg(k) + tend%prg_rcg(k))
+              tend%prh_rcg(k) = min(real((rr(k)+rg(k))*odt, kind=dp), tend%prh_rcg(k))
+            else
+              tend%prg_rcg(k) = tmr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r) &
+                + tcr_gacr(idx_g1,idx_g,idx(k),idx_r1,idx_r)
+              tend%prg_rcg(k) = min(real(rr(k)*odt, kind=dp), tend%prg_rcg(k))
+              tend%prr_rcg(k) = -tend%prg_rcg(k)
+              tend%pnr_rcg(k) = tnr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r) &
+                + tnr_gacr(idx_g1,idx_g,idx(k),idx_r1,idx_r)
+              tend%pnr_rcg(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rcg(k))
+              tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_i
+           endif
           else
             tend%prr_rcg(k) = tcg_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r)
             tend%prr_rcg(k) = min(real(rg(k)*odt, kind=dp), tend%prr_rcg(k))
