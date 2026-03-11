@@ -19,6 +19,7 @@ module module_mp_tempo_cfgs
     logical :: semi_sedi_flag = .false. !! flag for semi-lagrangian sedimentation
     logical :: refl10cm_from_melting_flag = .false. !! flag to calculate reflectivity for melting snow and graupel
     logical :: turn_off_micro_flag = .false. !! flag to turn off all microphysical processes
+    logical :: cloud_condensation_flag = .true. !! flag to control cloud condensation
     logical :: verbose = .false. !! flag to turn on verbose print statements
     ! flags to turn on/off diagnostic output
     logical :: refl10cm_flag = .true. !! flag to output 10cm reflectivity

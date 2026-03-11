@@ -39,8 +39,8 @@ module module_mp_tempo_driver
 !! \section arg_table_tempo_init Argument Table
 !! \htmlinclude tempo_init.html
 !!
-  subroutine tempo_init(aerosolaware_flag, hailaware_flag, &
-    ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, tempo_cfgs)
+  subroutine tempo_init(aerosolaware_flag, hailaware_flag, semi_sedi_flag, cloud_condensation_flag, &
+    refl10cm_from_melting_flag, ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, tempo_cfgs)
     !! initialize tempo microphysics
     use module_mp_tempo_params, only : get_version, tempo_version, t_efrw, &
       initialize_graupel_vars, initialize_parameters, initialize_bins_for_tables, &
@@ -49,8 +49,8 @@ module module_mp_tempo_driver
       initialize_arrays_qr_acr_qs, initialize_arrays_qr_acr_qg, initialize_arrays_freezewater, &
       initialize_bins_for_hail_size, initialize_bins_for_radar
 
-    logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, &
-      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag
+    logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, refl10cm_from_melting_flag, &
+      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, semi_sedi_flag, cloud_condensation_flag
     type(ty_tempo_cfgs), intent(out) :: tempo_cfgs
 
     character(len=100) :: table_filename
@@ -74,6 +74,9 @@ module module_mp_tempo_driver
       if (present(hailaware_flag)) tempo_cfgs%hailaware_flag = hailaware_flag
       if (present(ml_for_bl_nc_flag)) tempo_cfgs%ml_for_bl_nc_flag = ml_for_bl_nc_flag
       if (present(ml_for_nc_flag)) tempo_cfgs%ml_for_nc_flag = ml_for_nc_flag
+      if (present(semi_sedi_flag)) tempo_cfgs%semi_sedi_flag = semi_sedi_flag
+      if (present(cloud_condensation_flag)) tempo_cfgs%cloud_condensation_flag = cloud_condensation_flag
+      if (present(refl10cm_from_melting_flag)) tempo_cfgs%refl10cm_from_melting_flag = refl10cm_from_melting_flag
 
       if (tempo_cfgs%verbose) then
         write(*,'(A)') 'tempo_init() --- TEMPO microphysics configuration options: '
@@ -81,6 +84,8 @@ module module_mp_tempo_driver
         write(*,'(A,L)') 'tempo_init() --- hail aware = ', tempo_cfgs%hailaware_flag
         write(*,'(A,L)') 'tempo_init() --- ML for subgrid cloud number = ', tempo_cfgs%ml_for_bl_nc_flag
         write(*,'(A,L)') 'tempo_init() --- ML for cloud number = ', tempo_cfgs%ml_for_nc_flag
+        write(*,'(A,L)') 'tempo_init() --- reflectivity from melting snow/graupel = ', tempo_cfgs%refl10cm_from_melting_flag
+        write(*,'(A,L)') 'tempo_init() --- semi-lagrangian sedimentation = ', tempo_cfgs%semi_sedi_flag
       endif 
 
       ! set graupel variables from hail_aware_flag
@@ -268,7 +273,7 @@ module module_mp_tempo_driver
     logical :: use_temperature 
 
     type(ty_tempo_main_diags) :: tempo_main_diags
-    type(ty_tempo_driver_diags), intent(out) :: tempo_diags
+    type(ty_tempo_driver_diags), intent(inout) :: tempo_diags
 
     nz = kte - kts + 1
     ! allocate 1d arrays if 3d arrays are present
@@ -292,23 +297,89 @@ module module_mp_tempo_driver
 
     ! allocate diagnostics
     ! 3d diagnostics have configuration flags
-    if (tempo_cfgs%cloud_number_mixing_ratio_flag) allocate(tempo_diags%cloud_number_mixing_ratio(its:ite, kts:kte, jts:jte), source=0._wp)
-    if (tempo_cfgs%rain_med_vol_diam_flag) allocate(tempo_diags%rain_med_vol_diam(its:ite, kts:kte, jts:jte), source=0._wp)
-    if (tempo_cfgs%graupel_med_vol_diam_flag) allocate(tempo_diags%graupel_med_vol_diam(its:ite, kts:kte, jts:jte), source=0._wp)
-    if (tempo_cfgs%refl10cm_flag) allocate(tempo_diags%refl10cm(its:ite, kts:kte, jts:jte), source=-35._wp)
-    if (tempo_cfgs%re_cloud_flag) allocate(tempo_diags%re_cloud(its:ite, kts:kte, jts:jte), source=0._wp)
-    if (tempo_cfgs%re_ice_flag) allocate(tempo_diags%re_ice(its:ite, kts:kte, jts:jte), source=0._wp)
-    if (tempo_cfgs%re_snow_flag) allocate(tempo_diags%re_snow(its:ite, kts:kte, jts:jte), source=0._wp)
-    if (tempo_cfgs%max_hail_diameter_flag) allocate(tempo_diags%max_hail_diameter_sfc(its:ite, jts:jte), source=0._wp)
-    if (tempo_cfgs%max_hail_diameter_flag) allocate(tempo_diags%max_hail_diameter_column(its:ite, jts:jte), source=0._wp)
+    if (tempo_cfgs%cloud_number_mixing_ratio_flag) then
+      if (.not. allocated(tempo_diags%cloud_number_mixing_ratio)) then
+        allocate(tempo_diags%cloud_number_mixing_ratio(its:ite, kts:kte, jts:jte), source=0._wp)
+      else
+        tempo_diags%cloud_number_mixing_ratio = 0._wp
+      endif
+    endif
+
+    if (tempo_cfgs%rain_med_vol_diam_flag) then
+      if (.not. allocated(tempo_diags%rain_med_vol_diam)) then
+        allocate(tempo_diags%rain_med_vol_diam(its:ite, kts:kte, jts:jte), source=0._wp)
+      else
+        tempo_diags%rain_med_vol_diam = 0._wp
+      endif
+    endif
+
+    if (tempo_cfgs%graupel_med_vol_diam_flag) then
+      if (.not. allocated(tempo_diags%graupel_med_vol_diam)) then
+        allocate(tempo_diags%graupel_med_vol_diam(its:ite, kts:kte, jts:jte), source=0._wp)
+      else
+        tempo_diags%graupel_med_vol_diam = 0._wp
+      endif
+    endif
+
+    if (tempo_cfgs%refl10cm_flag) then
+      if (.not. allocated(tempo_diags%refl10cm)) then
+        allocate(tempo_diags%refl10cm(its:ite, kts:kte, jts:jte), source=-35._wp)
+      else
+        tempo_diags%refl10cm = -35._wp
+      endif
+    endif
+
+    if (tempo_cfgs%re_cloud_flag) then
+      if (.not. allocated(tempo_diags%re_cloud)) then
+        allocate(tempo_diags%re_cloud(its:ite, kts:kte, jts:jte), source=0._wp)
+      else
+        tempo_diags%re_cloud = 0._wp
+      endif
+    endif
+
+    if (tempo_cfgs%re_ice_flag) then
+      if (.not. allocated(tempo_diags%re_ice)) then
+        allocate(tempo_diags%re_ice(its:ite, kts:kte, jts:jte), source=0._wp)
+      else
+        tempo_diags%re_ice = 0._wp
+      endif
+    endif
+
+    if (tempo_cfgs%re_snow_flag) then
+      if (.not. allocated(tempo_diags%re_snow)) then
+        allocate(tempo_diags%re_snow(its:ite, kts:kte, jts:jte), source=0._wp)
+      else
+        tempo_diags%re_snow = 0._wp
+      endif
+    endif
+
+    ! 2d diagnostics
+    if (tempo_cfgs%max_hail_diameter_flag) then
+      if (.not. allocated(tempo_diags%max_hail_diameter_sfc)) then
+        allocate(tempo_diags%max_hail_diameter_sfc(its:ite, jts:jte), source=0._wp)
+        allocate(tempo_diags%max_hail_diameter_column(its:ite, jts:jte), source=0._wp)
+      else
+        tempo_diags%max_hail_diameter_sfc = 0._wp
+        tempo_diags%max_hail_diameter_column = 0._wp
+      endif
+    endif
 
     ! precipitation
-    allocate(tempo_diags%rain_precip(its:ite, jts:jte), source=0._wp)
-    allocate(tempo_diags%ice_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
-    allocate(tempo_diags%snow_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
-    allocate(tempo_diags%graupel_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
-    allocate(tempo_diags%frozen_fraction(its:ite, jts:jte), source=0._wp)
-    allocate(tempo_diags%frz_rain_precip(its:ite, jts:jte), source=0._wp)
+    if (.not. allocated(tempo_diags%rain_precip)) then
+      allocate(tempo_diags%rain_precip(its:ite, jts:jte), source=0._wp)
+      allocate(tempo_diags%ice_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
+      allocate(tempo_diags%snow_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
+      allocate(tempo_diags%graupel_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
+      allocate(tempo_diags%frozen_fraction(its:ite, jts:jte), source=0._wp)
+      allocate(tempo_diags%frz_rain_precip(its:ite, jts:jte), source=0._wp)
+    else
+      tempo_diags%rain_precip = 0._wp
+      tempo_diags%ice_liquid_equiv_precip = 0._wp
+      tempo_diags%snow_liquid_equiv_precip = 0._wp
+      tempo_diags%graupel_liquid_equiv_precip = 0._wp
+      tempo_diags%frozen_fraction = 0._wp
+      tempo_diags%frz_rain_precip = 0._wp
+    endif
 
     ! temperature or theta and exner
     if (present(t)) then
