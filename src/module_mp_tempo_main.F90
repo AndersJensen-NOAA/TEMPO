@@ -151,7 +151,7 @@ module module_mp_tempo_main
     real(dp), target, dimension(kts:kte, 84) :: tend_work !! array to store tendencies
     
     ! local variables
-    real(wp) :: tempc, tc0, odt, hgt
+    real(wp) :: tempc, tc0, odt, hgt, hgt_cf
     real(wp), dimension(kts:kte) :: cf_rh
     logical :: do_micro, supersaturated, above_cloud_fraction_rh
     logical, save :: first_call_main = .true.
@@ -334,12 +334,14 @@ module module_mp_tempo_main
     tempo_main_diags%frz_rain_precip = 0._wp
   
     ! initialization -----------------------------------------------------------------------------
+    hgt_cf = max(hpbl1d(1), 100._wp)
     hgt = 0.
     do k = 1, nz
       cf_rh(k) = cloud_fraction_rh
       hgt = hgt + dz1d(k)
-      if ((xland1d(1) > 1.5) .and. (hgt <= hpbl1d(1))) cf_rh(k) = cloud_fraction_rh_pbl_water
-      
+      if ((xland1d(1) > 1.5) .and. (hgt <= hgt_cf)) then
+        cf_rh(k) = cloud_fraction_rh_pbl_water
+      endif
       temp(k) = t1d(k)
       qv(k) = max(min_qv, qv1d(k))
       pres(k) = p1d(k)
@@ -461,8 +463,9 @@ module module_mp_tempo_main
         l_qg, rg, ng, ilamg, idx_bg, tend, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
-      call ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, &
-        nifa, nwfa, ni, smo0, rc, nc, qia1d, rr, nr, ilamr, tend, dt, odt, qca1d)
+      call ice_nucleation(temp=temp, rho=rho, w1d=w1d, qv=qv, qvsi=qvsi, ssati=ssati, ssatw=ssatw, &
+        nifa=nifa, nwfa=nwfa, ni=ni, smo0=smo0, rc=rc, nc=nc, qcfrac1d=qca1d, qifrac1d=qia1d, &
+        rr=rr, nr=nr, ilamr=ilamr, tend=tend, dt=dt, odt=odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call ice_processes(rhof, rhof2, rho, w1d, temp, qv, qvsi, tcond, diffu, &
@@ -471,7 +474,7 @@ module module_mp_tempo_main
     endif
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call riming(temp, rhof, visco, l_qc, rc, nc, ilamc, mvd_c, l_qs, rs, &
-        smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx_bg, tend, odt, qca1d)
+        smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx_bg, qca1d, tend, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call melting(rhof2, rho, temp, qvsi, tcond, diffu, vsc2, ssati, delqvs, &
@@ -620,9 +623,9 @@ module module_mp_tempo_main
           (tend%prw_sgi(k) + tend%prw_slw(k) + tend%prw_sbl(k))
         qcfracten(k) = qcfracten(k) + tend%pra_sgi(k) + tend%pra_slw(k) + tend%pra_sbl(k)
         ! update actual cloud fractions here before next checks
-        qca1d(k) = qca1d(k) + qcfracten(k)*dt
+! AAJ        qca1d(k) = qca1d(k) + qcfracten(k)*dt
         qifracten(k) = qifracten(k) + tend%pra_ini(k)
-        qia1d(k) = qia1d(k) + qifracten(k)*dt
+! AAJ        qia1d(k) = qia1d(k) + qifracten(k)*dt
       endif
     enddo 
 
@@ -794,38 +797,47 @@ module module_mp_tempo_main
     endif 
 
     ! turn off cloud and ice sedimenation for now and later test sediemntation of cloud fraction for both
-    ! ! ice
-    ! ktop_sedi = 1
-    ! substeps_sedi = 1
-    ! if (any(l_qi)) then
-    !   call ice_fallspeed(rhof, l_qi, ri, ilami, dz1d, vtri, vtni, &
-    !     substeps_sedi, ktop_sedi)
-    !   call sedimentation(xr=ri, vt=vtri, dz1d=dz1d, rho=rho, xten=qiten, limit=r1, &
-    !     steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%ice_liquid_equiv_precip)
-    !   call sedimentation(xr=ni, vt=vtni, dz1d=dz1d, rho=rho, xten=niten, limit=r2, &
-    !     steps=substeps_sedi, ktop_sedi=ktop_sedi)
-    ! endif 
+    ! ice
+    ktop_sedi = 1
+    substeps_sedi = 1
+    if (any(l_qi)) then
+      call ice_fallspeed(rhof, l_qi, ri, ilami, dz1d, vtri, vtni, &
+        substeps_sedi, ktop_sedi, dt)
+      call sedimentation(xr=ri, vt=vtri, dz1d=dz1d, rho=rho, xten=qiten, limit=r1, &
+        steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%ice_liquid_equiv_precip, dt=dt)
+      call sedimentation(xr=ni, vt=vtni, dz1d=dz1d, rho=rho, xten=niten, limit=r2, &
+        steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
+      call sedimentation(xr=qia1d, vt=vtri, dz1d=dz1d, rho=rho, xten=qifracten, limit=cf_low, &
+        steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt) 
+    endif 
 
-    ! ! cloud
-    ! ktop_sedi = 1
-    ! substeps_sedi = 1
-    ! if (any(l_qc)) then
-    !   call cloud_fallspeed(rhof, w1d, l_qc, rc, nc, ilamc, dz1d, vtrc, vtnc, ktop_sedi)
-    !   call sedimentation(xr=rc, vt=vtrc, dz1d=dz1d, rho=rho, xten=qcten, limit=r1, &
-    !     steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%cloud_precip)
-    !   call sedimentation(xr=nc, vt=vtnc, dz1d=dz1d, rho=rho, xten=ncten, limit=r2, &
-    !     steps=substeps_sedi, ktop_sedi=ktop_sedi)
-    ! endif 
+    ! cloud
+    ktop_sedi = 1
+    substeps_sedi = 1
+    if (any(l_qc)) then
+      call cloud_fallspeed(rhof, w1d, l_qc, rc, nc, ilamc, dz1d, vtrc, vtnc, ktop_sedi)
+      call sedimentation(xr=rc, vt=vtrc, dz1d=dz1d, rho=rho, xten=qcten, limit=r1, &
+        steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%cloud_precip, dt=dt)
+      call sedimentation(xr=nc, vt=vtnc, dz1d=dz1d, rho=rho, xten=ncten, limit=r2, &
+        steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
+      call sedimentation(xr=qca1d, vt=vtrc, dz1d=dz1d, rho=rho, xten=qcfracten, limit=cf_low, &
+        steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
+    endif 
 
-    !   ! send temporary arrays to avoid updates to 1d variables at this point
-    ! xrx = qc1d
-    ! if (present(nc1d)) then
-    !   if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
-    !   xncx = nc1d
-    ! endif 
-    ! call cloud_check_and_update(rho=rho, l_qc=l_qc, qcfrac1d=qcfrac1d, qc1d=xrx, nc1d=xncx, &
-    !   rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c)
+      ! send temporary arrays to avoid updates to 1d variables at this point
+    xrx = qc1d
+    if (present(nc1d)) then
+      if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
+      xncx = nc1d
+    endif 
+    call cloud_check_and_update(rho=rho, l_qc=l_qc, qcfrac1d=qca1d, qc1d=xrx, nc1d=xncx, &
+      rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c, dt=dt, odt=odt)
 
+    xrx = qi1d
+    xnx = ni1d
+    call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qia1d, qi1d=xrx, ni1d=xnx, &
+      ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami, dt=dt, odt=odt)
+      
     ! after sedimentation freeze all cloud water below hgfrz temperature
     ! and melt all cloud ice above freezing
     if (.not. tempo_cfgs%turn_off_micro_flag) then
@@ -858,7 +870,11 @@ module module_mp_tempo_main
       endif 
       if (present(nifa1d)) then
         nifa1d(k) = max(nifa_default, min(aero_max, (nifa1d(k)+nifaten(k)*dt)))
-      endif 
+      endif
+
+      qca1d(k) = qca1d(k) + qcfracten(k)*dt
+      qia1d(k) = qia1d(k) + qifracten(k)*dt
+
     enddo
 
     ! tendencies are grid-mean but to avoid calculation of in-cloud mass and number
@@ -2631,9 +2647,8 @@ module module_mp_tempo_main
       !> [Berry and Reinhardt (1974)](https://doi.org/10.1175/1520-0469(1974)031<1814:AAOCDG>2.0.CO;2)
       !> with characteristic diameters correctly computed from gamma distribution of cloud droplets
       if (l_qc(k)) then
-        if (rc(k)*qcfrac1d(k) > 0.01e-3_wp) then ! .and. qcfrac1d(k) > 0.99) then
-
-!         if (rc(k)*qcfrac1d(k) > 0.01e-3_wp .and. ssatw(k) > 0._wp .and. qcfrac1d(k) > 0.99) then
+        ! if (rc(k)*qcfrac1d(k) > 0.01e-3_wp) then ! .and. qcfrac1d(k) > 0.99) then
+        if (rc(k) > 0.01e-3_wp) then ! .and. qcfrac1d(k) > 0.99) then            
           nu_c = get_nuc(nc(k))
           lamc = 1._dp / ilamc(k)       
           xdc = max(d0c*1.e6_wp, ((rc(k)/(am_r*nc(k)))**obmr) * 1.e6_wp)
@@ -2682,7 +2697,7 @@ module module_mp_tempo_main
 
 
   subroutine riming(temp, rhof, visco, l_qc, rc, nc, ilamc, mvd_c, &
-    l_qs, rs, smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx, tend, odt, qcfrac1d)
+    l_qs, rs, smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx, qcfrac1d, tend, odt)
     !! snow and graupel riming
     use module_mp_tempo_params, only : d0c, d0s, nbs, ds, t_efsw, t1_qs_qc, &
       r_g, bm_g, mu_g, av_g, cgg, ogg3, bv_g, rho_w, t0, d0g, pi, cge, ogg2, &
@@ -3054,7 +3069,7 @@ module module_mp_tempo_main
 
 
   subroutine ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, &
-      nifa, nwfa, ni, smo0, rc, nc, qifrac1d, rr, nr, ilamr, tend, dt, odt, qcfrac1d)
+      nifa, nwfa, ni, smo0, rc, nc, qcfrac1d, qifrac1d, rr, nr, ilamr, tend, dt, odt)
     !! ice nulceation
     use module_mp_tempo_params, only : r_r, r_c, hgfrz, rho_i, xm0i, &
       tpg_qrfz, tpi_qrfz, tni_qrfz, tnr_qrfz, tpi_qcfz, tni_qcfz, &
