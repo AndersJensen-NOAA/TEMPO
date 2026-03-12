@@ -334,14 +334,17 @@ module module_mp_tempo_main
     tempo_main_diags%frz_rain_precip = 0._wp
   
     ! initialization -----------------------------------------------------------------------------
-    hgt_cf = max(hpbl1d(1), 100._wp)
+    hgt_cf = max(hpbl1d(1)+1000._wp, 1000._wp)
     hgt = 0.
     do k = 1, nz
       cf_rh(k) = cloud_fraction_rh
       hgt = hgt + dz1d(k)
-      if ((xland1d(1) > 1.5) .and. (hgt <= hgt_cf)) then
+      if ((xland1d(1) > 1.5) .and. (hgt <= hgt_cf)) then ! ocean
         cf_rh(k) = cloud_fraction_rh_pbl_water
       endif
+      if ((xland1d(1) < 1.5) .and. (hgt <= hpbl1d(1))) then ! land
+        cf_rh(k) = cloud_fraction_rh_pbl_water
+      endif     
       temp(k) = t1d(k)
       qv(k) = max(min_qv, qv1d(k))
       pres(k) = p1d(k)
@@ -582,7 +585,10 @@ module module_mp_tempo_main
                 max((5.57_wp*(1000._wp*tend%pnc_wcd(k)/qca1d(k)*dt)**(0.78_wp) * odt), cf_low)
             else  
               qcfracten(k) = 1._wp
-            endif 
+           endif
+          elseif (tend%prw_vcd(k)*qca1d(k) < r1) then
+           qcfracten(k) = qcfracten(k) - &           
+             max((5.57_wp*(1000._wp*tend%pnc_wcd(k)/qca1d(k)*dt)**(0.78_wp) * odt), cf_low)
           endif
         endif 
       enddo 
@@ -874,9 +880,22 @@ module module_mp_tempo_main
 
       qca1d(k) = qca1d(k) + qcfracten(k)*dt
       qia1d(k) = qia1d(k) + qifracten(k)*dt
-
     enddo
 
+    xrx = qc1d
+    if (present(nc1d)) then
+       if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
+       xncx = nc1d
+    endif
+    call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, qcfrac1d=qca1d, &
+      rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c, dt=dt, odt=odt)
+    
+    xrx = qi1d
+    xnx = ni1d
+    call ice_check_and_update(rho=rho, l_qi=l_qi, qifrac1d=qia1d, qi1d=xrx, ni1d=xnx, &
+      ri=ri, ni=ni, qiten=qiten, niten=niten, ilami=ilami, dt=dt, odt=odt)
+
+      
     ! tendencies are grid-mean but to avoid calculation of in-cloud mass and number
     ! set a dummy cloud fraction to 1
     xqcfrac = 1._wp        
@@ -977,28 +996,28 @@ module module_mp_tempo_main
       ! please output any cloud diagnostics before this calculation
       ! because rc, nc, ilamc, and mvd_c will include contributions from 
       ! resolved and explicit clouds and qcten and ncten are zeroed
-      if (present(qc_bl1d) .and. present(qcfrac_bl1d)) then
-        xrx = qc1d
-        if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
-        xncx = nc1d
-        do k = 1, nz
-          if ((xrx(k) <= r1) .and. & 
-            (qc_bl1d(k) > 1.e-9_wp) .and. (qcfrac_bl1d(k) > 0._wp)) then
-            xrx(k) = xrx(k) + qc_bl1d(k) / qcfrac_bl1d(k) ! use in-cloud PBL mass
-          endif 
-        enddo 
-        where(xrx <= 1.e-12_wp) xrx = 0._wp
-        ! ml prediction
-        call get_cloud_number(xrx, qr1d, qi1d, qs1d, pres, temp, w1d, xncx)
+!      if (present(qc_bl1d) .and. present(qcfrac_bl1d)) then
+!        xrx = qc1d
+!        if (.not. allocated(xncx)) allocate(xncx(nz), source=0._wp)
+!        xncx = nc1d
+!        do k = 1, nz
+!          if ((xrx(k) <= r1) .and. & 
+!            (qc_bl1d(k) > 1.e-9_wp) .and. (qcfrac_bl1d(k) > 0._wp)) then
+!            xrx(k) = xrx(k) + qc_bl1d(k) / qcfrac_bl1d(k) ! use in-cloud PBL mass
+!          endif 
+!        enddo 
+!        where(xrx <= 1.e-12_wp) xrx = 0._wp
+!        ! ml prediction
+!        call get_cloud_number(xrx, qr1d, qi1d, qs1d, pres, temp, w1d, xncx)
       
-        ! xrx and xncx have been updated to include pbl contribution -> update ilamc and nc 
-        ! for effective radius calculation
-        qcten = 0._wp
-        ncten = 0._wp
-        call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, &
-          rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c, &
-          dt=dt, odt=odt)
-      endif
+!        ! xrx and xncx have been updated to include pbl contribution -> update ilamc and nc 
+!        ! for effective radius calculation
+!        qcten = 0._wp
+!        ncten = 0._wp
+!        call cloud_check_and_update(rho=rho, l_qc=l_qc, qc1d=xrx, nc1d=xncx, &
+!          rc=rc, nc=nc, qcten=qcten, ncten=ncten, ilamc=ilamc, mvd_c=mvd_c, &
+!          dt=dt, odt=odt)
+!      endif
       call effective_radius(temp, l_qc, nc, ilamc, l_qi, ilami, l_qs, rs, &
         tempo_main_diags%re_cloud, tempo_main_diags%re_ice, tempo_main_diags%re_snow)
     endif
@@ -2311,7 +2330,8 @@ module module_mp_tempo_main
           tend%pra_ini(k) = 1._dp*odt
         elseif ((tend%pri_wfz(k)+ tend%pri_inu(k) + tend%pri_iha(k))*dt > eps .and. qcfrac1d(k) > cf_low) then
           tend%pra_ini(k) = qcfrac1d(k)*odt
-        else 
+        else
+!          tend%pra_ini(k) = max((5.57_wp*(1000._wp*tend%pri_inu(k)*dt)**(0.78_wp) * odt), cf_low)
           omega = -9.8_wp * w1d(k) * rho(k)
           dqsdti = lsub * qvsi(k) / (rv*temp(k)**2)
           al = 1._wp / (1._wp + dqsdti*lsub*ocp(k))
@@ -2323,7 +2343,10 @@ module module_mp_tempo_main
         endif 
       elseif (qiten(k) > eps) then
         tend%pra_ini(k) = sqrt(qiten(k)*dt / qi1d(k)) * odt
-      endif 
+      endif
+      if (tend%pri_ide(k)*qifrac1d(k) > r1 .and. qifrac1d(k) >= cf_low) then
+        tend%pra_ini(k) = tend%pra_ini(k) + max((5.57_wp*(1000._wp*tend%pri_ide(k)/qifrac1d(k)*dt)**(0.78_wp) * odt), cf_low)         
+      endif
     enddo 
   end subroutine ice_cloud_fraction
 
@@ -2410,7 +2433,7 @@ module module_mp_tempo_main
 
           ! erosions
           term3 = -3.1_wp*qc_mean/(al*qvs(k))
-          eros_term = -2.25e-5_wp * exp(term3)
+          eros_term = -2.25e-5_wp * exp(term3) * 10._wp
           tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
           tend%prw_sge(k) = min(0._dp, ((qc1d(k)-qc_mean*qcfrac_)*eros_term))
           
@@ -3140,6 +3163,7 @@ module module_mp_tempo_main
           else
             xnc = min(icenuc_max, tno*exp(ato*(t0-temp(k))))
           endif
+
           xni = ni(k) + (tend%pni_rfz(k)+tend%pni_wfz(k))*dt
           tend%pni_inu(k) = 0.5_wp*(xnc-xni + abs(xnc-xni))*odt
           tend%pri_inu(k) = min(real(rate_max, kind=dp), xm0i*tend%pni_inu(k))
