@@ -810,11 +810,11 @@ module module_mp_tempo_main
       call ice_fallspeed(rhof, l_qi, ri, ilami, dz1d, vtri, vtni, &
         substeps_sedi, ktop_sedi, dt)
       call sedimentation(xr=ri, vt=vtri, dz1d=dz1d, rho=rho, xten=qiten, limit=r1, &
-        steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%ice_liquid_equiv_precip, dt=dt)
+        steps=substeps_sedi, ktop_sedi=ktop_sedi, qifrac1d=qia1d, precip=tempo_main_diags%ice_liquid_equiv_precip, dt=dt)
       call sedimentation(xr=ni, vt=vtni, dz1d=dz1d, rho=rho, xten=niten, limit=r2, &
-        steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
+        steps=substeps_sedi, ktop_sedi=ktop_sedi, qifrac1d=qia1d, dt=dt)
       call sedimentation(xr=qia1d, vt=vtri, dz1d=dz1d, rho=rho, xten=qifracten, limit=cf_low, &
-        steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt) 
+        steps=substeps_sedi, ktop_sedi=ktop_sedi, qifrac1d=qia1d, dt=dt) 
     endif 
 
     ! cloud
@@ -1706,7 +1706,7 @@ module module_mp_tempo_main
   end subroutine sum_tendencies
 
 
-  subroutine sedimentation(xr, vt, dz1d, rho, xten, limit, steps, ktop_sedi, precip, dt)
+  subroutine sedimentation(xr, vt, dz1d, rho, xten, limit, steps, ktop_sedi, qifrac1d, precip, dt)
     !! computes sedimentation fluxes, adds fluxes to tendencies, and updates hydrometeor
     !! mass (and number and volume)
     use module_mp_tempo_params, only : low_limit_mass_for_precip
@@ -1717,6 +1717,7 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(inout) :: xr, xten
     real(wp), dimension(:), intent(in) :: dz1d, rho
     real(wp), dimension(:), intent(in) :: vt
+    real(wp), dimension(:), intent(in), optional :: qifrac1d    
     real(wp), intent(in) :: limit
     real(wp), intent(inout), optional :: precip
     real(wp) :: odz, orho
@@ -1738,6 +1739,9 @@ module module_mp_tempo_main
     xr(k) = max(limit, xr(k) - sed_r(k)*odz*dt*(1._wp/real(steps, kind=wp)))
 
     do k = ktop, 1, -1
+      if (present(qifrac1d)) then
+        if (qifrac1d(k) < 0.95) cycle
+      endif 
       odz = 1._wp/dz1d(k)
       orho = 1._wp/rho(k)
       xten(k) = xten(k) + (sed_r(k+1))*(1._wp/dz1d(k))*(1._wp/real(steps, kind=wp))/rho(k)
@@ -2328,18 +2332,20 @@ module module_mp_tempo_main
       if (qi1d(k) <= r1) then
         if (tend%pri_rfz(k)*dt > eps) then
           tend%pra_ini(k) = 1._dp*odt
-        elseif ((tend%pri_wfz(k)+ tend%pri_inu(k) + tend%pri_iha(k))*dt > eps .and. qcfrac1d(k) > cf_low) then
-          tend%pra_ini(k) = qcfrac1d(k)*odt
+        elseif (tend%pri_wfz(k)*dt > eps .and. qcfrac1d(k) > cf_low) then
+          tend%pra_ini(k) = max(qcfrac1d(k), cf_low)*odt
         else
+          tend%pra_ini(k) = 1._dp*odt          
+!          tend%pra_ini(k) = (0.5_wp/bs*(bs+qi_mean) * odt)          
 !          tend%pra_ini(k) = max((5.57_wp*(1000._wp*tend%pri_inu(k)*dt)**(0.78_wp) * odt), cf_low)
-          omega = -9.8_wp * w1d(k) * rho(k)
-          dqsdti = lsub * qvsi(k) / (rv*temp(k)**2)
-          al = 1._wp / (1._wp + dqsdti*lsub*ocp(k))
-          bs = al * (1._wp-cloud_fraction_rh) * qvsi(k)
-          sd = al*(qvsi(k)-qv(k))
-          qtot_mean = qv(k) + qi1d(k)
-          qi_mean = al*(qtot_mean-qvsi(k))
-          tend%pra_ini(k) = (0.5_wp/bs*(bs+qi_mean) * odt)
+!          omega = -9.8_wp * w1d(k) * rho(k)
+!          dqsdti = lsub * qvsi(k) / (rv*temp(k)**2)
+!          al = 1._wp / (1._wp + dqsdti*lsub*ocp(k))
+!          bs = al * (1._wp-cloud_fraction_rh) * qvsi(k)
+!          sd = al*(qvsi(k)-qv(k))
+!          qtot_mean = qv(k) + qi1d(k)
+!          qi_mean = al*(qtot_mean-qvsi(k))
+!          tend%pra_ini(k) = (0.5_wp/bs*(bs+qi_mean) * odt)
         endif 
       elseif (qiten(k) > eps) then
         tend%pra_ini(k) = sqrt(qiten(k)*dt / qi1d(k)) * odt
@@ -2433,7 +2439,7 @@ module module_mp_tempo_main
 
           ! erosions
           term3 = -3.1_wp*qc_mean/(al*qvs(k))
-          eros_term = -2.25e-5_wp * exp(term3) * 10._wp
+          eros_term = -2.25e-5_wp * exp(term3)
           tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
           tend%prw_sge(k) = min(0._dp, ((qc1d(k)-qc_mean*qcfrac_)*eros_term))
           
@@ -3156,8 +3162,7 @@ module module_mp_tempo_main
         !>
         !> deposition nucleation from dust is from
         !> [DeMott et al. (2010)](https://doi.org/10.1073/pnas.0910818107)
-        if ((ssati(k) >= demott_nuc_ssati) .or. (ssatw(k) > eps &
-            .and. tempc < -20._wp)) then
+        if ((ssati(k) >= demott_nuc_ssati-0.15) .or. (ssatw(k) > cloud_fraction_rh-1._wp .and. tempc < -20._wp)) then
           if (present(nifa)) then
             xnc = demott_nucleation(tempc, rho(k), nifa(k))
           else
@@ -3180,10 +3185,10 @@ module module_mp_tempo_main
             tend%pni_iha(k) = tend%pri_iha(k)/(xm0i*0.1_wp)
           endif
         endif 
-        tend%pni_iha(k) = tend%pni_iha(k) * qifrac1d(k)
-        tend%pri_iha(k) = tend%pri_iha(k) * qifrac1d(k)
-        tend%pni_inu(k) = tend%pni_inu(k) * qifrac1d(k)
-        tend%pri_inu(k) = tend%pri_inu(k) * qifrac1d(k)
+        tend%pni_iha(k) = tend%pni_iha(k) !* qifrac1d(k)
+        tend%pri_iha(k) = tend%pri_iha(k) !* qifrac1d(k)
+        tend%pni_inu(k) = tend%pni_inu(k) !* qifrac1d(k)
+        tend%pri_inu(k) = tend%pri_inu(k) !* qifrac1d(k)
         tend%pri_wfz(k) = tend%pri_wfz(k) * qcfrac1d(k)
         tend%pni_wfz(k) = tend%pni_wfz(k) * qcfrac1d(k)
       endif 
