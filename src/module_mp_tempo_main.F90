@@ -2382,9 +2382,9 @@ module module_mp_tempo_main
       if (tend%pri_ide(k)*qifrac1d(k) > r1 .and. qifrac1d(k) >= cf_low) then
         tend%pra_ini(k) = tend%pra_ini(k) + max((5.57_wp*(1000._wp*tend%pri_ide(k)/qifrac1d(k)*dt)**(0.78_wp) * odt), cf_low)         
       endif
-      if (tend%prs_iau(k)*qifrac1d(k) > r1 .and. qifrac1d(k) >= cf_low) then
-        tend%pra_ini(k) = tend%pra_ini(k) - max((5.57_wp*(1000._wp*tend%prs_iau(k)/qifrac1d(k)*dt)**(0.78_wp) * odt), cf_low)         
-      endif
+!      if (tend%prs_iau(k)*qifrac1d(k) > r1 .and. qifrac1d(k) >= cf_low) then
+!        tend%pra_ini(k) = tend%pra_ini(k) - max((5.57_wp*(1000._wp*tend%prs_iau(k)/qifrac1d(k)*dt)**(0.78_wp) * odt), cf_low)         
+!      endif
 
       
     enddo 
@@ -3353,10 +3353,10 @@ module module_mp_tempo_main
 
           ! conversion of cloud ice to snow
           if ((idx_i == ntb_i) .or. (xdi >  5.0_wp*d0s)) then
-             if (qifrac1d(k) > 0.95) then
-                tend%prs_iau(k) = ri(k)*.99_wp*odt * qifrac1d(k)
-                tend%pni_iau(k) = ni(k)*.95_wp*odt * qifrac1d(k)
-             endif
+!             if (qifrac1d(k) > 0.95) then
+             tend%prs_iau(k) = ri(k)*.99_wp*odt * qifrac1d(k)
+             tend%pni_iau(k) = ni(k)*.95_wp*odt * qifrac1d(k)
+!             endif
           elseif (xdi < 0.1_wp*d0s) then
             tend%prs_iau(k) = 0._dp
             tend%pni_iau(k) = 0._dp
