@@ -609,13 +609,13 @@ module module_mp_tempo_main
             steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%rain_precip, dt=dt)
           call sedimentation(xr=nr, vt=vtnr, dz1d=dz1d, rho=rho, xten=nrten, limit=r2, &
             steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
-          vtrr = 0._wp
-          vtnr = 0._wp
-          xrx = qr1d
-          xnx = nr1d
-          call rain_check_and_update(rho, l_qr, xrx, xnx, rr, nr, qrten, nrten, ilamr, mvd_r, dt, odt)
-          call rain_fallspeed(rhof=rhof, l_qr=l_qr, rr=rr, ilamr=ilamr, dz1d=dz1d, &
-            vt=vtrr, vtn=vtnr, dt=dt)
+          ! vtrr = 0._wp
+          ! vtnr = 0._wp
+          ! xrx = qr1d
+          ! xnx = nr1d
+          ! call rain_check_and_update(rho, l_qr, xrx, xnx, rr, nr, qrten, nrten, ilamr, mvd_r, dt, odt)
+          ! call rain_fallspeed(rhof=rhof, l_qr=l_qr, rr=rr, ilamr=ilamr, dz1d=dz1d, &
+          !   vt=vtrr, vtn=vtnr, dt=dt)
         enddo
       endif 
     endif
@@ -663,21 +663,21 @@ module module_mp_tempo_main
             steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
           call sedimentation(xr=rb, vt=vtrg, dz1d=dz1d, rho=rho, xten=qbten, &
             limit=meters3_to_liters*r1/rho_g(nrhg), steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
-          vtrg = 0._wp
-          vtng = 0._wp
-          xrx = qg1d
-          if (present(ng1d) .and. present(qb1d)) then
-            if (.not. allocated(xngx)) allocate(xngx(nz), source=0._wp)
-            if (.not. allocated(xqbx)) allocate(xqbx(nz), source=0._wp)
-            xngx = ng1d
-            xqbx = qb1d
-          endif 
-          call graupel_check_and_update(rho=rho, l_qg=l_qg, qg1d=xrx, ng1d=xngx, &
-            qb1d=xqbx, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
-            qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
-          call graupel_fallspeed(rhof=rhof, rho=rho, visco=visco, &
-            l_qg=l_qg, rg=rg, rb=rb, qb1d=qb1d, idx=idx_bg, ilamg=ilamg, dz1d=dz1d, &
-            vt=vtrg, vtn=vtng, dt=dt)
+          ! vtrg = 0._wp
+          ! vtng = 0._wp
+          ! xrx = qg1d
+          ! if (present(ng1d) .and. present(qb1d)) then
+          !   if (.not. allocated(xngx)) allocate(xngx(nz), source=0._wp)
+          !   if (.not. allocated(xqbx)) allocate(xqbx(nz), source=0._wp)
+          !   xngx = ng1d
+          !   xqbx = qb1d
+          ! endif
+          ! call graupel_check_and_update(rho=rho, l_qg=l_qg, qg1d=xrx, ng1d=xngx, &
+          !   qb1d=xqbx, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
+          !   qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
+          ! call graupel_fallspeed(rhof=rhof, rho=rho, visco=visco, &
+          !   l_qg=l_qg, rg=rg, rb=rb, qb1d=qb1d, idx=idx_bg, ilamg=ilamg, dz1d=dz1d, &
+          !   vt=vtrg, vtn=vtng, dt=dt)
         enddo
       endif 
     endif
