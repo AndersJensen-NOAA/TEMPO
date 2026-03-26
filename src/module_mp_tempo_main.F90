@@ -415,7 +415,7 @@ module module_mp_tempo_main
       call warm_rain(rhof, l_qc, rc, nc, ilamc, mvd_c, l_qr, rr, nr, mvd_r, tend, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
-      call rain_snow_rain_graupel(temp, l_qr, rr, nr, ilamr, l_qs, rs, &
+      call rain_snow_rain_graupel(temp, w1d, l_qr, rr, nr, ilamr, l_qs, rs, &
         l_qg, rg, ng, ilamg, idx_bg, tend, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
@@ -424,20 +424,20 @@ module module_mp_tempo_main
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call ice_processes(rhof, rhof2, rho, w1d, temp, qv, qvsi, tcond, diffu, &
-      vsc2, ssati, l_qi, ri, ni, ilami, l_qs, rs, smoe, smof, smo1, rr, nr, &
-      ilamr, mvd_r, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
+        vsc2, ssati, l_qi, ri, ni, ilami, l_qs, rs, smoe, smof, smo1, rr, nr, &
+        ilamr, mvd_r, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
     endif
     if (.not. tempo_cfgs%turn_off_micro_flag) then
-      call riming(temp, rhof, visco, l_qc, rc, nc, ilamc, mvd_c, l_qs, rs, &
-        smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
+      call riming(temp, rhof, visco, tcond, diffu, delqvs, l_qc, rc, nc, ilamc, mvd_c, rr, &
+        l_qs, rs, smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call melting(rhof2, rho, temp, qvsi, tcond, diffu, vsc2, ssati, delqvs, &
-      l_qs, rs, smof, smo0, smo1, l_qg, rg, ng, ilamg, idx_bg, tend, dt, odt)
+        l_qs, rs, smof, smo0, smo1, l_qg, rg, ng, ilamg, idx_bg, tend, dt, odt)
     endif
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call aerosol_scavenging(temp, rho, rhof, visco, nwfa, nifa, l_qr, nr, ilamr, &
-      mvd_r, l_qs, rs, smob, smoc, smoe, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
+        mvd_r, l_qs, rs, smob, smoc, smoe, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
     endif 
 
     ! check and sum tendencies -------------------------------------------------------------------
@@ -1178,9 +1178,9 @@ module module_mp_tempo_main
             mvd_g(k) = 25.4e-3_wp
             lamg = (3.0_dp + mu_g + 0.672_dp) / mvd_g(k)
             ng(k) = cgg(2,1)*ogg3*rg(k)*lamg**bm_g / am_g(idx(k))
-          elseif (mvd_g(k) < d0r) then
+          elseif (mvd_g(k) < 5._wp*d0r) then
             hit_limit = .true.
-            mvd_g(k) = d0r
+            mvd_g(k) = 5._wp*d0r
             lamg = (3.0_dp + mu_g + 0.672_dp) / mvd_g(k)
             ng(k) = cgg(2,1)*ogg3*rg(k)*lamg**bm_g / am_g(idx(k))
           endif
@@ -2348,18 +2348,18 @@ module module_mp_tempo_main
   end subroutine warm_rain
 
 
-  subroutine riming(temp, rhof, visco, l_qc, rc, nc, ilamc, mvd_c, &
-    l_qs, rs, smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx, tend, odt)
+  subroutine riming(temp, rhof, visco, tcond, diffu, delqvs, l_qc, rc, nc, ilamc, mvd_c, &
+    rr, l_qs, rs, smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx, tend, odt)
     !! snow and graupel riming
     use module_mp_tempo_params, only : d0c, d0s, nbs, ds, t_efsw, t1_qs_qc, &
       r_g, bm_g, mu_g, av_g, cgg, ogg3, bv_g, rho_w, t0, d0g, pi, cge, ogg2, &
       rime_threshold, rime_conversion, av_s, bv_s, rho_s, xm0i, eps, fv_s, &
-      meters3_to_liters
+      meters3_to_liters, lsub, lfus, rho_i, nrhg
 
     real(wp), intent(in) :: odt    
     type(ty_tend), intent(inout) :: tend
-    real(wp), dimension(:), intent(in) :: rhof, visco, temp, rc, nc, rs, rg, ng
-    real(wp), dimension(:), intent(in) :: mvd_c
+    real(wp), dimension(:), intent(in) :: rhof, visco, temp, rc, nc, rr, rs, rg, ng
+    real(wp), dimension(:), intent(in) :: tcond, diffu, delqvs, mvd_c
     real(dp), dimension(:), intent(in) :: smo0, smob, smoc, smoe, ilamg, ilamc
     logical, dimension(:), intent(in) :: l_qc, l_qs, l_qg
     integer, dimension(:), intent(in) :: idx
@@ -2367,7 +2367,7 @@ module module_mp_tempo_main
 
     real(dp) :: xds, xdg, n0_g, lamc
     real(wp) :: ef_sw, vtg, stoke_g, const_ri, tempc, rime_dens, ef_gw
-    real(wp) :: t1_qg_qc, r_frac, g_frac, vts, tf, snow_dens_frac
+    real(wp) :: t1_qg_qc, r_frac, g_frac, vts, tf, snow_dens_frac, wet_growth_check
     integer :: k, nz, idxs, nu_c
 
     nz = size(l_qc)
@@ -2427,14 +2427,30 @@ module module_mp_tempo_main
         !> graupel collecting cloud water - assume dc << dg and vtc \(\approx 0\)
         if (rg(k) >= r_g(1) .and. mvd_c(k) > d0c) then
           xdg = (bm_g + mu_g + 1._wp) * ilamg(k)
-          vtg = rhof(k)*av_g(idx(k))*cgg(6,idx(k))*ogg3 * ilamg(k)**bv_g(idx(k))
-          stoke_g = mvd_c(k)*mvd_c(k)*vtg*rho_w/(9._wp*visco(k)*xdg)
-          !>
-          !> rime density formula is from 
-          !> [Cober and List (1993)](https://doi.org/10.1175/1520-0469(1993)050<1591:MOTHAM>2.0.CO;2)
-          const_ri = -1._wp*(mvd_c(k)*0.5e6_wp)*vtg/min(-0.1_wp, tempc)
-          const_ri = max(0.1_wp, min(const_ri, 10._wp))
-          rime_dens = (0.051_wp + 0.114_wp*const_ri - 0.0055_wp*const_ri*const_ri)*1000._wp
+
+          if (tempc >= 0._wp) then
+            rime_dens = rho_i
+          else
+            !> simple wet growth check from Lamb and Verlinde Equation 12.14
+            wet_growth_check = 0._wp
+
+            if (xdg > d0g) then
+              wet_growth_check = (8._wp / (9._wp * lfus * xdg**1.8_wp)) * &
+                (lsub*diffu(k)*delqvs(k) - tempc*tcond(k))
+            endif
+            if ((rc(k)+rr(k)) >= wet_growth_check .and. wet_growth_check > r1) then
+              rime_dens = rho_i
+            else
+              vtg = rhof(k)*av_g(idx(k))*cgg(6,idx(k))*ogg3 * ilamg(k)**bv_g(idx(k))
+              stoke_g = mvd_c(k)*mvd_c(k)*vtg*rho_w/(9._wp*visco(k)*xdg)
+              !>
+              !> rime density formula is from
+              !> [Cober and List (1993)](https://doi.org/10.1175/1520-0469(1993)050<1591:MOTHAM>2.0.CO;2)
+              const_ri = -1._wp*(mvd_c(k)*0.5e6_wp)*vtg/min(-0.1_wp, tempc)
+              const_ri = max(0.1_wp, min(const_ri, 10._wp))
+              rime_dens = (0.051_wp + 0.114_wp*const_ri - 0.0055_wp*const_ri*const_ri)*1000._wp
+            endif
+          endif
           if (xdg > d0g) then
             if (stoke_g >= 0.4_wp .and. stoke_g <= 10._wp) then
               ef_gw = 0.55_wp*log10(2.51_wp*stoke_g)
@@ -2443,10 +2459,13 @@ module module_mp_tempo_main
             elseif (stoke_g > 10._wp) then
               ef_gw = 0.77_wp
             endif
+            if (rime_dens > 700._wp) ef_gw = 0.95_wp
             !>
             !> hail size increases below the melting level so the collection efficiency
             !> is reduced (proxy for shedding of collected cloud water)
-            if (temp(k) > t0) ef_gw = ef_gw*0.1_wp
+            if (temp(k) > t0) then
+              ef_gw = ef_gw * max(min((10._wp**(-0.1*(temp(k)-t0)) + 0.1_wp), 1._wp), 0.1_wp)
+            endif
             t1_qg_qc = pi*.25_wp*av_g(idx(k)) * cgg(9,idx(k))
             n0_g = ng(k)*ogg2*(1._wp/ilamg(k))**cge(2,1)
             tend%prg_gcw(k) = rhof(k)*t1_qg_qc*ef_gw*rc(k)* &
@@ -2455,6 +2474,11 @@ module module_mp_tempo_main
               n0_g*ilamg(k)**cge(9,idx(k))
             tend%pnc_gcw(k) = min(real(nc(k)*odt, kind=dp), tend%pnc_gcw(k))
             if (temp(k) < t0) tend%pbg_gcw(k) = meters3_to_liters*tend%prg_gcw(k)/rime_dens
+            ! densify particles before growing them in wet growth conditions
+            if (idx(k) < nrhg .and. rc(k)+rr(k) >= wet_growth_check .and. wet_growth_check > r1) then
+              tend%pbg_gcw(k) = 0._dp
+              tend%pbg_rcg(k) = 0._dp
+            endif
 
             if (temp(k) < t0) then
               !>
@@ -2628,7 +2652,7 @@ module module_mp_tempo_main
   end subroutine get_ice_table_index
 
 
-  subroutine rain_snow_rain_graupel(temp, l_qr, rr, nr, ilamr, l_qs, rs, &
+  subroutine rain_snow_rain_graupel(temp, w1d, l_qr, rr, nr, ilamr, l_qs, rs, &
       l_qg, rg, ng, ilamg, idx, tend, odt)
     !! calculates rain-snow and rain-graupel collection
     use module_mp_tempo_params, only : t0, r_r, r_s, r_g, rho_i, rho_g, meters3_to_liters, &
@@ -2638,7 +2662,7 @@ module module_mp_tempo_main
 
     real(wp), intent(in) :: odt    
     type(ty_tend), intent(inout) :: tend
-    real(wp), dimension(:), intent(in) :: temp, rr, rs, rg, nr, ng
+    real(wp), dimension(:), intent(in) :: temp, w1d, rr, rs, rg, nr, ng
     real(dp), dimension(:), intent(in) :: ilamr, ilamg
     logical, dimension(:), intent(in) :: l_qr, l_qs, l_qg
     integer, dimension(:), intent(in) :: idx
@@ -2674,7 +2698,8 @@ module module_mp_tempo_main
               + tnr_sacr1(idx_s,idx_t,idx_r1,idx_r) &
               + tnr_sacr2(idx_s,idx_t,idx_r1,idx_r)
             tend%pnr_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rcs(k))
-            tend%png_rcs(k) = tend%pnr_rcs(k)
+            tend%png_rcs(k) = tend%pnr_rcs(k) * &
+              max(min((10._wp**(-0.1_wp*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
             tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
           else
             tend%prs_rcs(k) = -tcs_racs1(idx_s,idx_t,idx_r1,idx_r) &
