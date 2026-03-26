@@ -1989,7 +1989,7 @@ module module_mp_tempo_main
 
     nz = size(qv)
     do k = 1, nz
-      if (abs(ssatw(k)) < eps) return ! RH = 100%
+      if (abs(ssatw(k)) < eps) cycle ! RH = 100%
 
       orho = 1._wp/rho(k)
       clap = (qv(k)-qvs(k))/(1._wp + lvt2(k)*qvs(k))
