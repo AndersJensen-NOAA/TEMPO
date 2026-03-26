@@ -1538,11 +1538,8 @@ module module_mp_tempo_main
     do k = ktop, 1, -1
       odz = 1._wp/dz1d(k)
       orho = 1._wp/rho(k)
-      xten(k) = xten(k) + (sed_r(k+1))*(1._wp/dz1d(k))*(1._wp/real(steps, kind=wp))/rho(k)
-      xten(k) = xten(k) - (sed_r(k))*odz*(1._wp/real(steps, kind=wp))*orho
-
-      xr(k) = max(limit, xr(k) + (sed_r(k+1))*(1._wp/dz1d(k))*dt*(1._wp/real(steps, kind=wp)))
-      xr(k) = max(limit, xr(k) - (sed_r(k))*odz*dt*(1._wp/real(steps, kind=wp)))
+      xten(k) = xten(k) + (sed_r(k+1)-sed_r(k))*odz*(1._wp/real(steps, kind=wp))*orho
+      xr(k) = max(limit, xr(k) + (sed_r(k+1)-sed_r(k))*odz*dt*(1._wp/real(steps, kind=wp)))
     enddo
 
     if (present(precip)) then 
