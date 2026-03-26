@@ -30,6 +30,7 @@ module module_mp_tempo_cfgs
     logical :: rain_med_vol_diam_flag = .false. !! flag to output median volume diameter for rain
     logical :: graupel_med_vol_diam_flag = .false. !! flag to output median volume diameter for graupel
     logical :: cloud_number_mixing_ratio_flag = .false. !! flag to output cloud number mixing ratio
+    integer :: graupel_fallspeed_opt = 1 !! original method for graupel fallspeed (0 = [Mitchell and Heymsfield (2005)](https://doi.org/10.1175/JAS3413.1) / [Milbrandt and Morrison (2013)](https://doi.org/10.1175/JAS-D-12-0204.1), 1 = new for v3.1.0 where Cd is calculated to match av_g: (credit Ted Mansell, NOAA)
   end type
 
   ! tempo lookup table filenames

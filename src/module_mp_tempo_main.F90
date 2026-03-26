@@ -627,7 +627,8 @@ module module_mp_tempo_main
     if (any(l_qg)) then
       call graupel_fallspeed(rhof=rhof, rho=rho, visco=visco, &
         l_qg=l_qg, rg=rg, rb=rb, qb1d=qb1d, idx=idx_bg, ilamg=ilamg, dz1d=dz1d, &
-        vt=vtrg, vtn=vtng, substeps_sedi=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
+        vt=vtrg, vtn=vtng, substeps_sedi=substeps_sedi, ktop_sedi=ktop_sedi, &
+        vtg_opt=tempo_cfgs%graupel_fallspeed_opt, dt=dt)
 
       if (tempo_cfgs%semi_sedi_flag) then 
         substeps_sedi = max(int(substeps_sedi/semi_sedi_factor) + 1, 1)
@@ -653,7 +654,7 @@ module module_mp_tempo_main
             qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
           call graupel_fallspeed(rhof=rhof, rho=rho, visco=visco, &
             l_qg=l_qg, rg=rg, rb=rb, qb1d=qb1d, idx=idx_bg, ilamg=ilamg, dz1d=dz1d, &
-            vt=vtrg, vtn=vtng, dt=dt)
+            vt=vtrg, vtn=vtng, vtg_opt=tempo_cfgs%graupel_fallspeed_opt, dt=dt)
         enddo 
       else
         do n = 1, substeps_sedi
@@ -1782,13 +1783,14 @@ module module_mp_tempo_main
 
 
   subroutine graupel_fallspeed(rhof, rho, visco, l_qg, rg, rb, qb1d, idx, ilamg, &
-      dz1d, vt, vtn, substeps_sedi, ktop_sedi, dt)
+      dz1d, vt, vtn, substeps_sedi, ktop_sedi, vtg_opt, dt)
     !! calculates mass and number weighted fall speeds for graupel
     !! and optionally the substepping required and the top k-level of sedimentation
     use module_mp_tempo_params, only : nrhg, rho_g, av_g_old, bv_g_old, &
-      cgg, t0, mu_g, ogg2, ogg3, a_coeff, b_coeff, meters3_to_liters
+      cgg, t0, mu_g, ogg2, ogg3, a_coeff, b_coeff, meters3_to_liters, rho_not, earth_gravity
 
-    real(wp), intent(in) :: dt    
+    real(wp), intent(in) :: dt
+    integer, intent(in), optional :: vtg_opt
     real(wp), dimension(:), intent(in) :: rhof, rho, visco, dz1d, rg, rb
     real(wp), dimension(:), intent(in), optional :: qb1d
     real(dp), dimension(:), intent(in) :: ilamg
@@ -1797,7 +1799,10 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(inout) :: vt, vtn
     integer, intent(out), optional :: substeps_sedi, ktop_sedi
     real(wp) :: dz_by_vt, dens_g, afall, bfall
-    integer :: k, nz
+    integer :: k, nz, vtg_opt_
+
+    vtg_opt_ = 1
+    if (present(vtg_opt)) vtg_opt_ = vtg_opt
 
     nz = size(l_qg)
     if (present(ktop_sedi)) ktop_sedi = 1
@@ -1806,8 +1811,12 @@ module module_mp_tempo_main
       if (rg(k) > r1) then
         if (present(qb1d)) then
           dens_g = max(rho_g(1), min(meters3_to_liters*rg(k)/rb(k), rho_g(nrhg)))
-          afall = a_coeff*((4._wp*dens_g*9.8_wp)/(3._wp*rho(k)))**b_coeff
-          afall = afall * visco(k)**(1._wp-2._wp*b_coeff)
+          if (vtg_opt_ == 0) then
+            afall = a_coeff*((4._wp*dens_g*earth_gravity)/(3._wp*rho(k)))**b_coeff
+            afall = afall * visco(k)**(1._wp-2._wp*b_coeff)
+          elseif (vtg_opt_ == 1) then
+            afall = ((4._wp*dens_g*earth_gravity)/(3._wp*0.504843467198652_wp*rho_not))**b_coeff
+          endif
           bfall = 3._wp*b_coeff - 1._wp
         else
           afall = av_g_old

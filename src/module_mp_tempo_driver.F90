@@ -51,7 +51,7 @@ module module_mp_tempo_driver
 
     logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, refl10cm_from_melting_flag, &
       ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, semi_sedi_flag, cloud_condensation_flag
-    type(ty_tempo_cfgs), intent(out) :: tempo_cfgs
+    type(ty_tempo_cfgs), intent(inout) :: tempo_cfgs
 
     character(len=100) :: table_filename
     integer :: table_size
@@ -87,6 +87,11 @@ module module_mp_tempo_driver
         write(*,'(A,L)') 'tempo_init() --- reflectivity from melting snow/graupel = ', tempo_cfgs%refl10cm_from_melting_flag
         write(*,'(A,L)') 'tempo_init() --- semi-lagrangian sedimentation = ', tempo_cfgs%semi_sedi_flag
       endif 
+
+      ! check runtime options
+      if (tempo_cfgs%graupel_fallspeed_opt /= 0 .and. tempo_cfgs%graupel_fallspeed_opt /= 1) then
+        error stop "tempo_init() --- invalid configuration option for graupel_fallspeed_opt"
+      endif
 
       ! set graupel variables from hail_aware_flag
       call initialize_graupel_vars(tempo_cfgs%hailaware_flag) 
