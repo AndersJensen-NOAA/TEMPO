@@ -197,6 +197,7 @@ module module_mp_tempo_driver
     qcfrac, qifrac, &
     thten_bl, qvten_bl, qcten_bl, qiten_bl, &
     thten_lwrad, thten_swrad, &
+    land_input, &
     ids, ide, jds, jde, kds, kde, &
     ims, ime, jms, jme, kms, kme, &
     its, ite, jts, jte, kts, kte, tempo_diags)
@@ -230,6 +231,7 @@ module module_mp_tempo_driver
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nifa !! 3D ice-friendly aerosol number mixing ratio \([kg^{-1}]\) (aerosol-aware)
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: qb !! 3D graupel volume mixing ratio \([m^{-3}\; kg^{-1}]\) (hail-aware)
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: ng !! 3D graupel number mixing ratio \([kg^{-1}]\) (hail-aware)
+    integer, dimension(ims:ime, jms:jme), intent(in), optional :: land_input !! land input value to differentiate land from ocean
 
     ! additional optional arguments
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: qcfrac
@@ -273,6 +275,7 @@ module module_mp_tempo_driver
     real(wp), dimension(:), allocatable :: qiten_bl1d
     real(wp), dimension(:), allocatable :: thten_lwrad1d
     real(wp), dimension(:), allocatable :: thten_swrad1d
+    integer, allocatable :: land1d
 
     integer :: i, j, k, nz
     logical :: use_temperature 
@@ -299,6 +302,7 @@ module module_mp_tempo_driver
     if (present(qiten_bl)) allocate(qiten_bl1d(nz), source=0._wp)
     if (present(thten_lwrad)) allocate(thten_lwrad1d(nz), source=0._wp)
     if (present(thten_swrad)) allocate(thten_swrad1d(nz), source=0._wp) 
+    if (present(land_input)) allocate(land1d)
 
     ! allocate diagnostics
     ! 3d diagnostics have configuration flags
@@ -434,11 +438,13 @@ module module_mp_tempo_driver
           endif 
         enddo
 
+        if (present(land_input)) land1d = land_input(i,j)
+
         ! main call to the 1d tempo microphysics
         call tempo_main(tempo_cfgs=tempo_cfgs, &
           qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
           ni1d=ni1d, nr1d=nr1d, nc1d=nc1d, ng1d=ng1d, nwfa1d=nwfa1d, nifa1d=nifa1d, t1d=t1d, p1d=p1d, &
-          w1d=w1d, dz1d=dz1d, &
+          w1d=w1d, dz1d=dz1d, land1d=land1d, &
           qcfrac1d=qcfrac1d, qifrac1d=qifrac1d, qc_bl1d=qc_bl1d, qcfrac_bl1d=qcfrac_bl1d, &
           thten_bl1d=thten_bl1d, qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, qiten_bl1d=qiten_bl1d, &
           thten_lwrad1d=thten_lwrad1d, thten_swrad1d=thten_swrad1d, &
