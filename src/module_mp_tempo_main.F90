@@ -2419,7 +2419,7 @@ module module_mp_tempo_main
               const_ri = -1._wp*(mvd_c(k)*0.5e6_wp)*vts/min(-0.1_wp,tempc)
               const_ri = max(0.1_wp, min(const_ri, 10._wp))
               rime_dens = (0.051_wp + 0.114_wp*const_ri - 0.0055_wp*const_ri*const_ri)*1000._wp
-              if(rime_dens < 150._wp) then
+              if(rime_dens < 150._wp .or. (tend%prg_rcg(k) > rime_threshold*tend%prg_scw(k))) then
                 g_frac = 0._wp
                 tend%prg_scw(k) = 0._dp
                 tend%png_scw(k) = 0._dp
@@ -2712,8 +2712,11 @@ module module_mp_tempo_main
               + tnr_sacr1(idx_s,idx_t,idx_r1,idx_r) &
               + tnr_sacr2(idx_s,idx_t,idx_r1,idx_r)
             tend%pnr_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rcs(k))
-            tend%png_rcs(k) = tend%pnr_rcs(k) * &
-              max(min((10._wp**(-0.1_wp*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
+            tend%png_rcs(k) = tnr_racs1(idx_s,idx_t,idx_r1,idx_r) &
+              + tnr_racs2(idx_s,idx_t,idx_r1,idx_r)
+            tend%png_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%png_rcs(k))
+!            tend%png_rcs(k) = tend%pnr_rcs(k) * &
+!              max(min((10._wp**(-0.1_wp*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
             tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
           else
             tend%prs_rcs(k) = -tcs_racs1(idx_s,idx_t,idx_r1,idx_r) &
@@ -2801,8 +2804,10 @@ module module_mp_tempo_main
           tend%prg_rfz(k) = min(real(rr(k)*odt, kind=dp), tend%prg_rfz(k))
           tend%pnr_rfz(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rfz(k))
           ! reduce number of graupel particles created at higher vertical velocities
+!          tend%png_rfz(k) = tend%pnr_rfz(k) * &
+!            max(min((10._wp**(-0.1_wp*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
           tend%png_rfz(k) = tend%pnr_rfz(k) * &
-            max(min((10._wp**(-0.1_wp*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
+            max(min((0.1_wp*10._wp**(0.1_wp*w1d(k))), 1._wp), 0.1_wp)
           ! tend%png_rfz(k) = tend%pnr_rfz(k)
         elseif (rr(k) > r1 .and. temp(k) < hgfrz) then
           tend%pri_rfz(k) = rr(k)*odt
@@ -3007,13 +3012,18 @@ module module_mp_tempo_main
               ((lamr+fv_r)**(-cre(9)))
             tend%pnr_rci(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rci(k))
             tend%png_rci(k) = tend%pnr_rci(k) * &
-              max(min((10._wp**(-0.1*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
+              max(min((0.1_wp*10._wp**(0.1_wp*w1d(k))), 1._wp), 0.1_wp)
+!!              max(min((10._wp**(-0.1*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
             tend%pni_rci(k) = tend%pri_rci(k) * oxmi
             tend%prr_rci(k) = rhof(k)*t2_qr_qi*ef_ri*ni(k)*n0_r * &
               ((lamr+fv_r)**(-cre(8)))
             tend%prr_rci(k) = min(real(rr(k)*odt, kind=dp), tend%prr_rci(k))
             tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
             tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
+!            if (tend%prg_rcg(k) > r1) then
+!              tend%png_rci(k) = tend%png_rci(k) * &
+!                max(min((tend%prg_rci(k)/tend%prg_rcg(k)), 1._dp), 0.1_dp)
+!            endif
           endif
         endif
 
