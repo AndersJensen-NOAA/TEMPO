@@ -2673,7 +2673,7 @@ module module_mp_tempo_main
     use module_mp_tempo_params, only : t0, r_r, r_s, r_g, rho_i, rho_g, meters3_to_liters, &
       tmr_racs2, tcr_sacr2, tmr_racs1, tcr_sacr1, tms_sacr1, tcs_racs1, &
       tnr_sacr1, tnr_sacr2, tnr_racs1, tnr_racs2, &
-      tcr_gacr, tmr_racg, tcg_racg, tnr_gacr, tnr_racg
+      tcr_gacr, tmr_racg, tcg_racg, tnr_gacr, tnr_racg, am_r, mu_r, crg, org2, obmr
 
     real(wp), intent(in) :: odt    
     type(ty_tend), intent(inout) :: tend
@@ -2714,12 +2714,12 @@ module module_mp_tempo_main
               + tnr_sacr1(idx_s,idx_t,idx_r1,idx_r) &
               + tnr_sacr2(idx_s,idx_t,idx_r1,idx_r)
             tend%pnr_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rcs(k))
-            tend%png_rcs(k) = tnr_racs1(idx_s,idx_t,idx_r1,idx_r) &
-              + tnr_racs2(idx_s,idx_t,idx_r1,idx_r)
-            tend%png_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%png_rcs(k))
+!            tend%png_rcs(k) = tnr_racs1(idx_s,idx_t,idx_r1,idx_r) &
+!              + tnr_racs2(idx_s,idx_t,idx_r1,idx_r)
+!            tend%png_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%png_rcs(k))
 !            tend%png_rcs(k) = tend%pnr_rcs(k) * &
 !              max(min((10._wp**(-0.1_wp*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
-            tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
+!            tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
 
             if (tend%prr_rcs(k) > r1) then
                xlam = (am_r*crg(3)*org2*tend%pnr_rcs(k)/tend%prr_rcs(k))**obmr
