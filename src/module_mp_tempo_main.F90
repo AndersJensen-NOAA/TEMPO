@@ -2944,7 +2944,7 @@ module module_mp_tempo_main
       temp, qv, qvsi, tcond, diffu, ssati, vsc2, mvd_r, rg, ng
     real(dp), dimension(:), intent(in) :: ilami, smoe, smof, smo1, ilamr, ilamg
     integer, dimension(:), intent(in) :: idx
-    real(wp) :: xdi, xmi, oxmi, c_snow, rate_max, otemp, rvs, t2_qg_sd
+    real(wp) :: xdi, xmi, oxmi, c_snow, rate_max, otemp, rvs, t2_qg_sd, xfrz, xlam, xmvd
     real(dp) :: lami, lamr, n0_r, n0_g
     integer :: k, nz, idx_i, idx_i1
     real(wp), dimension(:), allocatable :: t1_subl
@@ -3011,15 +3011,31 @@ module module_mp_tempo_main
             tend%pnr_rci(k) = rhof(k)*t1_qr_qi*ef_ri*ni(k)*n0_r * &
               ((lamr+fv_r)**(-cre(9)))
             tend%pnr_rci(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rci(k))
-            tend%png_rci(k) = tend%pnr_rci(k) * &
-              max(min((0.05_wp*10._wp**(0.3_wp*w1d(k))), 1._wp), 0.1_wp)
+
+            
+!!            tend%png_rci(k) = tend%pnr_rci(k)
+!!              max(min((0.05_wp*10._wp**(0.3_wp*w1d(k))), 1._wp), 0.1_wp)
 !!              max(min((10._wp**(-0.1*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
             tend%pni_rci(k) = tend%pri_rci(k) * oxmi
             tend%prr_rci(k) = rhof(k)*t2_qr_qi*ef_ri*ni(k)*n0_r * &
               ((lamr+fv_r)**(-cre(8)))
             tend%prr_rci(k) = min(real(rr(k)*odt, kind=dp), tend%prr_rci(k))
-            tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
-            tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
+
+            if (tend%prr_rci(k) > r1) then
+               xlam = (am_r*crg(3)*org2*tend%pnr_rci(k)/tend%prr_rci(k))**obmr
+               xmvd = (3.0_wp + mu_r + 0.672_wp) / xlam
+               if (xmvd > 350.e-6) then
+                  tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
+                  tend%png_rci(k) = tend%pnr_rci(k)
+                  tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
+               else
+                  tend%pri_rci(k) = -tend%prr_rci(k)
+                  tend%pni_rci(k) = -tend%pnr_rci(k)
+               endif
+            endif
+           
+!!!!            tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
+!!!!            tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
 !            if (tend%prg_rcg(k) > r1) then
 !              tend%png_rci(k) = tend%png_rci(k) * &
 !                max(min((tend%prg_rci(k)/tend%prg_rcg(k)), 1._dp), 0.1_dp)
@@ -3120,7 +3136,7 @@ module module_mp_tempo_main
             n0_melt = (1.e-4_wp/rg(k))*ogg2*lamg**cge(2,1)
           endif
           t2_qg_me = pi*4._wp * c_cube*olfus * &
-            0.2_wp*sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
+            0.28_wp*sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
           tend%prr_gml(k) = (tempc*tcond(k)-lvap0*diffu(k)*delqvs(k)) * &
             n0_melt*(t1_qg_me*ilamg(k)**cge(10,1) + &
             t2_qg_me*rhof2(k)*vsc2(k)*ilamg(k)**cge(11,idx(k)))
@@ -3136,7 +3152,7 @@ module module_mp_tempo_main
             tend%pnr_gml(k) = 0._dp
             tend%pbg_gml(k) = 0._dp
             if (ssati(k) < 0._wp) then
-              t2_qg_sd = 0.28_wp*Sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
+              t2_qg_sd = 0.28_wp*sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
               tend%prg_gde(k) = C_cube*t1_subl(k)*diffu(k)*ssati(k)*rvs * n0_g * &
                 (t1_qg_sd*ilamg(k)**cge(10,1) + &
                 t2_qg_sd*vsc2(k)*rhof2(k)*ilamg(k)**cge(11,idx(k)))
