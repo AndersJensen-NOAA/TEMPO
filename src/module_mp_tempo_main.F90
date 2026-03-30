@@ -2806,9 +2806,9 @@ module module_mp_tempo_main
           ! reduce number of graupel particles created at higher vertical velocities
 !          tend%png_rfz(k) = tend%pnr_rfz(k) * &
 !            max(min((10._wp**(-0.1_wp*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
-          tend%png_rfz(k) = tend%pnr_rfz(k) * &
-            max(min((0.1_wp*10._wp**(0.1_wp*w1d(k))), 1._wp), 0.1_wp)
-          ! tend%png_rfz(k) = tend%pnr_rfz(k)
+!          tend%png_rfz(k) = tend%pnr_rfz(k) * &
+!            max(min((0.05_wp*10._wp**(0.3_wp*w1d(k))), 1._wp), 0.1_wp)
+          tend%png_rfz(k) = tend%pnr_rfz(k)
         elseif (rr(k) > r1 .and. temp(k) < hgfrz) then
           tend%pri_rfz(k) = rr(k)*odt
           tend%pni_rfz(k) = nr(k)*odt
@@ -3012,7 +3012,7 @@ module module_mp_tempo_main
               ((lamr+fv_r)**(-cre(9)))
             tend%pnr_rci(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rci(k))
             tend%png_rci(k) = tend%pnr_rci(k) * &
-              max(min((0.1_wp*10._wp**(0.1_wp*w1d(k))), 1._wp), 0.1_wp)
+              max(min((0.05_wp*10._wp**(0.3_wp*w1d(k))), 1._wp), 0.1_wp)
 !!              max(min((10._wp**(-0.1*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
             tend%pni_rci(k) = tend%pri_rci(k) * oxmi
             tend%prr_rci(k) = rhof(k)*t2_qr_qi*ef_ri*ni(k)*n0_r * &
