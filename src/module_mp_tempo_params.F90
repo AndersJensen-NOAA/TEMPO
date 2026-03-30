@@ -119,8 +119,8 @@ module module_mp_tempo_params
   real(wp), parameter :: rime_conversion = 0.95_wp !! snow to graupel rime conversion parameter
   real(wp), parameter :: ef_si = 0.05_wp !! snow-ice collection efficiency
   real(wp), parameter :: ef_rs = 0.95_wp !! rain-snow collection efficiency
-  real(wp), parameter :: ef_rg = 0.75_wp !! rain-graupel collection efficiency
-  real(wp), parameter :: ef_ri = 0.95_wp !! rain-ice collection efficiency
+  real(wp), parameter :: ef_rg = 0.95_wp !! rain-graupel collection efficiency
+  real(wp), parameter :: ef_ri = 0.25_wp !! rain-ice collection efficiency
   real(wp), parameter :: autocon_nr_factor = 10._wp !! factor controlling rain number tendency from autconversion (larger produces few drops)
   real(wp), parameter :: timestep_conversion_rime_to_rain = 120._wp !! timestep above which rime above freezing becomes rain (this timestep should be at least 120s)
 

@@ -434,7 +434,7 @@ module module_mp_tempo_main
     endif
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call riming(temp, rhof, visco, tcond, diffu, delqvs, l_qc, rc, nc, ilamc, mvd_c, rr, &
-        l_qs, rs, smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
+        l_qs, rs, smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx_bg, tend, dt, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call melting(rhof2, rho, temp, qvsi, tcond, diffu, vsc2, ssati, delqvs, &
@@ -2363,14 +2363,14 @@ module module_mp_tempo_main
 
 
   subroutine riming(temp, rhof, visco, tcond, diffu, delqvs, l_qc, rc, nc, ilamc, mvd_c, &
-    rr, l_qs, rs, smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx, tend, odt)
+    rr, l_qs, rs, smo0, smob, smoc, smoe, vtboost, l_qg, rg, ng, ilamg, idx, tend, dt, odt)
     !! snow and graupel riming
     use module_mp_tempo_params, only : d0c, d0s, nbs, ds, t_efsw, t1_qs_qc, &
       r_g, bm_g, mu_g, av_g, cgg, ogg3, bv_g, rho_w, t0, d0g, pi, cge, ogg2, &
       rime_threshold, rime_conversion, av_s, bv_s, rho_s, xm0i, eps, fv_s, &
       meters3_to_liters, lsub, lfus, rho_i, nrhg
 
-    real(wp), intent(in) :: odt    
+    real(wp), intent(in) :: dt, odt    
     type(ty_tend), intent(inout) :: tend
     real(wp), dimension(:), intent(in) :: rhof, visco, temp, rc, nc, rr, rs, rg, ng
     real(wp), dimension(:), intent(in) :: tcond, diffu, delqvs, mvd_c
@@ -2380,7 +2380,7 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(out) :: vtboost
 
     real(dp) :: xds, xdg, n0_g, lamc
-    real(wp) :: ef_sw, vtg, stoke_g, const_ri, tempc, rime_dens, ef_gw
+    real(wp) :: ef_sw, vtg, stoke_g, const_ri, tempc, rime_dens, ef_gw, rime_dc
     real(wp) :: t1_qg_qc, r_frac, g_frac, vts, tf, snow_dens_frac, wet_growth_check
     integer :: k, nz, idxs, nu_c
 
@@ -2412,15 +2412,17 @@ module module_mp_tempo_main
               tend%prs_sde(k) > eps) then
               r_frac = min(30.0_dp, tend%prs_scw(k)/tend%prs_sde(k))
               g_frac = min(rime_conversion, 0.15_wp + (r_frac-2._wp)*.028_wp)
-              vtboost(k) = min(1.5_wp, 1.1_wp + (r_frac-2.)*.016_wp)
+              vtboost(k) = min(1.5_wp, 1.1_wp + (r_frac-2.)*.014_wp)
               tend%prg_scw(k) = g_frac*tend%prs_scw(k)
               tend%png_scw(k) = tend%prg_scw(k)*smo0(k)/rs(k)
               vts = av_s*xds**bv_s * exp(-fv_s*xds)
               const_ri = -1._wp*(mvd_c(k)*0.5e6_wp)*vts/min(-0.1_wp,tempc)
               const_ri = max(0.1_wp, min(const_ri, 10._wp))
               rime_dens = (0.051_wp + 0.114_wp*const_ri - 0.0055_wp*const_ri*const_ri)*1000._wp
-!              if(rime_dens < 150._wp .or. (tend%prg_rcg(k) > rime_threshold*tend%prg_scw(k))) then
-              if(rime_dens < 150._wp) then
+              rime_dc = (8._wp*tend%prs_scw(k)*dt) / (pi*rime_dens*xds*xds)
+
+!!              if(rime_dens < 150._wp .or. (tend%prg_rcg(k) > rime_threshold*tend%prg_scw(k))) then
+              if(rime_dens < 150._wp .or. rime_dc < 0.8_wp * xds) then
                 g_frac = 0._wp
                 tend%prg_scw(k) = 0._dp
                 tend%png_scw(k) = 0._dp
@@ -2717,26 +2719,9 @@ module module_mp_tempo_main
 !            tend%png_rcs(k) = tnr_racs1(idx_s,idx_t,idx_r1,idx_r) &
 !              + tnr_racs2(idx_s,idx_t,idx_r1,idx_r)
 !            tend%png_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%png_rcs(k))
-!            tend%png_rcs(k) = tend%pnr_rcs(k) * &
-!              max(min((10._wp**(-0.1_wp*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
-!            tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
-
-            if (tend%prr_rcs(k) > r1) then
-               xlam = (am_r*crg(3)*org2*tend%pnr_rcs(k)/tend%prr_rcs(k))**obmr
-               xmvd = (3.0_wp + mu_r + 0.672_wp) / xlam
-               if (xmvd > 2.*350.e-6) then
-                  tend%png_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%png_rcs(k))
-                  tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
-                  
-!                  tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
-!                  tend%png_rci(k) = tend%pnr_rci(k)
-!                  tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
-               else
-                  tend%prg_rcs(k) = 0._dp
-                  tend%prs_rcs(k) = tend%prr_rcs(k)
-               endif
-            endif
-            
+            tend%png_rcs(k) = tend%pnr_rcs(k) * &
+              max(min((10._wp**(-0.1_wp*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
+            tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
           else
             tend%prs_rcs(k) = -tcs_racs1(idx_s,idx_t,idx_r1,idx_r) &
               - tms_sacr1(idx_s,idx_t,idx_r1,idx_r) &
@@ -3013,8 +2998,8 @@ module module_mp_tempo_main
 
           ! snow collecting cloud ice assumes di << ds and vti ~ 0
           lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
-          xdi = max(real(D0i, kind=dp), (bm_i + mu_i + 1.) * ilami(k))
-          xmi = am_i*xDi**bm_i
+          xdi = max(real(d0i, kind=dp), (bm_i + mu_i + 1.) * ilami(k))
+          xmi = am_i*xdi**bm_i
           oxmi = 1./xmi
           if (rs(k) >= r_s(1)) then
             tend%prs_sci(k) = t1_qs_qi*rhof(k)*ef_si*ri(k)*smoe(k)
@@ -3022,7 +3007,7 @@ module module_mp_tempo_main
           endif
 
           ! rain collecting cloud ice assumes di << dr and vti= ~ 0
-          if (rr(k) >= r_r(1) .and. mvd_r(k) > 4._wp*xdi) then
+          if (rr(k) >= r_r(1) .and. mvd_r(k) > 5._wp*xdi) then
             lamr = 1._wp/ilamr(k)
             n0_r = nr(k)*org2*lamr**cre(2)
             tend%pri_rci(k) = rhof(k)*t1_qr_qi*ef_ri*ri(k)*n0_r * &
@@ -3040,18 +3025,22 @@ module module_mp_tempo_main
               ((lamr+fv_r)**(-cre(8)))
             tend%prr_rci(k) = min(real(rr(k)*odt, kind=dp), tend%prr_rci(k))
 
-            if (tend%prr_rci(k) > r1) then
-               xlam = (am_r*crg(3)*org2*tend%pnr_rci(k)/tend%prr_rci(k))**obmr
-               xmvd = (3.0_wp + mu_r + 0.672_wp) / xlam
-               if (xmvd > 2.*350.e-6) then
-                  tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
-                  tend%png_rci(k) = tend%pnr_rci(k)
-                  tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
-               else
-                  tend%pri_rci(k) = -tend%prr_rci(k)
-                  tend%pni_rci(k) = -tend%pnr_rci(k)
-               endif
-            endif
+            tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
+            tend%png_rci(k) = tend%pnr_rci(k)
+            tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
+            
+!            if (tend%prr_rci(k) > r1) then
+!               xlam = (am_r*crg(3)*org2*tend%pnr_rci(k)/tend%prr_rci(k))**obmr
+!               xmvd = (3.0_wp + mu_r + 0.672_wp) / xlam
+!               if (xmvd > 1000.e-6) then
+!                  tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
+!                  tend%png_rci(k) = tend%pnr_rci(k)
+!                  tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
+!               else
+!                  tend%pri_rci(k) = -tend%prr_rci(k)
+!                  tend%pni_rci(k) = -tend%pnr_rci(k)
+!               endif
+!            endif
            
 !!!!            tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
 !!!!            tend%pbg_rci(k) = tend%prg_rci(k)/rho_i

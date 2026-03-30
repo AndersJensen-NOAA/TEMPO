@@ -21,7 +21,7 @@ module module_mp_tempo_cfgs
     logical :: turn_off_micro_flag = .false. !! flag to turn off all microphysical processes
     logical :: cloud_condensation_flag = .true. !! flag to control cloud condensation
     character(len=32) :: single_moment_nc_opt = 'land' !! option for single moment cloud number concentration when land input is not present (options include 'land' that uses nt_c_l, 'ocean' that uses nt_c_o, or string value in m^-3, e.g. '10.e6')
-    integer :: graupel_fallspeed_opt = 0 !! original method for graupel fallspeed (0 = [Mitchell and Heymsfield (2005)](https://doi.org/10.1175/JAS3413.1) / [Milbrandt and Morrison (2013)](https://doi.org/10.1175/JAS-D-12-0204.1), 1 = new for v3.1.0 where Cd is calculated to match av_g: (credit Ted Mansell, NOAA)
+    integer :: graupel_fallspeed_opt = 1 !! original method for graupel fallspeed (0 = [Mitchell and Heymsfield (2005)](https://doi.org/10.1175/JAS3413.1) / [Milbrandt and Morrison (2013)](https://doi.org/10.1175/JAS-D-12-0204.1), 1 = new for v3.1.0 where Cd is calculated to match av_g: (credit Ted Mansell, NOAA)
     logical :: verbose = .false. !! flag to turn on verbose print statements
     ! flags to turn on/off diagnostic output
     logical :: refl10cm_flag = .true. !! flag to output 10cm reflectivity
