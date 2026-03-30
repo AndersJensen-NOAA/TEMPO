@@ -1185,9 +1185,9 @@ module module_mp_tempo_main
             mvd_g(k) = 25.4e-3_wp
             lamg = (3.0_dp + mu_g + 0.672_dp) / mvd_g(k)
             ng(k) = cgg(2,1)*ogg3*rg(k)*lamg**bm_g / am_g(idx(k))
-          elseif (mvd_g(k) < 5._wp*d0r) then
+          elseif (mvd_g(k) < 1._wp*d0r) then
             hit_limit = .true.
-            mvd_g(k) = 5._wp*d0r
+            mvd_g(k) = 1._wp*d0r
             lamg = (3.0_dp + mu_g + 0.672_dp) / mvd_g(k)
             ng(k) = cgg(2,1)*ogg3*rg(k)*lamg**bm_g / am_g(idx(k))
           endif
@@ -2419,7 +2419,8 @@ module module_mp_tempo_main
               const_ri = -1._wp*(mvd_c(k)*0.5e6_wp)*vts/min(-0.1_wp,tempc)
               const_ri = max(0.1_wp, min(const_ri, 10._wp))
               rime_dens = (0.051_wp + 0.114_wp*const_ri - 0.0055_wp*const_ri*const_ri)*1000._wp
-              if(rime_dens < 150._wp .or. (tend%prg_rcg(k) > rime_threshold*tend%prg_scw(k))) then
+!              if(rime_dens < 150._wp .or. (tend%prg_rcg(k) > rime_threshold*tend%prg_scw(k))) then
+              if(rime_dens < 150._wp) then
                 g_frac = 0._wp
                 tend%prg_scw(k) = 0._dp
                 tend%png_scw(k) = 0._dp
@@ -2680,6 +2681,7 @@ module module_mp_tempo_main
     real(dp), dimension(:), intent(in) :: ilamr, ilamg
     logical, dimension(:), intent(in) :: l_qr, l_qs, l_qg
     integer, dimension(:), intent(in) :: idx
+    real(wp) :: xlam, xmvd
     integer :: k, nz, idx_r, idx_r1, idx_s, idx_t, &
       idx_g, idx_g1
 
@@ -2718,6 +2720,23 @@ module module_mp_tempo_main
 !            tend%png_rcs(k) = tend%pnr_rcs(k) * &
 !              max(min((10._wp**(-0.1_wp*w1d(k)) + 0.1_wp), 1._wp), 0.1_wp)
             tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
+
+            if (tend%prr_rcs(k) > r1) then
+               xlam = (am_r*crg(3)*org2*tend%pnr_rcs(k)/tend%prr_rcs(k))**obmr
+               xmvd = (3.0_wp + mu_r + 0.672_wp) / xlam
+               if (xmvd > 2.*350.e-6) then
+                  tend%png_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%png_rcs(k))
+                  tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
+                  
+!                  tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
+!                  tend%png_rci(k) = tend%pnr_rci(k)
+!                  tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
+               else
+                  tend%prg_rcs(k) = 0._dp
+                  tend%prs_rcs(k) = tend%prr_rcs(k)
+               endif
+            endif
+            
           else
             tend%prs_rcs(k) = -tcs_racs1(idx_s,idx_t,idx_r1,idx_r) &
               - tms_sacr1(idx_s,idx_t,idx_r1,idx_r) &
@@ -2935,7 +2954,7 @@ module module_mp_tempo_main
       c_sqrd, c_cube, oig1, cig, d0s, ntb_i, tpi_ide, tps_iaus, tni_iaus, &
       obmi, r_s, ef_si, t1_qs_qi, r_r, org2, cre, t1_qr_qi, t2_qr_qi, &
       fv_r, ef_ri, rho_i, t1_qs_sd, t2_qs_sd, eps, t1_qg_sd, &
-      sc3, ogg2, cge, cgg, av_g, rho_w, rho_g
+      sc3, ogg2, cge, cgg, av_g, rho_w, rho_g, am_r, mu_r, crg, obmr
 
     real(wp), intent(in) :: odt    
     type(ty_tend), intent(inout) :: tend
@@ -3024,7 +3043,7 @@ module module_mp_tempo_main
             if (tend%prr_rci(k) > r1) then
                xlam = (am_r*crg(3)*org2*tend%pnr_rci(k)/tend%prr_rci(k))**obmr
                xmvd = (3.0_wp + mu_r + 0.672_wp) / xlam
-               if (xmvd > 350.e-6) then
+               if (xmvd > 2.*350.e-6) then
                   tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
                   tend%png_rci(k) = tend%pnr_rci(k)
                   tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
