@@ -356,7 +356,7 @@ module module_mp_tempo_main
     else
       call init_ice_friendly_aerosols(dz1d, nifa)    
     endif
-   
+
     call aerosol_check_and_update(rho=rho, nwfa1d=nwfa1d, nifa1d=nifa1d, &
       nwfa=nwfa, nifa=nifa, nwfaten=nwfaten, nifaten=nifaten, dt=dt)
 
@@ -686,7 +686,7 @@ module module_mp_tempo_main
           ! xnx = nr1d
           ! call rain_check_and_update(rho, l_qr, xrx, xnx, rr, nr, qrten, nrten, ilamr, mvd_r, dt, odt)
           ! call rain_fallspeed(rhof=rhof, l_qr=l_qr, rr=rr, ilamr=ilamr, dz1d=dz1d, &
-          !  vt=vtrr, vtn=vtnr, dt=dt)
+          !   vt=vtrr, vtn=vtnr, dt=dt)
         enddo
       endif 
     endif
@@ -1052,7 +1052,7 @@ module module_mp_tempo_main
           if (xdc < d0c) then
             lamc = cce(2,nu_c)/d0c
             hit_limit = .true.
-          elseif (xDc > d0r*2._dp) then
+          elseif (xdc > d0r*2._dp) then
             lamc = cce(2,nu_c)/(d0r*2._dp)
             hit_limit = .true.
           endif
@@ -1737,11 +1737,8 @@ module module_mp_tempo_main
     do k = ktop, 1, -1
       odz = 1._wp/dz1d(k)
       orho = 1._wp/rho(k)
-      xten(k) = xten(k) + (sed_r(k+1))*(1._wp/dz1d(k))*(1._wp/real(steps, kind=wp))/rho(k)
-      xten(k) = xten(k) - (sed_r(k))*odz*(1._wp/real(steps, kind=wp))*orho
-
-      xr(k) = max(limit, xr(k) + (sed_r(k+1))*(1._wp/dz1d(k))*dt*(1._wp/real(steps, kind=wp)))
-      xr(k) = max(limit, xr(k) - (sed_r(k))*odz*dt*(1._wp/real(steps, kind=wp)))
+      xten(k) = xten(k) + (sed_r(k+1)-sed_r(k))*odz*(1._wp/real(steps, kind=wp))*orho
+      xr(k) = max(limit, xr(k) + (sed_r(k+1)-sed_r(k))*odz*dt*(1._wp/real(steps, kind=wp)))
     enddo
 
     if (present(precip)) then 
@@ -2028,7 +2025,7 @@ module module_mp_tempo_main
     !! calculates mass and number weighted fall speeds for graupel
     !! and optionally the substepping required and the top k-level of sedimentation
     use module_mp_tempo_params, only : nrhg, rho_g, av_g_old, bv_g_old, &
-      cgg, t0, mu_g, ogg2, ogg3, a_coeff, b_coeff, meters3_to_liters, rho_not
+      cgg, t0, mu_g, ogg2, ogg3, a_coeff, b_coeff, meters3_to_liters, earth_gravity, rho_not
 
     real(wp), intent(in) :: dt    
     real(wp), dimension(:), intent(in) :: rhof, rho, visco, dz1d, rg, rb
@@ -2052,13 +2049,13 @@ module module_mp_tempo_main
 !          afall = afall * visco(k)**(1._wp-2._wp*b_coeff)
           IF ( .false. ) THEN
              IF ( .true. ) THEN
-                afall = a_coeff*((4._wp*dens_g*9.8_wp)/(3._wp*rho(k)))**b_coeff
+                afall = a_coeff*((4._wp*dens_g*earth_gravity)/(3._wp*rho(k)))**b_coeff
              ELSE
-                afall = a_coeff*((4._wp*dens_g*9.8_wp)/(3._wp*rho_not))**b_coeff
+                afall = a_coeff*((4._wp*dens_g*earth_gravity)/(3._wp*rho_not))**b_coeff
              ENDIF
              afall = afall * visco(k)**(1._wp-2._wp*b_coeff)
           ELSE
-             afall = (4.0*dens_g*9.8/(3*0.504843467198652*rho_not))**b_coeff
+             afall = (4._wp*dens_g*earth_gravity/(3._wp*0.504843467198652_wp*rho_not))**b_coeff
           ENDIF
           bfall = 3._wp*b_coeff - 1._wp
         else
@@ -2262,9 +2259,9 @@ module module_mp_tempo_main
           otemp = 1._wp/temp(k)
           rvs = rho(k)*qvs(k)
           rvs_p = rvs*otemp*(lvap(k)*otemp*orv - 1._wp)
-          rvs_pp = rvs * (otemp*(lvap(k)*otemp*oRv - 1._wp) * &
-            otemp*(lvap(k)*otemp*oRv - 1._wp) + &
-            (-2._wp*lvap(k)*otemp*otemp*otemp*oRv) + otemp*otemp)
+          rvs_pp = rvs * (otemp*(lvap(k)*otemp*orv - 1._wp) * &
+            otemp*(lvap(k)*otemp*orv - 1._wp) + &
+            (-2._wp*lvap(k)*otemp*otemp*otemp*orv) + otemp*otemp)
           gamsc = lvap(k)*diffu(k)/tcond(k) * rvs_p
           alphsc = 0.5_wp*(gamsc/(1._wp+gamsc))*(gamsc/(1._wp+gamsc)) * &
             rvs_pp/rvs_p * rvs/rvs_p
@@ -2319,9 +2316,9 @@ module module_mp_tempo_main
           otemp = 1._wp/temp(k)
           rvs = rho(k)*qvs(k)
           rvs_p = rvs*otemp*(lvap(k)*otemp*orv - 1._wp)
-          rvs_pp = rvs * (otemp*(lvap(k)*otemp*oRv - 1._wp) * &
-            otemp*(lvap(k)*otemp*oRv - 1._wp) + &
-            (-2._wp*lvap(k)*otemp*otemp*otemp*oRv) + otemp*otemp)
+          rvs_pp = rvs * (otemp*(lvap(k)*otemp*orv - 1._wp) * &
+            otemp*(lvap(k)*otemp*orv - 1._wp) + &
+            (-2._wp*lvap(k)*otemp*otemp*otemp*orv) + otemp*otemp)
           gamsc = lvap(k)*diffu(k)/tcond(k) * rvs_p
           alphsc = 0.5_wp*(gamsc/(1._wp+gamsc))*(gamsc/(1._wp+gamsc)) * &
             rvs_pp/rvs_p * rvs/rvs_p
@@ -2641,7 +2638,7 @@ module module_mp_tempo_main
               tend%prs_sde(k) > eps) then
               r_frac = min(30.0_dp, tend%prs_scw(k)/tend%prs_sde(k))
               g_frac = min(rime_conversion, 0.15_wp + (r_frac-2._wp)*.028_wp)
-              vtboost(k) = min(1.5_wp, 1.1_wp + (r_frac-2.)*.016_wp)
+              vtboost(k) = min(1.5_wp, 1.1_wp + (r_frac-2.)*.014_wp)
               tend%prg_scw(k) = g_frac*tend%prs_scw(k)
               tend%png_scw(k) = tend%prg_scw(k)*smo0(k)/rs(k)
               vts = av_s*xds**bv_s * exp(-fv_s*xds)
@@ -3262,8 +3259,8 @@ module module_mp_tempo_main
 
           ! snow collecting cloud ice assumes di << ds and vti ~ 0
           lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
-          xdi = max(real(D0i, kind=dp), (bm_i + mu_i + 1.) * ilami(k))
-          xmi = am_i*xDi**bm_i
+          xdi = max(real(d0i, kind=dp), (bm_i + mu_i + 1.) * ilami(k))
+          xmi = am_i*xdi**bm_i
           oxmi = 1./xmi
           if (rs(k) >= r_s(1)) then
             tend%prs_sci(k) = t1_qs_qi*rhof(k)*ef_si*ri(k)*smoe(k)
@@ -3399,7 +3396,7 @@ module module_mp_tempo_main
             n0_melt = (1.e-4_wp/rg(k))*ogg2*lamg**cge(2,1)
           endif
           t2_qg_me = pi*4._wp * c_cube*olfus * &
-            0.2_wp*sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
+            0.28_wp*sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
           tend%prr_gml(k) = (tempc*tcond(k)-lvap0*diffu(k)*delqvs(k)) * &
             n0_melt*(t1_qg_me*ilamg(k)**cge(10,1) + &
             t2_qg_me*rhof2(k)*vsc2(k)*ilamg(k)**cge(11,idx(k)))
@@ -3415,8 +3412,8 @@ module module_mp_tempo_main
             tend%pnr_gml(k) = 0._dp
             tend%pbg_gml(k) = 0._dp
             if (ssati(k) < 0._wp) then
-              t2_qg_sd = 0.28_wp*Sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
-              tend%prg_gde(k) = C_cube*t1_subl(k)*diffu(k)*ssati(k)*rvs * n0_g * &
+              t2_qg_sd = 0.28_wp*sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
+              tend%prg_gde(k) = c_cube*t1_subl(k)*diffu(k)*ssati(k)*rvs * n0_g * &
                 (t1_qg_sd*ilamg(k)**cge(10,1) + &
                 t2_qg_sd*vsc2(k)*rhof2(k)*ilamg(k)**cge(11,idx(k)))
               tend%prg_gde(k) = max(real(-rg(k)*odt, kind=dp), tend%prg_gde(k))
@@ -3503,7 +3500,7 @@ module module_mp_tempo_main
           tend%pna_sca(k))
         ef_sa = aerosol_collection_efficiency(xds, if_aerosol_size, &
           visco(k), rho(k), temp(k), 's')
-        tend%pnd_scd(k) = rhof(k)*t1_qs_qc*Ef_sa*nifa(k)*smoe(k)
+        tend%pnd_scd(k) = rhof(k)*t1_qs_qc*ef_sa*nifa(k)*smoe(k)
         tend%pnd_scd(k) = min(real(nifa(k)*odt, kind=dp), &
           tend%pnd_scd(k))
       endif
