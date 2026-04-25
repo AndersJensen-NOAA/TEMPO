@@ -928,7 +928,7 @@ module module_mp_tempo_main
       allocate(tempo_main_diags%refl10cm(nz), source=-35._wp)
       call reflectivity_10cm(tempo_cfgs%refl10cm_from_melting_flag, &
         temp, l_qr, rr, nr, ilamr, &
-        l_qs, rs, smoc, smob, smoz, l_qg, rg, ng, idx_bg, ilamg, l_qh, ilamh, &
+        l_qs, rs, smoc, smob, smoz, l_qg, rg, ng, idx_bg, ilamg, l_qh, nh, ilamh, &
         tempo_main_diags%refl10cm)
     endif 
 
@@ -1350,7 +1350,7 @@ module module_mp_tempo_main
 
   subroutine hail_check_and_update(rho, l_qh, qh1d, rh, nh, qhten, ilamh, dt, odt)
     !! computes hail contents and ilamh
-    use module_mp_tempo_params, only : r1, r2, n0_h, nrhg, am_g, cgg, cge, gonv_min, gonv_max, &
+    use module_mp_tempo_params, only : r1, r2, nrhg, am_g, cgg, cge, gonv_min, gonv_max, &
          am_g, nrhg, cgg, oge1, ogg1, ogg2, obmg, bm_g, ogg3
 
     real(wp), intent(in) :: dt, odt
@@ -3352,7 +3352,7 @@ module module_mp_tempo_main
     real(dp), dimension(:), intent(in) :: smof, smo0, smo1, ilamg, ilamh
     integer, dimension(:), intent(in) :: idx
     real(wp) :: tempc, otemp, rvs, melt_f, t2_qg_me, t2_qg_sd, t2_qh_me
-    real(dp) :: n0_g, n0_melt, lamg, n0_H
+    real(dp) :: n0_g, n0_melt, lamg, n0_h
     integer :: k, nz
     real(wp), dimension(:), allocatable :: t1_subl
 
