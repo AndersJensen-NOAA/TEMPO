@@ -28,6 +28,7 @@ module module_mp_tempo_cfgs
     logical :: re_snow_flag = .true. !! flag to output snow effective radius
     logical :: max_hail_diameter_flag = .true. !! flag to output maximum hail diameter
     logical :: rain_med_vol_diam_flag = .false. !! flag to output median volume diameter for rain
+    logical :: liquid_water_path_flag = .true. !! flag to output liquid water path
     logical :: graupel_med_vol_diam_flag = .false. !! flag to output median volume diameter for graupel
     logical :: cloud_number_mixing_ratio_flag = .false. !! flag to output cloud number mixing ratio
   end type

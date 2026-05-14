@@ -22,6 +22,7 @@ module module_mp_tempo_driver
     real(wp), dimension(:,:), allocatable :: graupel_liquid_equiv_precip
     real(wp), dimension(:,:), allocatable :: frozen_fraction
     real(wp), dimension(:,:), allocatable :: frz_rain_precip
+    real(wp), dimension(:,:), allocatable :: liquid_water_path
     real(wp), dimension(:,:), allocatable :: max_hail_diameter_sfc
     real(wp), dimension(:,:), allocatable :: max_hail_diameter_column
     real(wp), dimension(:,:,:), allocatable :: refl10cm
@@ -354,6 +355,14 @@ module module_mp_tempo_driver
     endif
 
     ! 2d diagnostics
+    if (tempo_cfgs%liquid_water_path_flag) then
+      if (.not. allocated(tempo_diags%liquid_water_path)) then
+        allocate(tempo_diags%liquid_water_path(its:ite, jts:jte), source=0._wp)
+      else
+        tempo_diags%liquid_water_path = 0._wp
+      endif
+    endif
+
     if (tempo_cfgs%max_hail_diameter_flag) then
       if (.not. allocated(tempo_diags%max_hail_diameter_sfc)) then
         allocate(tempo_diags%max_hail_diameter_sfc(its:ite, jts:jte), source=0._wp)
@@ -446,6 +455,7 @@ module module_mp_tempo_driver
         tempo_diags%graupel_liquid_equiv_precip(i,j) = tempo_main_diags%graupel_liquid_equiv_precip
         tempo_diags%frozen_fraction(i,j) = tempo_main_diags%frozen_fraction
         tempo_diags%frz_rain_precip(i,j) = tempo_main_diags%frz_rain_precip
+        tempo_diags%liquid_water_path(i,j) = tempo_main_diags%liquid_water_path
 
         ! 3d diagnostics
         if (allocated(tempo_diags%cloud_number_mixing_ratio) .and. allocated(tempo_main_diags%cloud_number_mixing_ratio)) then

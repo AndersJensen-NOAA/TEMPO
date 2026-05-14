@@ -6,7 +6,7 @@ module module_mp_tempo_diags
   implicit none
   private
   
-  public :: reflectivity_10cm, effective_radius, max_hail_diam, freezing_rain
+  public :: reflectivity_10cm, effective_radius, max_hail_diam, freezing_rain, liquid_water_path
 
   contains 
 
@@ -454,5 +454,21 @@ module module_mp_tempo_diags
       endif 
     endif   
   end subroutine freezing_rain
+
+
+  subroutine liquid_water_path(qc, rho, dz, lwp)
+    !! calculates liquid water path [kg/m²]
+    !!
+    !! \( LWP = \int qc \cdot \rho \cdot dz \)
+    real(wp), dimension(:), intent(in) :: qc, rho, dz
+    real(wp), intent(out) :: lwp
+    integer :: k, nz
+
+    nz = size(qc)
+    lwp = 0._wp
+    do k = 1, nz
+      lwp = lwp + qc(k) * rho(k) * dz(k)
+    enddo
+  end subroutine liquid_water_path
 
 end module module_mp_tempo_diags

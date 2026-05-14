@@ -6,7 +6,7 @@ module module_mp_tempo_main
     meters3_to_liters, eps, aero_max, nwfa_default, nifa_default
   use module_mp_tempo_utils, only : get_nuc, get_constant_cloud_number, snow_moments, calc_rslf, calc_rsif
   use module_mp_tempo_diags, only : reflectivity_10cm, effective_radius, max_hail_diam, &
-    freezing_rain
+    freezing_rain, liquid_water_path
   use module_mp_tempo_aerosols, only : init_ice_friendly_aerosols, init_water_friendly_aerosols, &
     aerosol_collection_efficiency
   use module_mp_tempo_ml, only : tempo_ml_predict_cloud_number
@@ -33,6 +33,7 @@ module module_mp_tempo_main
     real(wp) :: graupel_liquid_equiv_precip
     real(wp) :: frozen_fraction
     real(wp) :: frz_rain_precip
+    real(wp) :: liquid_water_path
     real(wp), dimension(:), allocatable :: rain_med_vol_diam
     real(wp), dimension(:), allocatable :: graupel_med_vol_diam
     real(wp), dimension(:), allocatable :: refl10cm
@@ -851,6 +852,11 @@ module module_mp_tempo_main
       endif
       call effective_radius(temp, l_qc, nc, ilamc, l_qi, ilami, l_qs, rs, &
         tempo_main_diags%re_cloud, tempo_main_diags%re_ice, tempo_main_diags%re_snow)
+    endif
+
+    ! liquid water path
+    if (tempo_cfgs%liquid_water_path_flag) then
+      call liquid_water_path(qc1d, rho, dz1d, tempo_main_diags%liquid_water_path)
     endif
   end subroutine tempo_main
 
