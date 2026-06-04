@@ -345,7 +345,7 @@ module module_mp_tempo_main
       if ((xland1d(1) > 1.5) .and. (hgt <= hgt_cf)) then ! ocean
         cf_rh(k) = cloud_fraction_rh_pbl_water
       endif
-      if ((xland1d(1) < 1.5) .and. (hgt <= hpbl1d(1))) then ! land
+      if ((xland1d(1) < 1.5) .and. (hgt < hpbl1d(1))) then ! land
         cf_rh(k) = cloud_fraction_rh_pbl_water
       endif     
       temp(k) = t1d(k)
@@ -2363,7 +2363,7 @@ module module_mp_tempo_main
              tend%pra_ini(k) = (0.5_wp/bs*(bs+qi_mean) * odt)
              tend%prw_ini(k) = tend%pra_ini(k)*0.5_dp*(bs+qi_mean) * rho(k) ! kg/m3/s
              
-             if (ssati(k) > (cloud_fraction_rh-0.1-0.99_wp) .and. ssati(k) < 0._wp .and. temp(k) < 258.15 .and. omega < eps) then
+             if (ssati(k) > (cloud_fraction_rh-0.15-0.99_wp) .and. ssati(k) < 0._wp .and. temp(k) < 258.15 .and. omega < eps) then
                 qi_ = qi1d(k) + tend%prw_ini(k)*orho*dt
                 if ((abs(sd) > 1.e-6_wp) .and. qi_ > r1) then
                    qifrac_ = qifrac1d(k)
@@ -2431,14 +2431,17 @@ module module_mp_tempo_main
 !            tend%pra_sgi(k) = 0.5_dp/bs*(bs+qc_mean) * odt
 !            tend%prw_sgi(k) = tend%pra_sgi(k)*0.5_dp*(bs+qc_mean) * rho(k) ! kg/m3/s
 
+         tend%pra_sgi(k) = qcfrac_bl1d(k) * odt
+         tend%prw_sgi(k) = qc_bl1d(k) * odt * rho(k)
+            
          if (ssatw(k) > (cf_rh(k)-0.99_wp) .and. ssatw(k) < 0._wp) then
             if (temp(k) > 253.15 .and. dz1d(k) > 100._wp) then
-               tend%pra_sgi(k) = 0.5_dp/bs*(bs+qc_mean) * odt
-               tend%prw_sgi(k) = tend%pra_sgi(k)*0.5_dp*(bs+qc_mean) * rho(k) ! kg/m3/s
+               tend%pra_sgi(k) = tend%pra_sgi(k) + 0.5_dp/bs*(bs+qc_mean) * odt
+               tend%prw_sgi(k) = tend%prw_sgi(k) + tend%pra_sgi(k)*0.5_dp*(bs+qc_mean) * rho(k) ! kg/m3/s
             endif
             
-            tend%pra_sgi(k) = tend%pra_sgi(k) + qcfrac_bl1d(k) * odt
-            tend%prw_sgi(k) = tend%prw_sgi(k) + qc_bl1d(k) * odt * rho(k)
+            ! tend%pra_sgi(k) = tend%pra_sgi(k) + qcfrac_bl1d(k) * odt
+            ! tend%prw_sgi(k) = tend%prw_sgi(k) + qc_bl1d(k) * odt * rho(k)
             
             if ((qc1d(k)*rho(k) + tend%prw_sgi(k)*dt) <= r1) then
               tend%pra_sgi(k) = 0._dp
@@ -2718,7 +2721,7 @@ module module_mp_tempo_main
       !> with characteristic diameters correctly computed from gamma distribution of cloud droplets
       if (l_qc(k)) then
         ! if (rc(k)*qcfrac1d(k) > 0.01e-3_wp) then ! .and. qcfrac1d(k) > 0.99) then
-        if (rc(k) > 0.01e-3_wp) then ! .and. qcfrac1d(k) > 0.99) then            
+        if (rc(k)*qcfrac1d(k) > 0.05e-3_wp) then ! .and. qcfrac1d(k) > 0.99) then            
           nu_c = get_nuc(nc(k))
           lamc = 1._dp / ilamc(k)       
           xdc = max(d0c*1.e6_wp, ((rc(k)/(am_r*nc(k)))**obmr) * 1.e6_wp)
@@ -2733,7 +2736,7 @@ module module_mp_tempo_main
           tend%prr_wau(k) = zeta/tau
           tend%prr_wau(k) = min(real(rc(k)*odt, kind=dp), &
             tend%prr_wau(k))
-          tend%pnr_wau(k) = tend%prr_wau(k) / (am_r*nu_c*autocon_nr_factor*d0r*d0r*d0r) 
+          tend%pnr_wau(k) = tend%prr_wau(k) / (qcfrac1d(k)*am_r*nu_c*autocon_nr_factor*d0r*d0r*d0r) 
           tend%pnc_wau(k) = min(real(nc(k)*odt, kind=dp), &
             tend%prr_wau(k) / (am_r*mvd_c(k)*mvd_c(k)*mvd_c(k)))
           
@@ -3360,18 +3363,20 @@ module module_mp_tempo_main
 
           ! conversion of cloud ice to snow
           if ((idx_i == ntb_i) .or. (xdi >  5.0_wp*d0s)) then
-!             if (qifrac1d(k) > 0.95) then
-             tend%prs_iau(k) = ri(k)*.99_wp*odt * qifrac1d(k)
-             tend%pni_iau(k) = ni(k)*.95_wp*odt * qifrac1d(k)
-!             endif
+             if (qifrac1d(k) > 0.95) then
+               tend%prs_iau(k) = ri(k)*.99_wp*odt * qifrac1d(k)
+               tend%pni_iau(k) = ni(k)*.95_wp*odt * qifrac1d(k)
+             endif
           elseif (xdi < 0.1_wp*d0s) then
             tend%prs_iau(k) = 0._dp
             tend%pni_iau(k) = 0._dp
           else
-            tend%prs_iau(k) = tps_iaus(idx_i,idx_i1)*odt * qifrac1d(k)
-            tend%prs_iau(k) = min(real(ri(k)*.99_wp*odt, kind=dp), tend%prs_iau(k))
-            tend%pni_iau(k) = tni_iaus(idx_i,idx_i1)*odt * qifrac1d(k)
-            tend%pni_iau(k) = min(real(ni(k)*.95_wp*odt, kind=dp), tend%pni_iau(k))
+            if (qifrac1d(k) > 0.95) then            
+              tend%prs_iau(k) = tps_iaus(idx_i,idx_i1)*odt * qifrac1d(k)
+              tend%prs_iau(k) = min(real(ri(k)*.99_wp*odt, kind=dp), tend%prs_iau(k))
+              tend%pni_iau(k) = tni_iaus(idx_i,idx_i1)*odt * qifrac1d(k)
+              tend%pni_iau(k) = min(real(ni(k)*.95_wp*odt, kind=dp), tend%pni_iau(k))
+            endif
           endif
 
           ! snow collecting cloud ice assumes di << ds and vti ~ 0
