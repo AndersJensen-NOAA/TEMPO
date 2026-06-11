@@ -2,7 +2,7 @@ module module_mp_tempo_main
   !! main tempo microphysics code
   use module_mp_tempo_cfgs, only : ty_tempo_cfgs
   use module_mp_tempo_params, only : wp, sp, dp, &
-    min_qv, roverrv, rdry, r1, r2, nt_c_max, t0, nrhg, rho_g, cloud_fraction_rh, cloud_fraction_rh_pbl_water, &
+    min_qv, roverrv, rdry, r1, r2, nt_c_max, nt_c_min, t0, nrhg, rho_g, cloud_fraction_rh, cloud_fraction_rh_pbl_water, &
     meters3_to_liters, eps, aero_max, nwfa_default, nifa_default, eps, cf_low, xm0i, lsub
   use module_mp_tempo_utils, only : get_nuc, get_constant_cloud_number, snow_moments, calc_rslf, calc_rsif
   use module_mp_tempo_diags, only : reflectivity_10cm, effective_radius, max_hail_diam, &
@@ -151,7 +151,7 @@ module module_mp_tempo_main
     real(dp), target, dimension(kts:kte, 85) :: tend_work !! array to store tendencies
     
     ! local variables
-    real(wp) :: tempc, tc0, odt, hgt, hgt_cf
+    real(wp) :: tempc, tc0, odt, hgt, hgt_cf, sgs_nc
     real(wp), dimension(kts:kte) :: cf_rh
     logical :: do_micro, supersaturated, above_cloud_fraction_rh
     logical, save :: first_call_main = .true.
@@ -575,7 +575,9 @@ module module_mp_tempo_main
         nwfa, qv, qvs, l_qc, rc, nc, tend, dt, odt)
 
       do k = 1, nz
-        if (satw(k) <= cf_rh(k) .or. satw(k) >= 1.) then
+!!!         if ((satw(k) <= cf_rh(k) .and. qcten_bl1d(k) < eps) .or. satw(k) >= 1.) then
+         if (satw(k) <= cf_rh(k) .or. satw(k) >= 1.) then            
+
           qvten(k) = qvten(k) - tend%prw_vcd(k)*qca1d(k)
           qcten(k) = qcten(k) + tend%prw_vcd(k)*qca1d(k)
           ncten(k) = ncten(k) + tend%pnc_wcd(k)*qca1d(k)
@@ -595,7 +597,7 @@ module module_mp_tempo_main
            qcfracten(k) = qcfracten(k) - &           
              max((5.57_wp*(1000._wp*tend%pnc_wcd(k)/qca1d(k)*dt)**(0.78_wp) * odt), cf_low)
           endif
-        endif 
+       endif
       enddo 
 
       xrx = qc1d
@@ -626,20 +628,53 @@ module module_mp_tempo_main
 
     do k = 1, nz
       if (satw(k) > cf_rh(k) .and. satw(k) < 1.) then
-        qvten(k) = qvten(k) - tend%prw_sgi(k) - tend%prw_slw(k) - tend%prw_sbl(k) - tend%prw_ini(k)
+        qvten(k) = qvten(k) - tend%prw_sgi(k) - tend%prw_slw(k) - tend%prw_sbl(k) ! - tend%prw_ini(k)
         qcten(k) = qcten(k) + tend%prw_sgi(k) + tend%prw_slw(k) + tend%prw_sbl(k)
         ncten(k) = ncten(k) + tend%pnc_sgs(k)
         nwfaten(k) = nwfaten(k) - tend%pnc_sgs(k)
         tten(k) = tten(k) + (lvap(k)*ocp(k) * &
-          (tend%prw_sgi(k) + tend%prw_slw(k) + tend%prw_sbl(k)) + lsub*ocp(k)*tend%prw_ini(k))* (1._wp / rho(k))
+          (tend%prw_sgi(k) + tend%prw_slw(k) + tend%prw_sbl(k)))* (1._wp / rho(k))
         qcfracten(k) = qcfracten(k) + tend%pra_sgi(k) + tend%pra_slw(k) + tend%pra_sbl(k)
         ! update actual cloud fractions here before next checks
 ! AAJ        qca1d(k) = qca1d(k) + qcfracten(k)*dt
-        qifracten(k) = qifracten(k) + tend%pra_ini(k)
-        qiten(k) = qiten(k) + tend%prw_ini(k)
-        niten(k) = niten(k) + tend%prw_ini(k)/xm0i 
+        !qifracten(k) = qifracten(k) + tend%pra_ini(k)
+        !qiten(k) = qiten(k) + tend%prw_ini(k)
+        !niten(k) = niten(k) + tend%prw_ini(k)/xm0i 
 ! AAJ        qia1d(k) = qia1d(k) + qifracten(k)*dt
+     endif
+     tten(k) = tten(k) + (lsub*ocp(k)*tend%prw_ini(k))* (1._wp / rho(k))
+        
+      qvten(k) = qvten(k) - tend%prw_ini(k)
+      qifracten(k) = qifracten(k) + tend%pra_ini(k)
+      qiten(k) = qiten(k) + tend%prw_ini(k)
+      niten(k) = niten(k) + tend%prw_ini(k)/xm0i
+        
+      if (qcfrac_bl1d(k) > 0.05 .and. qcfrac_bl1d(k) < 0.5 .and. temp(k) > 253.15 .and. &
+        qcten_bl1d(k) > eps .and. (ri(k)/rho(k)+rc(k)/rho(k)+qcten(k)*dt+qiten(k)*dt) <= r1) then
+         qcfracten(k) = qcfracten(k) + max(qcfrac_bl1d(k) * odt, 0.1*odt)
+         qcten(k) = qcten(k) + (qcfrac_bl1d(k)**(1./0.78))/5.57/1000.*odt
+         qvten(k) = qvten(k) - (qcfrac_bl1d(k)**(1./0.78))/5.57/1000.*odt         
+
+         sgs_nc = max(max(qcfrac_bl1d(k), 0.1)*nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
+         if (present(nc1d)) then
+            ncten(k) = ncten(k) + 0.5_wp*(sgs_nc/rho(k)-nc1d(k) + abs(sgs_nc/rho(k)-nc1d(k)))*odt
+         endif
+           
+         tten(k) = tten(k) + (lvap(k)*ocp(k) * &
+              ( (qcfrac_bl1d(k)**(1./0.78))/5.57/1000.*odt ))* (1._wp / rho(k))         
+
+
+         !         qcfrac = 5.57_wp*(1000._wp*qc)**(0.78_wp)
+!         tend%prw_sgi(k) = qc_bl1d(k) * odt * rho(k)
+
+!         if (tend%prw_sgi(k)*dt > r1) then
+!            xnc = max(tend%pra_sgi(k)*dt*nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
+!            if (present(nc1d)) then
+!               tend%pnc_sgs(k) = 0.5_wp*(xnc/rho(k)-nc1d(k) + abs(xnc/rho(k)-nc1d(k)))*odt
+!            endif
+!         endif
       endif
+      
     enddo 
 
     xrx = qc1d
@@ -2360,10 +2395,10 @@ module module_mp_tempo_main
              qtot_mean = qv(k) + qi1d(k)
              qi_mean = al*(qtot_mean-qvsi(k))
              ls_cond = -al * dqsdti * (omega*orho*ocp(k))          
-             tend%pra_ini(k) = (0.5_wp/bs*(bs+qi_mean) * odt)
-             tend%prw_ini(k) = tend%pra_ini(k)*0.5_dp*(bs+qi_mean) * rho(k) ! kg/m3/s
+!             tend%pra_ini(k) = (0.5_wp/bs*(bs+qi_mean) * odt)
+!             tend%prw_ini(k) = tend%pra_ini(k)*0.5_dp*(bs+qi_mean) * rho(k) ! kg/m3/s
              
-             if (ssati(k) > (cloud_fraction_rh-0.15-0.99_wp) .and. ssati(k) < 0._wp .and. temp(k) < 258.15 .and. omega < eps) then
+             if (ssati(k) > (cloud_fraction_rh-0.10-0.99_wp) .and. ssati(k) < 0._wp .and. temp(k) < 258.15 .and. omega < eps) then
                 qi_ = qi1d(k) + tend%prw_ini(k)*orho*dt
                 if ((abs(sd) > 1.e-6_wp) .and. qi_ > r1) then
                    qifrac_ = qifrac1d(k)
@@ -2431,11 +2466,12 @@ module module_mp_tempo_main
 !            tend%pra_sgi(k) = 0.5_dp/bs*(bs+qc_mean) * odt
 !            tend%prw_sgi(k) = tend%pra_sgi(k)*0.5_dp*(bs+qc_mean) * rho(k) ! kg/m3/s
 
-         tend%pra_sgi(k) = qcfrac_bl1d(k) * odt
-         tend%prw_sgi(k) = qc_bl1d(k) * odt * rho(k)
+!!         tend%pra_sgi(k) = qcfrac_bl1d(k) * odt
+!!         tend%prw_sgi(k) = qc_bl1d(k) * odt * rho(k)
             
          if (ssatw(k) > (cf_rh(k)-0.99_wp) .and. ssatw(k) < 0._wp) then
-            if (temp(k) > 253.15 .and. dz1d(k) > 100._wp) then
+            !!            if (temp(k) > 253.15 .and. dz1d(k) > 100._wp) then
+            if (temp(k) > 253.15) then            
                tend%pra_sgi(k) = tend%pra_sgi(k) + 0.5_dp/bs*(bs+qc_mean) * odt
                tend%prw_sgi(k) = tend%prw_sgi(k) + tend%pra_sgi(k)*0.5_dp*(bs+qc_mean) * rho(k) ! kg/m3/s
             endif
@@ -2470,9 +2506,11 @@ module module_mp_tempo_main
           tend%pra_sbl(k) = gterm*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*thten_bl1d(k)*theta_to_temp)
           tend%prw_sbl(k) = qcfrac_*al * (qvten_bl1d(k) + qcten_bl1d(k) - dqsdT*(thten_bl1d(k)*theta_to_temp - lvap(k)*ocp(k)*qcten_bl1d(k)))
           
-        ! radiation
-          tend%pra_slw(k) = -gterm*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
-          tend%prw_slw(k) = -qcfrac_*al*dqsdT*thten_lwrad1d(k) * theta_to_temp       
+          ! radiation
+!          if (ssatw(k) > (cf_rh(k)-0.99_wp) .and. ssatw(k) < 0._wp) then          
+             tend%pra_slw(k) = -gterm*al*dqsdT*thten_lwrad1d(k) * theta_to_temp
+             tend%prw_slw(k) = -qcfrac_*al*dqsdT*thten_lwrad1d(k) * theta_to_temp       
+!          endif
           
           if ((tend%prw_slw(k)+tend%prw_sbl(k))*dt > r1) then
             xnc = max(qcfrac_*nt_c_min, activate_cloud_number(temp(k), max(0.1_wp, w1d(k)), nwfa(k)))
@@ -2482,11 +2520,17 @@ module module_mp_tempo_main
           endif 
 
           ! erosions
-          term3 = -3.1_wp*qc_mean/(al*qvs(k))
-          eros_term = -2.25e-5_wp * exp(term3)
-          tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
-          tend%prw_sge(k) = min(0._dp, ((qc1d(k)-qc_mean*qcfrac_)*eros_term))
-          
+!          term3 = -3.1_wp*qc_mean/(al*qvs(k))
+!          eros_term = -2.25e-5_wp * exp(term3)
+!          tend%pra_sge(k) = min(0._dp, (-gterm*qc_mean*eros_term))
+!          tend%prw_sge(k) = min(0._dp, ((qc1d(k)-qc_mean*qcfrac_)*eros_term))
+
+          ! new erosion
+!          if (tend%pra_sgi(k) < eps) then
+          tend%prw_sge(k) = min(0._dp, 0.3333_wp * 3.e-4_wp * qcfrac1d(k) * (1._wp - qcfrac1d(k))*(qvs(k)-qv(k)))
+          tend%pra_sge(k) = min(0._dp, (-gterm * qc_mean) / (qc1d(k) - qcfrac1d(k)*qc_mean))
+!          endif
+
           if (present(nc1d)) then
             if (qc1d(k) > r1) then
               tend%pnc_sgs(k) = tend%pnc_sgs(k) + (tend%prw_sge(k) * nc1d(k)/qc1d(k))
