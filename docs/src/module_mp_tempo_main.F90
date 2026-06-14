@@ -3,7 +3,7 @@ module module_mp_tempo_main
   use module_mp_tempo_cfgs, only : ty_tempo_cfgs
   use module_mp_tempo_params, only : wp, sp, dp, &
     min_qv, roverrv, rdry, r1, r2, nt_c_max, t0, nrhg, rho_g, &
-    meters3_to_liters, eps, aero_max, nwfa_default, nifa_default
+    meters3_to_liters, eps, aero_max, nwfa_default, nifa_default, nt_c_l, nt_c_o
   use module_mp_tempo_utils, only : get_nuc, get_constant_cloud_number, snow_moments, calc_rslf, calc_rsif
   use module_mp_tempo_diags, only : reflectivity_10cm, effective_radius, max_hail_diam, &
     freezing_rain
@@ -15,9 +15,10 @@ module module_mp_tempo_main
 
   public :: tempo_main, ty_tempo_main_diags
 
-#ifdef FV3
+  !! needed for effective radius calculations when using FV3 since advection
+  !! happens between the effective radius calcuation and call to radiation
   public :: cloud_check_and_update, ice_check_and_update, snow_check_and_update
-#endif
+
   
 #ifdef unit_testing
   public :: get_cloud_table_index, get_snow_table_index, &
@@ -71,7 +72,7 @@ module module_mp_tempo_main
 
   subroutine tempo_main(tempo_cfgs, &
     qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
-    nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, &
+    nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, land1d, &
     qcfrac1d, qifrac1d, qc_bl1d, qcfrac_bl1d, &
     thten_bl1d, qvten_bl1d, qcten_bl1d, qiten_bl1d, &
     thten_lwrad1d, thten_swrad1d, &
@@ -101,6 +102,7 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(inout), optional :: ng1d !! 1D graupel number mixing ratio \([kg^{-1}]\)
     real(wp), dimension(kts:kte), intent(in) :: w1d !! 1D vertical velocity \(m\; s^{-1}]\)
     real(wp), dimension(kts:kte), intent(in) :: dz1d !! 1D vertical grid spacing \([m]\)
+    integer, intent(in), optional :: land1d !! grid-point land type
 
     ! additional optional arrays
     real(wp), dimension(:), intent(inout), optional :: qcfrac1d !! cloud fraction
@@ -335,7 +337,7 @@ module module_mp_tempo_main
     else
       call init_ice_friendly_aerosols(dz1d, nifa)    
     endif
-   
+
     call aerosol_check_and_update(rho=rho, nwfa1d=nwfa1d, nifa1d=nifa1d, &
       nwfa=nwfa, nifa=nifa, nwfaten=nwfaten, nifaten=nifaten, dt=dt)
 
@@ -364,8 +366,12 @@ module module_mp_tempo_main
         call get_cloud_number(xrx, qr1d, qi1d, qs1d, pres, temp, w1d, xnx)
         nc = xnx * rho
       else
-        ! single modment constant value
-        call get_cloud_number(nc=nc)
+        ! single moment constant value
+        if (present(land1d)) then
+          call get_cloud_number(land=land1d, nc=nc)
+        else
+          nc = tempo_cfgs%get_nc_val(val_land=nt_c_l, val_ocean=nt_c_o)
+        endif
       endif
       allocate(ncsave(nz), source=nc)
     endif
@@ -420,12 +426,12 @@ module module_mp_tempo_main
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, &
-        nifa, nwfa, ni, smo0, rc, nc, rr, nr, ilamr, tend, dt, odt)
+        nwfa1d, nifa1d, nwfa, nifa, ni, smo0, rc, nc, rr, nr, ilamr, tend, dt, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call ice_processes(rhof, rhof2, rho, w1d, temp, qv, qvsi, tcond, diffu, &
-      vsc2, ssati, l_qi, ri, ni, ilami, l_qs, rs, smoe, smof, smo1, rr, nr, &
-      ilamr, mvd_r, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
+        vsc2, ssati, l_qi, ri, ni, ilami, l_qs, rs, smoe, smof, smo1, rr, nr, &
+        ilamr, mvd_r, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
     endif
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call riming(temp, rhof, visco, l_qc, rc, nc, ilamc, mvd_c, l_qs, rs, &
@@ -433,11 +439,13 @@ module module_mp_tempo_main
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call melting(rhof2, rho, temp, qvsi, tcond, diffu, vsc2, ssati, delqvs, &
-      l_qs, rs, smof, smo0, smo1, l_qg, rg, ng, ilamg, idx_bg, tend, dt, odt)
+        l_qs, rs, smof, smo0, smo1, l_qg, rg, ng, ilamg, idx_bg, tend, dt, odt)
     endif
     if (.not. tempo_cfgs%turn_off_micro_flag) then
-      call aerosol_scavenging(temp, rho, rhof, visco, nwfa, nifa, l_qr, nr, ilamr, &
-      mvd_r, l_qs, rs, smob, smoc, smoe, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
+      if (present(nwfa1d) .or. present(nifa1d)) then
+        call aerosol_scavenging(temp, rho, rhof, visco, nwfa, nifa, l_qr, nr, ilamr, &
+          mvd_r, l_qs, rs, smob, smoc, smoe, l_qg, rg, ng, ilamg, idx_bg, tend, odt)
+      endif
     endif 
 
     ! check and sum tendencies -------------------------------------------------------------------
@@ -520,7 +528,7 @@ module module_mp_tempo_main
     ! cloud condensation
     if (.not. tempo_cfgs%turn_off_micro_flag .and. tempo_cfgs%cloud_condensation_flag) then
       call cloud_condensation(rho, temp, w1d, ssatw, lvap, tcond, diffu, lvt2, &
-        nwfa, qv, qvs, l_qc, rc, nc, tend, dt, odt)
+        nwfa1d, nwfa, ncsave, qv, qvs, l_qc, rc, nc, tend, dt, odt)
 
       do k = 1, nz
         qvten(k) = qvten(k) - tend%prw_vcd(k)
@@ -609,13 +617,13 @@ module module_mp_tempo_main
             steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%rain_precip, dt=dt)
           call sedimentation(xr=nr, vt=vtnr, dz1d=dz1d, rho=rho, xten=nrten, limit=r2, &
             steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
-          vtrr = 0._wp
-          vtnr = 0._wp
-          xrx = qr1d
-          xnx = nr1d
-          call rain_check_and_update(rho, l_qr, xrx, xnx, rr, nr, qrten, nrten, ilamr, mvd_r, dt, odt)
-          call rain_fallspeed(rhof=rhof, l_qr=l_qr, rr=rr, ilamr=ilamr, dz1d=dz1d, &
-            vt=vtrr, vtn=vtnr, dt=dt)
+          ! vtrr = 0._wp
+          ! vtnr = 0._wp
+          ! xrx = qr1d
+          ! xnx = nr1d
+          ! call rain_check_and_update(rho, l_qr, xrx, xnx, rr, nr, qrten, nrten, ilamr, mvd_r, dt, odt)
+          ! call rain_fallspeed(rhof=rhof, l_qr=l_qr, rr=rr, ilamr=ilamr, dz1d=dz1d, &
+          !   vt=vtrr, vtn=vtnr, dt=dt)
         enddo
       endif 
     endif
@@ -663,21 +671,21 @@ module module_mp_tempo_main
             steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
           call sedimentation(xr=rb, vt=vtrg, dz1d=dz1d, rho=rho, xten=qbten, &
             limit=meters3_to_liters*r1/rho_g(nrhg), steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
-          vtrg = 0._wp
-          vtng = 0._wp
-          xrx = qg1d
-          if (present(ng1d) .and. present(qb1d)) then
-            if (.not. allocated(xngx)) allocate(xngx(nz), source=0._wp)
-            if (.not. allocated(xqbx)) allocate(xqbx(nz), source=0._wp)
-            xngx = ng1d
-            xqbx = qb1d
-          endif 
-          call graupel_check_and_update(rho=rho, l_qg=l_qg, qg1d=xrx, ng1d=xngx, &
-            qb1d=xqbx, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
-            qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
-          call graupel_fallspeed(rhof=rhof, rho=rho, visco=visco, &
-            l_qg=l_qg, rg=rg, rb=rb, qb1d=qb1d, idx=idx_bg, ilamg=ilamg, dz1d=dz1d, &
-            vt=vtrg, vtn=vtng, dt=dt)
+          ! vtrg = 0._wp
+          ! vtng = 0._wp
+          ! xrx = qg1d
+          ! if (present(ng1d) .and. present(qb1d)) then
+          !   if (.not. allocated(xngx)) allocate(xngx(nz), source=0._wp)
+          !   if (.not. allocated(xqbx)) allocate(xqbx(nz), source=0._wp)
+          !   xngx = ng1d
+          !   xqbx = qb1d
+          ! endif 
+          ! call graupel_check_and_update(rho=rho, l_qg=l_qg, qg1d=xrx, ng1d=xngx, &
+          !   qb1d=xqbx, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
+          !   qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
+          ! call graupel_fallspeed(rhof=rhof, rho=rho, visco=visco, &
+          !   l_qg=l_qg, rg=rg, rb=rb, qb1d=qb1d, idx=idx_bg, ilamg=ilamg, dz1d=dz1d, &
+          !   vt=vtrg, vtn=vtng, dt=dt)
         enddo
       endif 
     endif
@@ -926,7 +934,7 @@ module module_mp_tempo_main
           if (xdc < d0c) then
             lamc = cce(2,nu_c)/d0c
             hit_limit = .true.
-          elseif (xDc > d0r*2._dp) then
+          elseif (xdc > d0r*2._dp) then
             lamc = cce(2,nu_c)/(d0r*2._dp)
             hit_limit = .true.
           endif
@@ -935,7 +943,7 @@ module module_mp_tempo_main
 
           if (hit_limit) ncten(k) = (nc(k)/rho(k) - nc1d(k)) * odt
           nc1d(k) = max(nt_c_min/rho(k), &
-            min(ccg(1,nu_c)*ocg2(nu_c)*qc1d(k)/am_r*lamc**bm_r, nt_c_max/rho(k)))
+            min(real(ccg(1,nu_c)*ocg2(nu_c)*qc1d(k)/am_r*lamc**bm_r, kind=wp), nt_c_max/rho(k)))
         else
           if (present(ncsave)) then
             nc(k) = ncsave(k)
@@ -946,7 +954,7 @@ module module_mp_tempo_main
         nu_c = get_nuc(nc(k))
         lamc = (nc(k)*am_r*ccg(2,nu_c)*ocg1(nu_c)/rc(k))**obmr
         ilamc(k) = 1._dp / lamc
-        mvd_c(k) = max(min((3.0_wp + nu_c + 0.672_wp) * ilamc(k), d0r), d0c)
+        mvd_c(k) = max(min(real((3.0_wp + nu_c + 0.672_wp) * ilamc(k), kind=wp), d0r), d0c)
       else
         l_qc(k) = .false.
         rc(k) = r1
@@ -1064,7 +1072,7 @@ module module_mp_tempo_main
         if (ni(k) <= r2) then
           hit_limit = .true.
           lami = cie(2)/5.e-6_dp
-          ni(k) = min(max_ni, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
+          ni(k) = min(max_ni, real(cig(1)*oig2*ri(k)/am_i*lami**bm_i, kind=wp))
         endif
 
         ! check size
@@ -1073,7 +1081,7 @@ module module_mp_tempo_main
         if (xdi < 5.e-6_dp) then
           hit_limit = .true.
           lami = cie(2)/5.e-6_dp
-          ni(k) = min(max_ni, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
+          ni(k) = min(max_ni, real(cig(1)*oig2*ri(k)/am_i*lami**bm_i, kind=wp))
         elseif (xdi > d0s) then
           hit_limit = .true.
           lami = cie(2)/d0s
@@ -1082,7 +1090,7 @@ module module_mp_tempo_main
         
         if (hit_limit) niten(k) = (ni(k)/rho(k) - ni1d(k))*odt
         ni1d(k) = max(r2/rho(k), &
-          min(cig(1)*oig2*qi1d(k)/am_i*lami**bm_i, max_ni/rho(k)))
+          min(real(cig(1)*oig2*qi1d(k)/am_i*lami**bm_i, kind=wp), max_ni/rho(k)))
         ilami(k) = 1._dp / lami
       else
         l_qi(k) = .false.
@@ -1538,11 +1546,8 @@ module module_mp_tempo_main
     do k = ktop, 1, -1
       odz = 1._wp/dz1d(k)
       orho = 1._wp/rho(k)
-      xten(k) = xten(k) + (sed_r(k+1))*(1._wp/dz1d(k))*(1._wp/real(steps, kind=wp))/rho(k)
-      xten(k) = xten(k) - (sed_r(k))*odz*(1._wp/real(steps, kind=wp))*orho
-
-      xr(k) = max(limit, xr(k) + (sed_r(k+1))*(1._wp/dz1d(k))*dt*(1._wp/real(steps, kind=wp)))
-      xr(k) = max(limit, xr(k) - (sed_r(k))*odz*dt*(1._wp/real(steps, kind=wp)))
+      xten(k) = xten(k) + (sed_r(k+1)-sed_r(k))*odz*(1._wp/real(steps, kind=wp))*orho
+      xr(k) = max(limit, xr(k) + (sed_r(k+1)-sed_r(k))*odz*dt*(1._wp/real(steps, kind=wp)))
     enddo
 
     if (present(precip)) then 
@@ -1789,7 +1794,7 @@ module module_mp_tempo_main
     !! calculates mass and number weighted fall speeds for graupel
     !! and optionally the substepping required and the top k-level of sedimentation
     use module_mp_tempo_params, only : nrhg, rho_g, av_g_old, bv_g_old, &
-      cgg, t0, mu_g, ogg2, ogg3, a_coeff, b_coeff, meters3_to_liters
+      cgg, t0, mu_g, ogg2, ogg3, a_coeff, b_coeff, meters3_to_liters, earth_gravity
 
     real(wp), intent(in) :: dt    
     real(wp), dimension(:), intent(in) :: rhof, rho, visco, dz1d, rg, rb
@@ -1809,7 +1814,7 @@ module module_mp_tempo_main
       if (rg(k) > r1) then
         if (present(qb1d)) then
           dens_g = max(rho_g(1), min(meters3_to_liters*rg(k)/rb(k), rho_g(nrhg)))
-          afall = a_coeff*((4._wp*dens_g*9.8_wp)/(3._wp*rho(k)))**b_coeff
+          afall = a_coeff*((4._wp*dens_g*earth_gravity)/(3._wp*rho(k)))**b_coeff
           afall = afall * visco(k)**(1._wp-2._wp*b_coeff)
           bfall = 3._wp*b_coeff - 1._wp
         else
@@ -1972,15 +1977,16 @@ module module_mp_tempo_main
 
 
   subroutine cloud_condensation(rho, temp, w1d, ssatw, lvap, tcond, diffu, lvt2, &
-    nwfa, qv, qvs, l_qc, rc, nc, tend, dt, odt)
+    nwfa1d, nwfa, ncsave, qv, qvs, l_qc, rc, nc, tend, dt, odt)
     !! cloud condensation and evaporation
     use module_mp_tempo_params, only : eps, r1, t0, orv, pi, rho_w, nbc, &
-      tnc_wev, nt_c_min
+      tnc_wev, nt_c_min, nt_c_l
 
     real(wp), intent(in) :: dt, odt
     type(ty_tend), intent(inout) :: tend
     real(wp), dimension(:), intent(in) :: rho, temp, w1d, ssatw, lvap, tcond, diffu, lvt2, &
       nwfa, qv, qvs, rc, nc
+    real(wp), dimension(:), intent(in), optional :: nwfa1d, ncsave
     logical, dimension(:), intent(in) :: l_qc
     real(wp) :: clap, fcd, dfcd, xrc, xnc, orho, tempc, otemp, &
       rvs, rvs_p, rvs_pp, gamsc, alphsc, xsat, t1_evap
@@ -1989,7 +1995,7 @@ module module_mp_tempo_main
 
     nz = size(qv)
     do k = 1, nz
-      if (abs(ssatw(k)) < eps) return ! RH = 100%
+      if (abs(ssatw(k)) < eps) cycle ! RH = 100%
 
       orho = 1._wp/rho(k)
       clap = (qv(k)-qvs(k))/(1._wp + lvt2(k)*qvs(k))
@@ -2006,16 +2012,22 @@ module module_mp_tempo_main
         tend%prw_vcd(k) = clap*odt
 
         if (clap > eps) then ! condensation
-          xnc = max(nt_c_min, activate_cloud_number(temp(k), w1d(k), nwfa(k)))
+          if (present(nwfa1d)) then
+            xnc = max(nt_c_min, activate_cloud_number(temp(k), w1d(k), nwfa(k)))
+          elseif (present(ncsave)) then
+            xnc = ncsave(k)
+          else
+            xnc = nt_c_l
+          endif
           tend%pnc_wcd(k) = 0.5_wp*(xnc-nc(k) + abs(xnc-nc(k)))*odt*orho
         elseif (l_qc(k) .and. ssatw(k) < -1.e-6_wp .and. clap < -eps) then ! evaporation
           tempc = temp(k) - t0
           otemp = 1._wp/temp(k)
           rvs = rho(k)*qvs(k)
           rvs_p = rvs*otemp*(lvap(k)*otemp*orv - 1._wp)
-          rvs_pp = rvs * (otemp*(lvap(k)*otemp*oRv - 1._wp) * &
-            otemp*(lvap(k)*otemp*oRv - 1._wp) + &
-            (-2._wp*lvap(k)*otemp*otemp*otemp*oRv) + otemp*otemp)
+          rvs_pp = rvs * (otemp*(lvap(k)*otemp*orv - 1._wp) * &
+            otemp*(lvap(k)*otemp*orv - 1._wp) + &
+            (-2._wp*lvap(k)*otemp*otemp*otemp*orv) + otemp*otemp)
           gamsc = lvap(k)*diffu(k)/tcond(k) * rvs_p
           alphsc = 0.5_wp*(gamsc/(1._wp+gamsc))*(gamsc/(1._wp+gamsc)) * &
             rvs_pp/rvs_p * rvs/rvs_p
@@ -2070,9 +2082,9 @@ module module_mp_tempo_main
           otemp = 1._wp/temp(k)
           rvs = rho(k)*qvs(k)
           rvs_p = rvs*otemp*(lvap(k)*otemp*orv - 1._wp)
-          rvs_pp = rvs * (otemp*(lvap(k)*otemp*oRv - 1._wp) * &
-            otemp*(lvap(k)*otemp*oRv - 1._wp) + &
-            (-2._wp*lvap(k)*otemp*otemp*otemp*oRv) + otemp*otemp)
+          rvs_pp = rvs * (otemp*(lvap(k)*otemp*orv - 1._wp) * &
+            otemp*(lvap(k)*otemp*orv - 1._wp) + &
+            (-2._wp*lvap(k)*otemp*otemp*otemp*orv) + otemp*otemp)
           gamsc = lvap(k)*diffu(k)/tcond(k) * rvs_p
           alphsc = 0.5_wp*(gamsc/(1._wp+gamsc))*(gamsc/(1._wp+gamsc)) * &
             rvs_pp/rvs_p * rvs/rvs_p
@@ -2392,7 +2404,7 @@ module module_mp_tempo_main
               tend%prs_sde(k) > eps) then
               r_frac = min(30.0_dp, tend%prs_scw(k)/tend%prs_sde(k))
               g_frac = min(rime_conversion, 0.15_wp + (r_frac-2._wp)*.028_wp)
-              vtboost(k) = min(1.5_wp, 1.1_wp + (r_frac-2.)*.016_wp)
+              vtboost(k) = min(1.5_wp, 1.1_wp + (r_frac-2.)*.014_wp)
               tend%prg_scw(k) = g_frac*tend%prs_scw(k)
               tend%png_scw(k) = tend%prg_scw(k)*smo0(k)/rs(k)
               vts = av_s*xds**bv_s * exp(-fv_s*xds)
@@ -2404,8 +2416,8 @@ module module_mp_tempo_main
                 tend%prg_scw(k) = 0._dp
                 tend%png_scw(k) = 0._dp
               endif
-              snow_dens_frac = min(1._wp, max(0._wp, rs(k)*odt / &
-                (rs(k)*odt + tend%prg_scw(k))))
+              snow_dens_frac = min(1._wp, max(0._wp, real(rs(k)*odt / &
+                (rs(k)*odt + tend%prg_scw(k)), kind=wp)))
               tend%pbg_scw(k) = meters3_to_liters*tend%prg_scw(k) / &
                 (rho_s * snow_dens_frac + rime_dens * (1._wp-snow_dens_frac))
               ! tend%pbg_scw(k) = meters3_to_liters*tend%prg_scw(k) / &
@@ -2715,18 +2727,19 @@ module module_mp_tempo_main
 
 
   subroutine ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, &
-      nifa, nwfa, ni, smo0, rc, nc, rr, nr, ilamr, tend, dt, odt)
+      nwfa1d, nifa1d, nwfa, nifa, ni, smo0, rc, nc, rr, nr, ilamr, tend, dt, odt)
     !! ice nulceation
     use module_mp_tempo_params, only : r_r, r_c, hgfrz, rho_i, xm0i, &
       tpg_qrfz, tpi_qrfz, tni_qrfz, tnr_qrfz, tpi_qcfz, tni_qcfz, &
-      demott_nuc_ssati, eps, icenuc_max, tno, ato, max_ni, meters3_to_liters
+      demott_nuc_ssati, eps, icenuc_max, tno, ato, max_ni, meters3_to_liters, &
+      demott_nuc_tempc
 
     real(wp), intent(in) :: dt, odt
     type(ty_tend), intent(inout) :: tend
     real(wp), dimension(:), intent(in) :: qv, temp, rho, qvsi, rr, nr, rc, nc, w1d, &
-      ssati, ssatw, ni
+      ssati, ssatw, ni, nwfa, nifa
     real(dp), dimension(:), intent(in) :: ilamr, smo0
-    real(wp), dimension(:), intent(in), optional :: nifa, nwfa
+    real(wp), dimension(:), intent(in), optional :: nwfa1d, nifa1d
     real(wp) :: rate_max, tempc, xni, xnc
     integer :: k, nz, idx_in, idx_r, idx_r1, idx_tc, idx_c, idx_n
 
@@ -2736,7 +2749,7 @@ module module_mp_tempo_main
         tempc = temp(k) - t0
         idx_tc = max(1, min(nint(-tempc), 45))
         rate_max = (qv(k)-qvsi(k))*rho(k)*odt*0.999_wp
-        if (present(nifa)) then
+        if (present(nifa1d)) then
           xni = demott_nucleation(tempc, rho(k), nifa(k))
         else  
           xni = 1._wp * 1000._wp ! 1 / Liter
@@ -2779,8 +2792,8 @@ module module_mp_tempo_main
         !> deposition nucleation from dust is from
         !> [DeMott et al. (2010)](https://doi.org/10.1073/pnas.0910818107)
         if ((ssati(k) >= demott_nuc_ssati) .or. (ssatw(k) > eps &
-            .and. tempc < -20._wp)) then
-          if (present(nifa)) then
+            .and. tempc < demott_nuc_tempc)) then
+          if (present(nifa1d)) then
             xnc = demott_nucleation(tempc, rho(k), nifa(k))
           else
             xnc = min(icenuc_max, tno*exp(ato*(t0-temp(k))))
@@ -2793,7 +2806,7 @@ module module_mp_tempo_main
         !>
         !> freezing of aqueous aerosols is based on [Koop et al. (2000)](https://doi.org/10.1038/35020537)
         xni = smo0(k)+ni(k) + (tend%pni_rfz(k)+tend%pni_wfz(k)+tend%pni_inu(k))*dt
-        if (present(nwfa)) then
+        if (present(nwfa1d)) then
           if ((xni <= max_ni) .and.(temp(k) < 238._wp) .and. (ssati(k) >= 0.4_wp)) then
             xnc = koop_nucleation(temp(k), ssatw(k), nwfa(k), dt)
             tend%pni_iha(k) = xnc*odt
@@ -2943,8 +2956,8 @@ module module_mp_tempo_main
 
           ! snow collecting cloud ice assumes di << ds and vti ~ 0
           lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
-          xdi = max(real(D0i, kind=dp), (bm_i + mu_i + 1.) * ilami(k))
-          xmi = am_i*xDi**bm_i
+          xdi = max(real(d0i, kind=dp), (bm_i + mu_i + 1.) * ilami(k))
+          xmi = am_i*xdi**bm_i
           oxmi = 1./xmi
           if (rs(k) >= r_s(1)) then
             tend%prs_sci(k) = t1_qs_qi*rhof(k)*ef_si*ri(k)*smoe(k)
@@ -3064,13 +3077,13 @@ module module_mp_tempo_main
             n0_melt = (1.e-4_wp/rg(k))*ogg2*lamg**cge(2,1)
           endif
           t2_qg_me = pi*4._wp * c_cube*olfus * &
-            0.2_wp*sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
+            0.28_wp*sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
           tend%prr_gml(k) = (tempc*tcond(k)-lvap0*diffu(k)*delqvs(k)) * &
             n0_melt*(t1_qg_me*ilamg(k)**cge(10,1) + &
             t2_qg_me*rhof2(k)*vsc2(k)*ilamg(k)**cge(11,idx(k)))
           tend%prr_gml(k) = min(real(rg(k)*odt, kind=dp), max(0._dp, tend%prr_gml(k)))
           if (tend%prr_gml(k) > 0._dp) then
-            melt_f = max(0.05_wp, min(tend%prr_gml(k)*dt/rg(k),1._wp))
+            melt_f = max(0.05_wp, min(real(tend%prr_gml(k)*dt/rg(k), kind=wp),1._wp))
             ! 1000 is density water, 50 is lower limit (max ice density is 800)
             tend%pbg_gml(k) = meters3_to_liters*tend%prr_gml(k) / &
               max(min(melt_f*rho_g(idx(k)), rho_w), 50._wp)
@@ -3080,8 +3093,8 @@ module module_mp_tempo_main
             tend%pnr_gml(k) = 0._dp
             tend%pbg_gml(k) = 0._dp
             if (ssati(k) < 0._wp) then
-              t2_qg_sd = 0.28_wp*Sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
-              tend%prg_gde(k) = C_cube*t1_subl(k)*diffu(k)*ssati(k)*rvs * n0_g * &
+              t2_qg_sd = 0.28_wp*sc3*sqrt(av_g(idx(k))) * cgg(11,idx(k))
+              tend%prg_gde(k) = c_cube*t1_subl(k)*diffu(k)*ssati(k)*rvs * n0_g * &
                 (t1_qg_sd*ilamg(k)**cge(10,1) + &
                 t2_qg_sd*vsc2(k)*rhof2(k)*ilamg(k)**cge(11,idx(k)))
               tend%prg_gde(k) = max(real(-rg(k)*odt, kind=dp), tend%prg_gde(k))
@@ -3153,7 +3166,7 @@ module module_mp_tempo_main
           tend%pna_sca(k))
         ef_sa = aerosol_collection_efficiency(xds, if_aerosol_size, &
           visco(k), rho(k), temp(k), 's')
-        tend%pnd_scd(k) = rhof(k)*t1_qs_qc*Ef_sa*nifa(k)*smoe(k)
+        tend%pnd_scd(k) = rhof(k)*t1_qs_qc*ef_sa*nifa(k)*smoe(k)
         tend%pnd_scd(k) = min(real(nifa(k)*odt, kind=dp), &
           tend%pnd_scd(k))
       endif

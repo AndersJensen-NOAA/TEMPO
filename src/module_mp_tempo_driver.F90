@@ -51,14 +51,14 @@ module module_mp_tempo_driver
 
     logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, refl10cm_from_melting_flag, &
       cldfra_flag, ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, semi_sedi_flag, cloud_condensation_flag
-    type(ty_tempo_cfgs), intent(out) :: tempo_cfgs
+    type(ty_tempo_cfgs), intent(inout) :: tempo_cfgs
 
     character(len=100) :: table_filename
     integer :: table_size
     logical :: initialize_mp_vars, force_init
 
     ! get tempo version from readme file
-    call get_version(tempo_version) 
+    call get_version(tempo_version, tempo_cfgs%verbose)
 
     ! check an allocatable array (t_efrw) to see if initialization can be skipped
     ! but allow for force initialization useful for testing
@@ -128,13 +128,13 @@ module module_mp_tempo_driver
       ! CCN activation table
       table_filename = tempo_table_cfgs%ccn_table_name
       call initialize_arrays_ccn(table_size)
-      call read_table_ccn(trim(table_filename), table_size)
+      call read_table_ccn(trim(table_filename), table_size, tempo_cfgs)
       if (tempo_cfgs%verbose) write(*,'(A)') 'tempo_init() --- initialized data for ccn lookup table'
 
       ! freeze water collection lookup table
       table_filename = tempo_table_cfgs%freezewater_table_name
       call initialize_arrays_freezewater(table_size)
-      call read_table_freezewater(trim(table_filename), table_size)
+      call read_table_freezewater(trim(table_filename), table_size, tempo_cfgs)
       if (tempo_cfgs%verbose) then
         write(*,'(A)') 'tempo_init() --- initialized data for frozen cloud water and rain lookup table'
       endif 
@@ -142,7 +142,7 @@ module module_mp_tempo_driver
       ! rain-snow collection lookup table
       table_filename = tempo_table_cfgs%qrqs_table_name
       call initialize_arrays_qr_acr_qs(table_size)
-      call read_table_qr_acr_qs(trim(table_filename), table_size)
+      call read_table_qr_acr_qs(trim(table_filename), table_size, tempo_cfgs)
       if (tempo_cfgs%verbose) then
         write(*,'(A)') 'tempo_init() --- initialized data for rain-snow collection lookup table'
       endif 
@@ -150,7 +150,7 @@ module module_mp_tempo_driver
       ! rain-graupel collection lookup table
       table_filename = tempo_table_cfgs%qrqg_table_name
       call initialize_arrays_qr_acr_qg(table_size)
-      call read_table_qr_acr_qg(trim(table_filename), table_size)
+      call read_table_qr_acr_qg(trim(table_filename), table_size, tempo_cfgs)
       if (tempo_cfgs%verbose) then
         write(*,'(A)') 'tempo_init() --- initialized data for rain-graupel collection lookup table'
       endif 
@@ -191,9 +191,10 @@ module module_mp_tempo_driver
     qv, qc, qr, qi, qs, qg, ni, nr, &
     nc, nwfa, nifa, ng, qb, &
     qc_bl, qcfrac_bl, &
-    qcfrac, qifrac, hpbl, xland, &
+    qcfrac, qifrac, hpbl, &
     thten_bl, qvten_bl, qcten_bl, qiten_bl, &
     thten_lwrad, thten_swrad, &
+    land_input, &
     ids, ide, jds, jde, kds, kde, &
     ims, ime, jms, jme, kms, kme, &
     its, ite, jts, jte, kts, kte, tempo_diags)
@@ -227,7 +228,8 @@ module module_mp_tempo_driver
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: nifa !! 3D ice-friendly aerosol number mixing ratio \([kg^{-1}]\) (aerosol-aware)
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: qb !! 3D graupel volume mixing ratio \([m^{-3}\; kg^{-1}]\) (hail-aware)
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: ng !! 3D graupel number mixing ratio \([kg^{-1}]\) (hail-aware)
-
+    integer, dimension(ims:ime, jms:jme), intent(in), optional :: land_input !! land input value to differentiate land from ocean
+  
     ! additional optional arguments
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: qcfrac
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout), optional :: qifrac
@@ -240,8 +242,8 @@ module module_mp_tempo_driver
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: thten_lwrad
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(in), optional :: thten_swrad
     real(wp), dimension(ims:ime, jms:jme), intent(in), optional :: hpbl
-    real(wp), dimension(ims:ime, jms:jme), intent(in), optional :: xland
-
+    integer, allocatable :: land1d
+  
     real(wp), dimension(kts:kte) :: t1d !! 1D temperature \([K]\)
     real(wp), dimension(kts:kte) :: p1d !! 1D pressure \([Pa]\)
     real(wp), dimension(kts:kte) :: qv1d !! 1D water vapor mixing ratio \([kg\; kg^{-1}]\)
@@ -273,7 +275,6 @@ module module_mp_tempo_driver
     real(wp), dimension(:), allocatable :: thten_lwrad1d
     real(wp), dimension(:), allocatable :: thten_swrad1d
     real(wp), dimension(:), allocatable :: hpbl1d
-    real(wp), dimension(:), allocatable :: xland1d
 
     integer :: i, j, k, nz
     logical :: use_temperature 
@@ -299,9 +300,8 @@ module module_mp_tempo_driver
     if (present(qcten_bl)) allocate(qcten_bl1d(nz), source=0._wp)  
     if (present(qiten_bl)) allocate(qiten_bl1d(nz), source=0._wp)
     if (present(thten_lwrad)) allocate(thten_lwrad1d(nz), source=0._wp)
-    if (present(thten_swrad)) allocate(thten_swrad1d(nz), source=0._wp)
     if (present(hpbl)) allocate(hpbl1d(1), source=0._wp)
-    if (present(xland)) allocate(xland1d(1), source=1._wp)
+    if (present(land_input)) allocate(land1d)
 
     ! allocate diagnostics
     ! 3d diagnostics have configuration flags
@@ -394,8 +394,8 @@ module module_mp_tempo_driver
       use_temperature = .true.
     elseif (present(th) .and. present(pii)) then
       use_temperature = .false.
-    else  
-      error stop "tempo_run() --- requires either temperature or theta and Exner function"
+    ! else
+    !   error stop "tempo_run() --- requires either temperature or theta and Exner function"
     endif 
 
     ! tempo driver code
@@ -445,15 +445,18 @@ module module_mp_tempo_driver
           if (present(qiten_bl)) qiten_bl1d(k) = qiten_bl(i,k,j)
           if (present(thten_lwrad)) thten_lwrad1d(k) = thten_lwrad(i,k,j)
           if (present(thten_swrad)) thten_swrad1d(k) = thten_swrad(i,k,j)
-          if (present(hpbl)) hpbl1d(1) = hpbl(i,j)
-          if (present(xland)) xland1d(1) = xland(i,j)
         enddo
+
+        if (present(hpbl)) hpbl1d(1) = hpbl(i,j)
+
+        ! land input
+        if (present(land_input)) land1d = land_input(i,j)
 
         ! main call to the 1d tempo microphysics
         call tempo_main(tempo_cfgs=tempo_cfgs, &
           qv1d=qv1d, qc1d=qc1d, qi1d=qi1d, qr1d=qr1d, qs1d=qs1d, qg1d=qg1d, qb1d=qb1d, &
           ni1d=ni1d, nr1d=nr1d, nc1d=nc1d, ng1d=ng1d, nwfa1d=nwfa1d, nifa1d=nifa1d, t1d=t1d, p1d=p1d, &
-          w1d=w1d, dz1d=dz1d, hpbl1d=hpbl1d, xland1d=xland1d, &
+          w1d=w1d, dz1d=dz1d, hpbl1d=hpbl1d, land1d=land1d, &
           qcfrac1d=qcfrac1d, qifrac1d=qifrac1d, qc_bl1d=qc_bl1d, qcfrac_bl1d=qcfrac_bl1d, &
           thten_bl1d=thten_bl1d, qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, qiten_bl1d=qiten_bl1d, &
           thten_lwrad1d=thten_lwrad1d, thten_swrad1d=thten_swrad1d, &
@@ -531,9 +534,9 @@ module module_mp_tempo_driver
   subroutine tempo_aerosol_surface_emissions(dt, nwfa, nwfa2d, ims, ime, jms, jme, kms, kme, kts)
     !! adds aerosol surface emissions to the 3D field
     real(wp), intent(in) :: dt
+    integer, intent(in) :: ims, ime, jms, jme, kms, kme, kts
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: nwfa 
     real(wp), dimension(ims:ime, jms:jme), intent(in) :: nwfa2d
-    integer, intent(in) :: ims, ime, jms, jme, kms, kme, kts
     integer :: i, j
 
     do j = jms, jme
@@ -544,20 +547,25 @@ module module_mp_tempo_driver
   end subroutine tempo_aerosol_surface_emissions
 
 
-  subroutine read_table_freezewater(filename, table_size)
+  subroutine read_table_freezewater(filename, table_size, tempo_cfgs)
     !! read lookup table for frozen cloud and rain water
     use module_mp_tempo_params, only : tpi_qrfz, tni_qrfz, &
       tpg_qrfz, tnr_qrfz, tpi_qcfz, tni_qcfz
 
+    type(ty_tempo_cfgs), intent(in) :: tempo_cfgs
     character(len=*), intent(in) :: filename
     integer, intent(in) :: table_size
     
     integer :: mp_unit, istat
 
     mp_unit = 11
-    call check_before_table_read(filename, table_size)
+    if (tempo_cfgs%check_tables) call check_before_table_read(filename, table_size)
     open(unit=mp_unit, file=filename, form='unformatted', status='old', access='stream', &
-      action='read', iostat=istat, convert='big_endian')
+      action='read', iostat=istat &
+#ifndef TEMPO_IGNORE_CONVERT_ARG
+      , convert='big_endian' &
+#endif
+    )
     read(mp_unit) tpi_qrfz
     read(mp_unit) tni_qrfz
     read(mp_unit) tpg_qrfz
@@ -568,21 +576,26 @@ module module_mp_tempo_driver
   end subroutine read_table_freezewater
 
 
-  subroutine read_table_qr_acr_qs(filename, table_size)
+  subroutine read_table_qr_acr_qs(filename, table_size, tempo_cfgs)
     !! read lookup table for rain-snow collection
     use module_mp_tempo_params, only : tcs_racs1, tmr_racs1, &
       tcs_racs2, tmr_racs2, tcr_sacr1, tms_sacr1, tcr_sacr2, &
       tms_sacr2, tnr_racs1, tnr_racs2, tnr_sacr1, tnr_sacr2
 
+    type(ty_tempo_cfgs), intent(in) :: tempo_cfgs
     character(len=*), intent(in) :: filename
     integer, intent(in) :: table_size
     
     integer :: mp_unit, istat
 
     mp_unit = 11
-    call check_before_table_read(filename, table_size)
+    if (tempo_cfgs%check_tables) call check_before_table_read(filename, table_size)
     open(unit=mp_unit, file=filename, form='unformatted', status='old', access='stream', &
-      action='read', iostat=istat, convert='big_endian')
+      action='read', iostat=istat &
+#ifndef TEMPO_IGNORE_CONVERT_ARG
+      , convert='big_endian' &
+#endif
+    )
     read(mp_unit) tcs_racs1
     read(mp_unit) tmr_racs1
     read(mp_unit) tcs_racs2
@@ -599,20 +612,25 @@ module module_mp_tempo_driver
   end subroutine read_table_qr_acr_qs
 
 
-  subroutine read_table_qr_acr_qg(filename, table_size)
+  subroutine read_table_qr_acr_qg(filename, table_size, tempo_cfgs)
     !! read lookup table for rain-graupel collection
     use module_mp_tempo_params, only : tcg_racg, tmr_racg, &
       tcr_gacr, tnr_racg, tnr_gacr
 
+    type(ty_tempo_cfgs), intent(in) :: tempo_cfgs
     character(len=*), intent(in) :: filename
     integer, intent(in) :: table_size
     
     integer :: mp_unit, istat
 
     mp_unit = 11
-    call check_before_table_read(filename, table_size)
+    if (tempo_cfgs%check_tables) call check_before_table_read(filename, table_size)
     open(unit=mp_unit, file=filename, form='unformatted', status='old', access='stream', &
-      action='read', iostat=istat, convert='big_endian')
+      action='read', iostat=istat &
+#ifndef TEMPO_IGNORE_CONVERT_ARG
+      , convert='big_endian' &
+#endif
+    )
     read(mp_unit) tcg_racg
     read(mp_unit) tmr_racg
     read(mp_unit) tcr_gacr
@@ -622,23 +640,28 @@ module module_mp_tempo_driver
   end subroutine read_table_qr_acr_qg
 
 
-  subroutine read_table_ccn(filename, table_size)
+  subroutine read_table_ccn(filename, table_size, tempo_cfgs)
     !! read static file containing CCN activation of aerosols;
     !! the data were created from a parcel model by Feingold and Heymsfield (1992)
     !! https://doi.org/10.1175/1520-0469(1992)049<2325:POCGOD>2.0.CO;2
     !! with further changes by Eidhammer and Kreidenweis
     use module_mp_tempo_params, only : tnccn_act
-  
+
+    type(ty_tempo_cfgs), intent(in) :: tempo_cfgs
     character(len=*), intent(in) :: filename
     integer, intent(in) :: table_size
     
     integer :: mp_unit, istat
 
-    call check_before_table_read(filename=filename, table_size=table_size)
+    if (tempo_cfgs%check_tables) call check_before_table_read(filename=filename, table_size=table_size)
 
     mp_unit = 11
     open(unit=mp_unit, file=filename, form='unformatted', status='old', &
-      action='read', iostat=istat, convert='big_endian')
+      action='read', iostat=istat &
+#ifndef TEMPO_IGNORE_CONVERT_ARG
+      , convert='big_endian' &
+#endif
+    )
     read(mp_unit) tnccn_act
     close(unit=mp_unit)
   end subroutine read_table_ccn
@@ -668,8 +691,9 @@ module module_mp_tempo_driver
         ' can be build by compiling and running the executable "build_tables" in the main TEMPO directory. ', &
         'Then copy the file to the directory where the model executable is located.'
       write(*,'(A)') '   (3) Ask the developers for tables. They are willing to share.' 
-      write(*,'(A)') ''      
-      error stop '--- file "' // filename // '" needed for TEMPO microphysics was not found.'
+      write(*,'(A)') ''
+      write(*,'(A)') '--- file "' // filename // '" needed for TEMPO microphysics was not found.'
+      error stop 'program aborted'
     endif
 
     if (filesize /= table_size) then
@@ -688,7 +712,8 @@ module module_mp_tempo_driver
         'Then copy the file to the directory where the model executable is located.'
       write(*,'(A)') '   (3) Ask the developers for tables. They are willing to share.' 
       write(*,'(A)') ''
-      error stop '--- size of file "' // filename // '" needed for TEMPO microphysics is inconsistent with expected size.'
+      write(*,'(A)') '--- size of file "' // filename // '" needed for TEMPO microphysics is inconsistent with expected size.'
+      error stop 'program aborted'
     endif
   end subroutine check_before_table_read
 
