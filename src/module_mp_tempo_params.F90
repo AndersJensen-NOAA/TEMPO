@@ -124,6 +124,7 @@ module module_mp_tempo_params
   real(wp), parameter :: timestep_conversion_rime_to_rain = 120._wp !! timestep above which rime above freezing becomes rain (this timestep should be at least 120s)
 
   real(wp), parameter :: cloud_fraction_rh = 0.87 !! critical relative humidity for cloud fraction
+  real(wp), parameter :: cloud_fraction_rhi = 0.87 !! critical relative humidity for ice cloud fraction
   real(wp), parameter :: cloud_fraction_rh_pbl_water = 0.99 !! critical relative humidity for cloud fraction in the pbl over oceans
   real(wp), parameter :: cf_low = 0.05 !! minimum cloud fraction (must be > 0)
 
