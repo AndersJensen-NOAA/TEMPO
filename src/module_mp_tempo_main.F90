@@ -417,8 +417,12 @@ module module_mp_tempo_main
        qh1d(k) = 0._wp
        hail_fraction = 0._wp
        if (l_qg(k)) then
-          if (rho_g(idx_bg(k)) >= 599._wp .and. qg1d(k) > 0.1e-3_wp .and. melt_prefactor < eps) then
-             hail_fraction = max(min(exp(12._wp*(rho_g(idx_bg(k))*0.001_wp) - 9.9_wp) + 0.1, 1._wp), 0._wp)
+!!          if (rho_g(idx_bg(k)) >= 599._wp .and. qg1d(k) > 0.1e-3_wp .and. melt_prefactor < eps) then
+          if (rho_g(idx_bg(k)) >= 599._wp .and. qg1d(k) > 0.1e-3_wp .and. melt_prefactor < eps) then             
+!!             hail_fraction = max(min(exp(12._wp*(rho_g(idx_bg(k))*0.001_wp) - 9.9_wp) + 0.1, 1._wp), 0._wp)
+!! maybe             hail_fraction = max(min(exp(12._wp*(rho_g(idx_bg(k))/1025._wp) - 9.9_wp) + 0.04, 1._wp), 0._wp)
+
+             hail_fraction = max(min(exp(12._wp*(rho_g(idx_bg(k))/1050._wp) - 9.9_wp) + 0.1, 1._wp), 0._wp)                          
              qh1d(k) = hail_fraction * qg1d(k)
           endif
        endif
@@ -1358,7 +1362,7 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(inout) :: qh1d, rh, nh, qhten
     real(dp), dimension(:), intent(out) :: ilamh
     logical, dimension(:), intent(inout) :: l_qh
-    real(dp) :: lamh, ygra1, zans1, n0_exp, lam_exp
+    real(dp) :: lamh, ygra1, zans1, n0_exp, lam_exp, n0_h
     integer :: k, nz
 
     nz = size(qh1d)
@@ -1368,6 +1372,7 @@ module module_mp_tempo_main
         ! update mass
         rh(k) = (qh1d(k)+qhten(k)*dt)*rho(k)
 
+        ! NEW intercept
         ygra1 = log10(max(1.e-9_dp, real(rh(k), kind=dp)))
         zans1 = 3._dp + 2._dp/7._dp*(ygra1+8._dp)
         n0_exp = max(gonv_min, min(10._dp**(zans1), gonv_max))
@@ -1376,10 +1381,14 @@ module module_mp_tempo_main
         ilamh(k) =  1._dp / lamh
         nh(k) = cgg(2,1)*ogg3*rh(k)*lamh**bm_g / am_g(nrhg)
 
-          
-!        lamh = (am_g(nrhg)*n0_h*cgg(3,1)/rh(k))**(1._dp/cge(3,1))
-!        ilamh(k) = 1._dp / lamh
-!        nh(k) = max(r2, n0_h / lamh)
+        ! n0_h = nh * lamh
+!        if (nh(k) * lamh > 1.e4) then
+!           n0_h = 1.e4
+!           lamh = (am_g(nrhg)*n0_h*cgg(3,1)/rh(k))**(1._dp/cge(3,1))
+!           ilamh(k) = 1._dp / lamh
+!           nh(k) = max(r2, n0_h / lamh)
+!        endif
+        
         qh1d(k) = qh1d(k)+qhten(k)*dt
       else
         l_qh(k) = .false.
