@@ -3086,16 +3086,16 @@ module module_mp_tempo_main
         endif
         tend%pbg_rfz(k) = meters3_to_liters*tend%prg_rfz(k)/rho_i
 
-!        if (tend%prg_rfz(k) > r1) then
-!           lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rfz(k)/tend%prg_rfz(k))**obmg
-!           mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
-!           if (mvdh > 0.75e-3) then
+        if (tend%prg_rfz(k) > r1) then
+           lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rfz(k)/tend%prg_rfz(k))**obmg
+           mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
+           if (mvdh > 0.5e-3) then
               tend%prh_rfz(k) = tend%prg_rfz(k)
               tend%prg_rfz(k) = 0._dp
               tend%png_rfz(k) = 0._dp
               tend%pbg_rfz(k) = 0._dp                  
-!           endif
-!        endif
+           endif
+        endif
         
             !        if (present(qh1d)) then
             ! turn back on maybe 
@@ -3310,16 +3310,16 @@ module module_mp_tempo_main
             tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
             tend%pbg_rci(k) = tend%prg_rci(k)/rho_i
 
-            if (tend%prg_rci(k) > r1) then
-               lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rci(k)/tend%prg_rci(k))**obmg
-               mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
-               if (mvdh > 0.75e-3) then
-                  tend%prh_rci(k) = tend%prg_rci(k)
-                  tend%prg_rci(k) = 0._dp
-                  tend%png_rci(k) = 0._dp
-                  tend%pbg_rci(k) = 0._dp                  
-               endif
-            endif
+!            if (tend%prg_rci(k) > r1) then
+!               lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rci(k)/tend%prg_rci(k))**obmg
+!               mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
+!               if (mvdh > 0.75e-3) then
+            tend%prh_rci(k) = tend%prg_rci(k)
+            tend%prg_rci(k) = 0._dp
+            tend%png_rci(k) = 0._dp
+            tend%pbg_rci(k) = 0._dp                  
+!         endif
+!            endif
             
           endif
         endif
