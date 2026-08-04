@@ -401,7 +401,7 @@ module module_mp_tempo_diags
   end subroutine rayleigh_soak_wetgraupel
 
 
-  subroutine max_hail_diam(rho, rg, ng, ilamg, idx, max_hail_diameter)
+  subroutine max_hail_diam(rho, rg, ng, ilamg, idx, temp, l_qi, l_qs, max_hail_diameter)
     !! estimates maximmum hail diameter [mm] using a binned approach
     !! 
     !! see [Jensen et al. (2023)](https://doi.org/10.1175/MWR-D-21-0319.1)
@@ -410,8 +410,11 @@ module module_mp_tempo_diags
     real(wp), dimension(:), intent(in) :: rho, rg, ng
     real(dp), dimension(:), intent(in) :: ilamg
     integer, dimension(:), intent(in), optional :: idx
+    logical, intent(in) :: l_qi, l_qs
+    real(wp), intent(in) :: temp
     real(wp), dimension(:), intent(out) :: max_hail_diameter
     real(dp) :: lamg, n0_g, sum_nh, sum_t, f_d, hail_max
+    real(wp) :: hail_90
     integer :: k, nz, n
     real(dp), parameter :: threshold_conc = 0.0005
 
@@ -424,7 +427,8 @@ module module_mp_tempo_diags
         endif
         lamg = 1._dp / ilamg(k)
         n0_g = ng(k)*ogg2*lamg**cge(2,1)
-
+        hail_90 = 6.681 * ilamg(k)
+        
         sum_nh = 0._dp
         sum_t = 0._dp
         do n = nhbins, 1, -1
@@ -441,6 +445,13 @@ module module_mp_tempo_diags
           hail_max = 1.e-4_wp
         endif
         max_hail_diameter(k) = 1000._wp * hail_max ! convert to mm
+
+!        if (k == 1) then
+!           if (l_qi .or. l_qs .or. temp < 270._wp) then
+!              max_hail_diameter(k) = 1000._wp * hail_90
+!           endif
+!        endif
+        
       endif
     enddo
   end subroutine max_hail_diam
