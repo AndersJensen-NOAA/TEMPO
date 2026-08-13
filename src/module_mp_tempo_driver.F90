@@ -20,7 +20,6 @@ module module_mp_tempo_driver
     real(wp), dimension(:,:), allocatable :: ice_liquid_equiv_precip
     real(wp), dimension(:,:), allocatable :: snow_liquid_equiv_precip
     real(wp), dimension(:,:), allocatable :: graupel_liquid_equiv_precip
-    real(wp), dimension(:,:), allocatable :: hail_liquid_equiv_precip
     real(wp), dimension(:,:), allocatable :: frozen_fraction
     real(wp), dimension(:,:), allocatable :: frz_rain_precip
     real(wp), dimension(:,:), allocatable :: max_hail_diameter_sfc
@@ -260,7 +259,6 @@ module module_mp_tempo_driver
     real(wp), dimension(:), allocatable :: nifa1d !! 1D ice-friendly aerosol number mixing ratio \([kg^{-1}]\) (aerosol-aware)
     real(wp), dimension(:), allocatable :: qb1d !! 1D graupel volume mixing ratio \([m^{-3}\; kg^{-1}]\) (hail-aware)
     real(wp), dimension(:), allocatable :: ng1d !! 1D graupel number mixing ratio \([kg^{-1}]\) (hail-aware)
-!!    real(wp), dimension(:), allocatable :: qh1d !! 1D hail mass  mixing ratio \([kg kg^{-1}]\) (hail-cat)
 
     ! additional optional 1d arrays
     real(wp), dimension(:), allocatable :: qcfrac1d
@@ -287,7 +285,6 @@ module module_mp_tempo_driver
     if (present(nc)) allocate(nc1d(nz), source=0._wp)
     if (present(ng)) allocate(ng1d(nz), source=0._wp)
     if (present(qb)) allocate(qb1d(nz), source=0._wp)
-!!    if (present(qh)) allocate(qh1d(nz), source=0._wp)
 
     ! additional optional 1d arrays
     if (present(qcfrac)) allocate(qcfrac1d(nz), source=0._wp)
@@ -377,7 +374,6 @@ module module_mp_tempo_driver
       allocate(tempo_diags%ice_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%snow_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%graupel_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
-      allocate(tempo_diags%hail_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%frozen_fraction(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%frz_rain_precip(its:ite, jts:jte), source=0._wp)
     else
@@ -385,7 +381,6 @@ module module_mp_tempo_driver
       tempo_diags%ice_liquid_equiv_precip = 0._wp
       tempo_diags%snow_liquid_equiv_precip = 0._wp
       tempo_diags%graupel_liquid_equiv_precip = 0._wp
-      tempo_diags%hail_liquid_equiv_precip = 0._wp
       tempo_diags%frozen_fraction = 0._wp
       tempo_diags%frz_rain_precip = 0._wp
     endif
@@ -433,9 +428,6 @@ module module_mp_tempo_driver
             qb1d(k) = qb(i,k,j)
           endif 
 
-          ! hail mass mixing ratio for 1-moment hail
-!!          if (present(qh)) qh1d(k) = qh(i,k,j)
-
           ! machine learning for pbl clouds
           if (present(qc_bl) .and. present(qcfrac_bl)) then
             qc_bl1d(k) = qc_bl(i,k,j)
@@ -461,7 +453,6 @@ module module_mp_tempo_driver
         tempo_diags%ice_liquid_equiv_precip(i,j) = tempo_main_diags%ice_liquid_equiv_precip
         tempo_diags%snow_liquid_equiv_precip(i,j) = tempo_main_diags%snow_liquid_equiv_precip
         tempo_diags%graupel_liquid_equiv_precip(i,j) = tempo_main_diags%graupel_liquid_equiv_precip
-        tempo_diags%hail_liquid_equiv_precip(i,j) = tempo_main_diags%hail_liquid_equiv_precip
         tempo_diags%frozen_fraction(i,j) = tempo_main_diags%frozen_fraction
         tempo_diags%frz_rain_precip(i,j) = tempo_main_diags%frz_rain_precip
 
@@ -501,7 +492,6 @@ module module_mp_tempo_driver
             ng(i,k,j) = ng1d(k)
             qb(i,k,j) = qb1d(k)
           endif 
-!!          if (present(qh)) qh(i,k,j) = qh1d(k)
           qv(i,k,j) = qv1d(k)
           qc(i,k,j) = qc1d(k)
           qi(i,k,j) = qi1d(k)
