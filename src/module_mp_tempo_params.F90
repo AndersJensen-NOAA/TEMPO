@@ -66,6 +66,7 @@ module module_mp_tempo_params
   real(wp), parameter :: bm_g = 3.0_wp !! graupel mass power-law coefficient
   real(wp), parameter :: bm_i = 3.0_wp !! ice mass power-law coefficient
   real(wp), parameter :: bm_r = 3.0_wp !! rain mass power-law coefficient
+  real(wp), parameter :: n0_h = 1.e4_wp !! hail intercept parameter \([m^{-4}]\)
 
   real(wp), parameter :: rho_i = 890._wp !! density of cloud ice \([kg\, m^{-3}]\)
   real(wp), parameter :: xm0i = 1.e-12_wp !! ice initiates with this mass \([kg]\)
