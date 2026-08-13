@@ -122,7 +122,7 @@ module module_mp_tempo_diags
         ze_hail(k) = (0.176_wp/0.93_wp) * (6._wp/pi)*(6._wp/pi) * &
           (am_g(nrhg)/900._wp)*(am_g(nrhg)/900._wp) * n0_h*cgg(4,1)*ilamh(k)**cge(4,1)
       endif
-      dbz(k) = max(-35._wp, 10._wp*log10((ze_rain(k)+ze_snow(k)+ze_graupel(k)+ze_hail(k))*1.e18_dp))
+      dbz(k) = max(-35._wp, 10._wp*real(log10((ze_rain(k)+ze_snow(k)+ze_graupel(k)+ze_hail(k))*1.e18_dp), kind=wp))
 
     enddo
   end subroutine reflectivity_10cm
