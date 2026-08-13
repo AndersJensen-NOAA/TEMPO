@@ -42,7 +42,7 @@ module module_mp_tempo_main
     real(wp), dimension(:), allocatable :: re_ice
     real(wp), dimension(:), allocatable :: re_snow
     real(wp), dimension(:), allocatable :: max_hail_diameter
-    real(wp), dimension(:), allocatable :: max_graupel_diameter    
+!!    real(wp), dimension(:), allocatable :: max_graupel_diameter    
     real(wp), dimension(:), allocatable :: cloud_number_mixing_ratio
   end type
 
@@ -893,6 +893,14 @@ module module_mp_tempo_main
       call hail_check_and_update(rho, l_qh, qh1d, rh, nh, qhten, ilamh, dt, odt)
 !    endif
 
+      do k = 1, nz
+         if (l_qh(k)) then
+            qg1d(k) = qg1d(k) + qh1d(k)
+            ng1d(k) = ng1d(k) + nh(k)/rho(k)
+            qb1d(k) = qb1d(k) + qh1d(k)*meters3_to_liters/rho_g(nrhg)
+         endif
+      enddo
+      
     ! diagnostic output --------------------------------------------------------------------------
     ! frozen fraction
     tempo_main_diags%frozen_fraction = &
@@ -921,20 +929,6 @@ module module_mp_tempo_main
       tempo_main_diags%graupel_med_vol_diam = mvd_g
     endif 
 
-    ! max hail diameter
-    if (tempo_cfgs%max_hail_diameter_flag) then
-      allocate(tempo_main_diags%max_hail_diameter(nz), source=0._wp)
-      allocate(tempo_main_diags%max_graupel_diameter(nz), source=0._wp)       
-!      if (present(qh1d)) then
-        call max_hail_diam(rho=rho, rg=rh, ng=nh, ilamg=ilamh, &
-          max_hail_diameter=tempo_main_diags%max_hail_diameter)
-!      else
-        call max_hail_diam(rho=rho, rg=rg, ng=ng, ilamg=ilamg, idx=idx_bg, &
-          max_hail_diameter=tempo_main_diags%max_graupel_diameter)
-        tempo_main_diags%max_hail_diameter = max(tempo_main_diags%max_hail_diameter, &
-             tempo_main_diags%max_graupel_diameter)
-!      endif
-    endif
 
     ! 10-cm reflectivity
     if (tempo_cfgs%refl10cm_flag) then
@@ -943,16 +937,30 @@ module module_mp_tempo_main
         temp, l_qr, rr, nr, ilamr, &
         l_qs, rs, smoc, smob, smoz, l_qg, rg, ng, idx_bg, ilamg, l_qh, nh, ilamh, &
         tempo_main_diags%refl10cm)
-    endif 
+    endif
 
-    do k = 1, nz
-       if (l_qh(k)) then
-          qg1d(k) = qg1d(k) + qh1d(k)
-          ng1d(k) = ng1d(k) + nh(k)/rho(k)
-          qb1d(k) = qb1d(k) + qh1d(k)*meters3_to_liters/rho_g(nrhg)
-       endif
-    enddo
-   
+    qgten = 0.
+    ngten = 0.
+    qbten = 0.
+    call graupel_check_and_update(rho=rho, l_qg=l_qg, qg1d=qg1d, ng1d=ng1d, &
+         qb1d=qb1d, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
+         qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
+        
+    ! max hail diameter
+    if (tempo_cfgs%max_hail_diameter_flag) then
+      allocate(tempo_main_diags%max_hail_diameter(nz), source=0._wp)
+!!      allocate(tempo_main_diags%max_graupel_diameter(nz), source=0._wp)       
+!      if (present(qh1d)) then
+!        call max_hail_diam(rho=rho, rg=rh, ng=nh, ilamg=ilamh, &
+!          max_hail_diameter=tempo_main_diags%max_hail_diameter)
+!      else
+        call max_hail_diam(rho=rho, rg=rg, ng=ng, ilamg=ilamg, idx=idx_bg, &
+          max_hail_diameter=tempo_main_diags%max_hail_diameter)
+!        tempo_main_diags%max_hail_diameter = max(tempo_main_diags%max_hail_diameter, &
+!             tempo_main_diags%max_graupel_diameter)
+!      endif
+    endif
+    
     ! effective radii
     if ((tempo_cfgs%re_cloud_flag) .and. (tempo_cfgs%re_ice_flag) .and. (tempo_cfgs%re_snow_flag)) then
       allocate(tempo_main_diags%re_cloud(nz), source=0._wp)
@@ -1653,7 +1661,7 @@ module module_mp_tempo_main
     integer, dimension(:), intent(in) :: idx
     real(wp), dimension(:), intent(inout) :: qvten, qcten, ncten, qiten, niten, &
       qsten, qrten, nrten, qgten, ngten, qbten, tten, qhten
-    real(wp) :: orho, lfus2
+    real(wp) :: orho, lfus2, total_massg, total_volg, dens_weight, final_weight
     integer :: k, nz
 
     nz = size(temp)
@@ -1701,6 +1709,22 @@ module module_mp_tempo_main
         tend%pbg_rci(k) + tend%pbg_rcs(k) + tend%pbg_rcg(k) + tend%pbg_sml(k) - &
         tend%pbg_gml(k) + meters3_to_liters * (tend%prg_gde(k) - tend%prg_ihm(k)) / rho_g(idx(k))) * orho
 
+      if (temp(k) < t0) then
+         total_massg = (tend%prg_scw(k) + tend%prg_gcw(k)) + tend%prg_rfz(k) + tend%prg_rcg(k) + tend%prg_rci(k) + tend%prg_rcs(k)
+         total_volg = (tend%pbg_scw(k) + tend%pbg_gcw(k)) + tend%pbg_rfz(k) + tend%pbg_rcg(k) + tend%pbg_rci(k) + tend%pbg_rcs(k)         
+
+         if (total_massg > eps) then
+            dens_weight = rho_i * (tend%prg_rfz(k) + tend%prg_rcg(k) + tend%prg_rci(k) + tend%prg_rcs(k))/total_massg
+            if (tend%pbg_scw(k) > eps) dens_weight = dens_weight + tend%prg_scw(k)/tend%pbg_scw(k) * (tend%prg_scw(k)/total_massg)
+            if (tend%pbg_gcw(k) > eps) dens_weight = dens_weight + tend%prg_gcw(k)/tend%pbg_gcw(k) * (tend%prg_gcw(k)/total_massg)
+            
+            if (dens_weight > eps .and. total_volg > eps) then
+               final_weight = (1./dens_weight)*(total_massg/total_volg)
+            endif
+            if (final_weight <= 1.) qbten(k) = qbten(k) * final_weight
+         endif
+      endif
+      
       qhten(k) = qhten(k) + (tend%prh_rch(k) + tend%prh_hcw(k) + tend%prh_rcs(k) + tend%prh_rcg(k) + &
         tend%prh_hde(k) + tend%prh_rfz(k) + tend%prh_rci(k) - tend%prr_hml(k)) * orho
 
@@ -3093,7 +3117,7 @@ module module_mp_tempo_main
         if (tend%prg_rfz(k) > r1) then
            lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rfz(k)/tend%prg_rfz(k))**obmg
            mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
-           if (mvdh > 2.*d0g) then
+           if (mvdh > 4.*d0g) then
               tend%prh_rfz(k) = tend%prg_rfz(k)
               tend%prg_rfz(k) = 0._dp
               tend%png_rfz(k) = 0._dp
@@ -3313,7 +3337,7 @@ module module_mp_tempo_main
                   tend%prg_rci(k) = 0._dp
                   tend%png_rci(k) = 0._dp
                   tend%pbg_rci(k) = 0._dp
-               elseif (mvdh > 2.*d0g) then
+               elseif (mvdh > 4.*d0g) then
                   tend%prh_rci(k) = tend%prg_rci(k)
                   tend%prg_rci(k) = 0._dp
                   tend%png_rci(k) = 0._dp
