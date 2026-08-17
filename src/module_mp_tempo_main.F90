@@ -42,7 +42,6 @@ module module_mp_tempo_main
     real(wp), dimension(:), allocatable :: re_ice
     real(wp), dimension(:), allocatable :: re_snow
     real(wp), dimension(:), allocatable :: max_hail_diameter
-!!    real(wp), dimension(:), allocatable :: max_graupel_diameter    
     real(wp), dimension(:), allocatable :: cloud_number_mixing_ratio
   end type
 
@@ -50,21 +49,20 @@ module module_mp_tempo_main
     real(dp), pointer, contiguous, dimension(:) :: &
       prr_wau, pnr_wau, pnc_wau, prr_rcw, pnc_rcw, pnr_rcr, & ! warm rain
       prs_scw, pnc_scw, png_scw, pbg_scw, prg_gcw, pnc_gcw, pbg_gcw, & ! riming
-      pri_ihm, pni_ihm, prs_ihm, prg_ihm, prg_scw, & ! riming
+      pri_ihm, pni_ihm, prs_ihm, prg_ihm, prg_scw, prh_hcw, pnc_hcw, & ! riming
       prr_rcs, pnr_rcs, prg_rcs, png_rcs, prs_rcs, pbg_rcs, & ! rain-snow
       prr_rcg, pnr_rcg, prg_rcg, png_rcg, pbg_rcg, & ! rain-graupel
+      prh_rch, prr_rch, pnr_rch, prh_rcg, & ! rain-hail      
       pri_inu, pni_inu, pri_iha, pni_iha, & ! ice nucleation
       pri_wfz, pni_wfz, & ! water freezing
       prg_rfz, png_rfz, pnr_rfz, pri_rfz, pni_rfz, pbg_rfz, & ! rain freezing
-      prs_sde, pri_ide, pni_ide, prs_ide, prg_gde, png_gde, & ! depositional growth
+      prs_sde, pri_ide, pni_ide, prs_ide, prg_gde, png_gde, prh_hde, & ! depositional growth
       pni_iau, prs_iau, & ! ice-snow conversion
-      prr_sml, prr_gml, pbg_sml, pbg_gml, pnr_sml, pnr_gml, & ! melting
-      prr_rci, pnr_rci, pri_rci, pni_rci, prg_rci, png_rci, pbg_rci, prh_rci, & ! rain-ice
+      prr_sml, prr_gml, pbg_sml, pbg_gml, pnr_sml, pnr_gml, prr_hml, pnr_hml, & ! melting
+      prr_rci, pnr_rci, pri_rci, pni_rci, prg_rci, png_rci, pbg_rci,& ! rain-ice
       pni_sci, prs_sci, & ! snow-ice
       prw_vcd, pnc_wcd, prv_rev, pnr_rev, & ! condensation/evaporation
       pna_rca, pna_sca, pna_gca, pnd_rcd, pnd_scd, pnd_gcd, & ! aerosol
-      prh_rfz, prr_hml, pnr_hml, prh_hcw, pnc_hcw, &
-      prh_rch, prr_rch, pnr_rch, prh_hde, prh_rcs, prh_rcg
   end type
 
   interface get_cloud_number
@@ -105,7 +103,6 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(inout), optional :: nifa1d !! 1D ice-friendly aerosol number mixing ratio \([kg^{-1}]\)
     real(wp), dimension(:), intent(inout), optional :: qb1d !! 1D graupel volume mixing ratio \([m^{-3}\; kg^{-1}]\)
     real(wp), dimension(:), intent(inout), optional :: ng1d !! 1D graupel number mixing ratio \([kg^{-1}]\)
-!!    real(wp), dimension(:), intent(inout), optional :: qh1d !! 1D hail mass  mixing ratio \([kg kg^{-1}]\)
     real(wp), dimension(kts:kte), intent(in) :: w1d !! 1D vertical velocity \(m\; s^{-1}]\)
     real(wp), dimension(kts:kte), intent(in) :: dz1d !! 1D vertical grid spacing \([m]\)
     integer, intent(in), optional :: land1d !! grid-point land type
@@ -150,7 +147,7 @@ module module_mp_tempo_main
     integer :: substeps_sedi, ktop_sedi, n !! sedimentation substepping variables
     real(wp) :: semi_sedi_factor !! semi-lagrangian sedimentation factor
 
-    real(dp), target, dimension(kts:kte, 86) :: tend_work !! array to store tendencies
+    real(dp), target, dimension(kts:kte, 83) :: tend_work !! array to store tendencies
     
     ! local variables
     real(wp) :: tempc, tc0, odt, hail_fraction, melt_prefactor
@@ -271,18 +268,15 @@ module module_mp_tempo_main
     tend%pnd_gcd => tend_work(:, 74)
 
     ! hail
-    tend%prh_rfz => tend_work(:, 75)
-    tend%prr_hml => tend_work(:, 76)
-    tend%pnr_hml => tend_work(:, 77)
-    tend%prh_hcw => tend_work(:, 78)
-    tend%pnc_hcw => tend_work(:, 79)
-    tend%prh_rch => tend_work(:, 80)
-    tend%prr_rch => tend_work(:, 81)
-    tend%pnr_rch => tend_work(:, 82)
-    tend%prh_hde => tend_work(:, 83)
-    tend%prh_rcs => tend_work(:, 84)
-    tend%prh_rcg => tend_work(:, 85)
-    tend%prh_rci => tend_work(:, 86)    
+    tend%prr_hml => tend_work(:, 75)
+    tend%pnr_hml => tend_work(:, 76)
+    tend%prh_hcw => tend_work(:, 77)
+    tend%pnc_hcw => tend_work(:, 78)
+    tend%prh_rch => tend_work(:, 79)
+    tend%prr_rch => tend_work(:, 80)
+    tend%pnr_rch => tend_work(:, 81)
+    tend%prh_hde => tend_work(:, 82)
+    tend%prh_rcg => tend_work(:, 83)
 
     ! zero out all mp tendencies
     tend_work = 0._dp
@@ -435,7 +429,6 @@ module module_mp_tempo_main
        endif
     enddo
     
-!    if (present(qh1d)) then
     call hail_check_and_update(rho, l_qh, qh1d, rh, nh, qhten, ilamh, dt, odt)
 
     do k = 1, nz
@@ -452,13 +445,6 @@ module module_mp_tempo_main
       qb1d=qb1d, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
       qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
    
-!    else
-!      l_qh = .false.
-!      rh = 0._wp
-!      nh = 0._wp
-!      ilamh = 0._dp
-!    endif
-
     ! re-zero tendencies after initial check zero tendencies
     do k = 1, nz
       qcten(k) = 0._wp
@@ -474,10 +460,6 @@ module module_mp_tempo_main
       ncten(k) = 0._wp
     enddo
 
-!    call thermo_vars(qv, temp, pres, rho, rhof, rhof2, qvs, delqvs, qvsi, &
-!      satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
-!      supersaturated)
-
     ! check for hydrometeors or supersaturation --------------------------------------------------
     do_micro = any(l_qc) .or. any(l_qr) .or. any(l_qi) .or. any(l_qs) .or. any(l_qg) .or. any(l_qh)
     if (.not. do_micro .and. .not. supersaturated) return
@@ -492,7 +474,7 @@ module module_mp_tempo_main
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, &
-        nwfa1d, nifa1d, nwfa, nifa, ni, smo0, rc, nc, rr, nr, ilamr, qh1d, tend, dt, odt)
+        nwfa1d, nifa1d, nwfa, nifa, ni, smo0, rc, nc, rr, nr, ilamr, tend, dt, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call ice_processes(rhof, rhof2, rho, w1d, temp, qv, qvsi, tcond, diffu, &
@@ -588,10 +570,8 @@ module module_mp_tempo_main
       qb1d=xqbx, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
       qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
 
-!    if (present(qh1d)) then
-      xrx = qh1d
-      call hail_check_and_update(rho, l_qh, xrx, rh, nh, qhten, ilamh, dt, odt)
-!    endif
+    xrx = qh1d
+    call hail_check_and_update(rho, l_qh, xrx, rh, nh, qhten, ilamh, dt, odt)
 
     call thermo_vars(qv, temp, pres, rho, rhof, rhof2, qvs, delqvs, qvsi, &
       satw, sati, ssatw, ssati, diffu, visco, vsc2, ocp, lvap, tcond, lvt2, &
@@ -886,17 +866,15 @@ module module_mp_tempo_main
       qb1d=qb1d, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
       qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
 
-!    if (present(qh1d)) then
-      call hail_check_and_update(rho, l_qh, qh1d, rh, nh, qhten, ilamh, dt, odt)
-!    endif
+    call hail_check_and_update(rho, l_qh, qh1d, rh, nh, qhten, ilamh, dt, odt)
 
-      do k = 1, nz
-         if (l_qh(k)) then
-            qg1d(k) = qg1d(k) + qh1d(k)
-            ng1d(k) = ng1d(k) + nh(k)/rho(k)
-            qb1d(k) = qb1d(k) + qh1d(k)*meters3_to_liters/rho_g(nrhg)
-         endif
-      enddo
+    do k = 1, nz
+       if (l_qh(k)) then
+          qg1d(k) = qg1d(k) + qh1d(k)
+          ng1d(k) = ng1d(k) + nh(k)/rho(k)
+          qb1d(k) = qb1d(k) + qh1d(k)*meters3_to_liters/rho_g(nrhg)
+       endif
+    enddo
       
     ! diagnostic output --------------------------------------------------------------------------
     ! frozen fraction
@@ -944,17 +922,9 @@ module module_mp_tempo_main
 
     ! max hail diameter
     if (tempo_cfgs%max_hail_diameter_flag) then
-      allocate(tempo_main_diags%max_hail_diameter(nz), source=0._wp)
-!!      allocate(tempo_main_diags%max_graupel_diameter(nz), source=0._wp)       
-!      if (present(qh1d)) then
-!        call max_hail_diam(rho=rho, rg=rh, ng=nh, ilamg=ilamh, &
-!          max_hail_diameter=tempo_main_diags%max_hail_diameter)
-!      else
-        call max_hail_diam(rho=rho, rg=rg, ng=ng, ilamg=ilamg, idx=idx_bg, &
-          max_hail_diameter=tempo_main_diags%max_hail_diameter)
-!        tempo_main_diags%max_hail_diameter = max(tempo_main_diags%max_hail_diameter, &
-!             tempo_main_diags%max_graupel_diameter)
-!      endif
+       allocate(tempo_main_diags%max_hail_diameter(nz), source=0._wp)
+       call max_hail_diam(rho=rho, rg=rg, ng=ng, ilamg=ilamg, idx=idx_bg, &
+            max_hail_diameter=tempo_main_diags%max_hail_diameter)
     endif
     
     ! effective radii
@@ -1721,8 +1691,8 @@ module module_mp_tempo_main
          endif
       endif
       
-      qhten(k) = qhten(k) + (tend%prh_rch(k) + tend%prh_hcw(k) + tend%prh_rcs(k) + tend%prh_rcg(k) + &
-        tend%prh_hde(k) + tend%prh_rfz(k) + tend%prh_rci(k) - tend%prr_hml(k)) * orho
+      qhten(k) = qhten(k) + (tend%prh_rch(k) + tend%prh_hcw(k) + tend%prh_rcg(k) + &
+        tend%prh_hde(k) - tend%prr_hml(k)) * orho
 
       if (temp(k) < t0) then
         tten(k) = tten(k) + &
@@ -2973,12 +2943,6 @@ module module_mp_tempo_main
               + tnr_sacr1(idx_s,idx_t,idx_r1,idx_r)
             tend%png_rcs(k) = min(real(nr(k)*odt, kind=dp), tend%png_rcs(k))
             tend%pbg_rcs(k) = meters3_to_liters*tend%prg_rcs(k)/rho_i
-!            if (l_qh(k)) then
-!              tend%prh_rcs(k) = tend%prg_rcs(k)
-!              tend%prg_rcs(k) = 0._dp
-!              tend%png_rcs(k) = 0._dp
-!              tend%pbg_rcs(k) = 0._dp
-!            endif
           else
             tend%prs_rcs(k) = -tcs_racs1(idx_s,idx_t,idx_r1,idx_r) &
               - tms_sacr1(idx_s,idx_t,idx_r1,idx_r) &
@@ -3063,22 +3027,21 @@ module module_mp_tempo_main
 
 
   subroutine ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, &
-      nwfa1d, nifa1d, nwfa, nifa, ni, smo0, rc, nc, rr, nr, ilamr, qh1d, tend, dt, odt)
+      nwfa1d, nifa1d, nwfa, nifa, ni, smo0, rc, nc, rr, nr, ilamr, tend, dt, odt)
     !! ice nulceation
     use module_mp_tempo_params, only : r_r, r_c, hgfrz, rho_i, xm0i, &
       tpg_qrfz, tpi_qrfz, tni_qrfz, tnr_qrfz, tpi_qcfz, tni_qcfz, &
       demott_nuc_ssati, eps, icenuc_max, tno, ato, max_ni, meters3_to_liters, &
-      demott_nuc_tempc, am_g, mu_g, obmg, cgg, ogg2, d0g
+      demott_nuc_tempc
 
     real(wp), intent(in) :: dt, odt
     type(ty_tend), intent(inout) :: tend
     real(wp), dimension(:), intent(in) :: qv, temp, rho, qvsi, rr, nr, rc, nc, w1d, &
-      ssati, ssatw, ni, nwfa, nifa, qh1d
+      ssati, ssatw, ni, nwfa, nifa
     real(dp), dimension(:), intent(in) :: ilamr, smo0
     real(wp), dimension(:), intent(in), optional :: nwfa1d, nifa1d
     real(wp) :: rate_max, tempc, xni, xnc
     integer :: k, nz, idx_in, idx_r, idx_r1, idx_tc, idx_c, idx_n
-    real(dp) :: lamh, mvdh
     
     nz = size(qv)
     do k = 1, nz
@@ -3110,17 +3073,6 @@ module module_mp_tempo_main
           tend%pni_rfz(k) = nr(k)*odt
         endif
         tend%pbg_rfz(k) = meters3_to_liters*tend%prg_rfz(k)/rho_i
-
-!        if (tend%prg_rfz(k) > r1) then
-!           lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rfz(k)/tend%prg_rfz(k))**obmg
-!           mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
-!           if (mvdh > 5.*d0g) then
-!              tend%prh_rfz(k) = tend%prg_rfz(k)
-!              tend%prg_rfz(k) = 0._dp
-!              tend%png_rfz(k) = 0._dp
-!              tend%pbg_rfz(k) = 0._dp                  
-!           endif
-!        endif
             
         if (rc(k) > r_c(1)) then
           call get_cloud_table_index(rc(k), nc(k), idx_c, idx_n)
@@ -3325,23 +3277,6 @@ module module_mp_tempo_main
             tend%prr_rci(k) = min(real(rr(k)*odt, kind=dp), tend%prr_rci(k))
             tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
             tend%pbg_rci(k) = meters3_to_liters*tend%prg_rci(k)/rho_i
-
-!            if (tend%prg_rci(k) > r1) then
-!               lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rci(k)/tend%prg_rci(k))**obmg
-!               mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
-!               if (mvdh < 0.5*d0g) then
-!                  tend%pri_rci(k) = -tend%prr_rci(k)
-!                  tend%prg_rci(k) = 0._dp
-!                  tend%png_rci(k) = 0._dp
-!                  tend%pbg_rci(k) = 0._dp
-!               elseif (mvdh > 4.*d0g) then
-!                  tend%prh_rci(k) = tend%prg_rci(k)
-!                  tend%prg_rci(k) = 0._dp
-!                  tend%png_rci(k) = 0._dp
-!                  tend%pbg_rci(k) = 0._dp                  
-!               endif
-!            endif
-            
           endif
         endif
 
