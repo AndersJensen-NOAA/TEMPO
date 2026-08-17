@@ -427,12 +427,9 @@ module module_mp_tempo_main
        qh1d(k) = 0._wp
        hail_fraction = 0._wp
        if (l_qg(k)) then
-!!          if (rho_g(idx_bg(k)) >= 599._wp .and. qg1d(k) > 0.1e-3_wp .and. melt_prefactor < eps) then
-          if (rho_g(idx_bg(k)) >= 599._wp .and. qg1d(k) > 0.1e-3_wp .and. melt_prefactor < eps) then             
-!!             hail_fraction = max(min(exp(12._wp*(rho_g(idx_bg(k))*0.001_wp) - 9.9_wp) + 0.1, 1._wp), 0._wp)
-!! maybe             hail_fraction = max(min(exp(12._wp*(rho_g(idx_bg(k))/1025._wp) - 9.9_wp) + 0.04, 1._wp), 0._wp)
-
-             hail_fraction = max(min(exp(12._wp*(rho_g(idx_bg(k))/1050._wp) - 9.9_wp) + 0.1, 1._wp), 0._wp)                          
+          if (rho_g(idx_bg(k)) >= 599._wp .and. qg1d(k) > 0.1e-3_wp .and. qg1d(k)+qr1d(k)+qc1d(k) > 0.5e-3_wp .and. melt_prefactor < eps) then       
+             hail_fraction = max(min(exp(12._wp*(rho_g(idx_bg(k))/1050._wp) - 9.9_wp) + 0.1, 1._wp), 0._wp)
+             if (qg1d(k) > 1.e-3_wp) hail_fraction = max(hail_fraction, 0.25_wp)
              qh1d(k) = hail_fraction * qg1d(k)
           endif
        endif
@@ -929,7 +926,6 @@ module module_mp_tempo_main
       tempo_main_diags%graupel_med_vol_diam = mvd_g
     endif 
 
-
     ! 10-cm reflectivity
     if (tempo_cfgs%refl10cm_flag) then
       allocate(tempo_main_diags%refl10cm(nz), source=-35._wp)
@@ -945,7 +941,7 @@ module module_mp_tempo_main
     call graupel_check_and_update(rho=rho, l_qg=l_qg, qg1d=qg1d, ng1d=ng1d, &
          qb1d=qb1d, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
          qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
-        
+
     ! max hail diameter
     if (tempo_cfgs%max_hail_diameter_flag) then
       allocate(tempo_main_diags%max_hail_diameter(nz), source=0._wp)
@@ -1630,10 +1626,10 @@ module module_mp_tempo_main
 !      if (present(qh1d)) then
         if (temp(k) < t0) tend%prh_rcg(k) = -(tend%prr_rcg(k) + tend%prg_rcg(k))
 !      else
-!        ratio = min(abs(tend%prr_rcg(k)), abs(tend%prg_rcg(k)))
-!        tend%prr_rcg(k) = ratio * sign(1.0_dp, tend%prr_rcg(k))
-!        tend%prg_rcg(k) = -tend%prr_rcg(k)
-!        tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_i ! scale density change
+        !ratio = min(abs(tend%prr_rcg(k)), abs(tend%prg_rcg(k)))
+        !tend%prr_rcg(k) = ratio * sign(1.0_dp, tend%prr_rcg(k))
+        !tend%prg_rcg(k) = -tend%prr_rcg(k)
+        !tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_i ! scale density change
 !      endif
 
       ! reset total rain-snow collection amount if reduced
@@ -3019,14 +3015,15 @@ module module_mp_tempo_main
               tend%prh_rcg(k) = -(tend%prr_rcg(k) + tend%prg_rcg(k))
               tend%prh_rcg(k) = min(real((rr(k)+rg(k))*odt, kind=dp), tend%prh_rcg(k))
 !            else
-!              tend%prg_rcg(k) = tmr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r) &
-!                + tcr_gacr(idx_g1,idx_g,idx(k),idx_r1,idx_r)
-!              tend%prg_rcg(k) = min(real(rr(k)*odt, kind=dp), tend%prg_rcg(k))
-!              tend%prr_rcg(k) = -tend%prg_rcg(k)
-!              tend%pnr_rcg(k) = tnr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r) &
-!                + tnr_gacr(idx_g1,idx_g,idx(k),idx_r1,idx_r)
-!              tend%pnr_rcg(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rcg(k))
-!              tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_i
+              !tend%prg_rcg(k) = tmr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r) &
+              !  + tcr_gacr(idx_g1,idx_g,idx(k),idx_r1,idx_r)
+              !tend%prg_rcg(k) = min(real(rr(k)*odt, kind=dp), tend%prg_rcg(k))
+              !tend%prr_rcg(k) = -tend%prg_rcg(k)
+              !tend%pnr_rcg(k) = tnr_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r) &
+              !  + tnr_gacr(idx_g1,idx_g,idx(k),idx_r1,idx_r)
+              !tend%pnr_rcg(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rcg(k))
+              !tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_i
+
 !           endif
           else
             tend%prr_rcg(k) = tcg_racg(idx_g1,idx_g,idx(k),idx_r1,idx_r)
@@ -3114,16 +3111,16 @@ module module_mp_tempo_main
         endif
         tend%pbg_rfz(k) = meters3_to_liters*tend%prg_rfz(k)/rho_i
 
-        if (tend%prg_rfz(k) > r1) then
-           lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rfz(k)/tend%prg_rfz(k))**obmg
-           mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
-           if (mvdh > 4.*d0g) then
-              tend%prh_rfz(k) = tend%prg_rfz(k)
-              tend%prg_rfz(k) = 0._dp
-              tend%png_rfz(k) = 0._dp
-              tend%pbg_rfz(k) = 0._dp                  
-           endif
-        endif
+!        if (tend%prg_rfz(k) > r1) then
+!           lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rfz(k)/tend%prg_rfz(k))**obmg
+!           mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
+!           if (mvdh > 5.*d0g) then
+!              tend%prh_rfz(k) = tend%prg_rfz(k)
+!              tend%prg_rfz(k) = 0._dp
+!              tend%png_rfz(k) = 0._dp
+!              tend%pbg_rfz(k) = 0._dp                  
+!           endif
+!        endif
             
         if (rc(k) > r_c(1)) then
           call get_cloud_table_index(rc(k), nc(k), idx_c, idx_n)
@@ -3329,21 +3326,21 @@ module module_mp_tempo_main
             tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
             tend%pbg_rci(k) = meters3_to_liters*tend%prg_rci(k)/rho_i
 
-            if (tend%prg_rci(k) > r1) then
-               lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rci(k)/tend%prg_rci(k))**obmg
-               mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
-               if (mvdh < 0.5*d0g) then
-                  tend%pri_rci(k) = -tend%prr_rci(k)
-                  tend%prg_rci(k) = 0._dp
-                  tend%png_rci(k) = 0._dp
-                  tend%pbg_rci(k) = 0._dp
-               elseif (mvdh > 4.*d0g) then
-                  tend%prh_rci(k) = tend%prg_rci(k)
-                  tend%prg_rci(k) = 0._dp
-                  tend%png_rci(k) = 0._dp
-                  tend%pbg_rci(k) = 0._dp                  
-               endif
-            endif
+!            if (tend%prg_rci(k) > r1) then
+!               lamh = (am_g(nrhg)*cgg(3,1)*ogg2*tend%png_rci(k)/tend%prg_rci(k))**obmg
+!               mvdh = (3.0_wp + mu_g + 0.672_wp) / lamh
+!               if (mvdh < 0.5*d0g) then
+!                  tend%pri_rci(k) = -tend%prr_rci(k)
+!                  tend%prg_rci(k) = 0._dp
+!                  tend%png_rci(k) = 0._dp
+!                  tend%pbg_rci(k) = 0._dp
+!               elseif (mvdh > 4.*d0g) then
+!                  tend%prh_rci(k) = tend%prg_rci(k)
+!                  tend%prg_rci(k) = 0._dp
+!                  tend%png_rci(k) = 0._dp
+!                  tend%pbg_rci(k) = 0._dp                  
+!               endif
+!            endif
             
           endif
         endif
