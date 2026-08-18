@@ -423,7 +423,8 @@ module module_mp_tempo_main
       if (l_qg(k)) then
         if (rho_g(idx_bg(k)) >= 599._wp .and. qg1d(k) > 0.1e-3_wp .and. qg1d(k)+qr1d(k)+qc1d(k) > 0.5e-3_wp .and. melt_prefactor < eps) then
           hail_fraction = max(min(exp(12._wp*(rho_g(idx_bg(k))/1050._wp) - 9.9_wp) + 0.1, 1._wp), 0._wp)
-          if (qg1d(k) > 1.e-3_wp) hail_fraction = max(hail_fraction, 0.25_wp)
+!!!          if (qg1d(k) > 1.e-3_wp) hail_fraction = max(hail_fraction, 0.25_wp)
+          if (qg1d(k) > 1.e-3_wp) hail_fraction = hail_fraction + 0.1_wp
           qh1d(k) = hail_fraction * qg1d(k)
         endif
       endif
