@@ -1441,14 +1441,14 @@ module module_mp_tempo_main
   subroutine sum_tendencies(rho, temp, idx, lvap, ocp, tend, tten, qvten, qcten, &
     ncten, qiten, niten, qsten, qrten, nrten, qgten, ngten, qbten)
     !! sums tendencies for each hydrometeor category and temperature and moisture
-    use module_mp_tempo_params, only : lsub, rho_g, t0, lfus, meters3_to_liters
+    use module_mp_tempo_params, only : lsub, rho_g, t0, lfus, meters3_to_liters, rho_i
 
     type(ty_tend), intent(in) :: tend
     real(wp), dimension(:), intent(in) :: rho, temp, lvap, ocp
     integer, dimension(:), intent(in) :: idx
     real(wp), dimension(:), intent(inout) :: qvten, qcten, ncten, qiten, niten, &
       qsten, qrten, nrten, qgten, ngten, qbten, tten
-    real(wp) :: orho, lfus2
+    real(wp) :: orho, lfus2, massg_sources, volg_sources, dens_weight, final_weight
     integer :: k, nz
 
     nz = size(temp)
@@ -1495,6 +1495,26 @@ module module_mp_tempo_main
       qbten(k) = qbten(k) + (tend%pbg_scw(k) + tend%pbg_rfz(k) + tend%pbg_gcw(k) + &
         tend%pbg_rci(k) + tend%pbg_rcs(k) + tend%pbg_rcg(k) + tend%pbg_sml(k) - &
         tend%pbg_gml(k) + meters3_to_liters * (tend%prg_gde(k) - tend%prg_ihm(k)) / rho_g(idx(k))) * orho
+
+      ! use a density weighting for the volume tendency that will
+      ! increase density if a large fraction of frozen drops are being added to graupel
+      if (temp(k) < t0) then
+        massg_sources = tend%prg_scw(k) + tend%prg_gcw(k) + &
+          tend%prg_rfz(k) + tend%prg_rcg(k) + tend%prg_rci(k) + tend%prg_rcs(k)
+        volg_sources = tend%pbg_scw(k) + tend%pbg_gcw(k) + &
+          tend%pbg_rfz(k) + tend%pbg_rcg(k) + tend%pbg_rci(k) + tend%pbg_rcs(k)
+
+        if (massg_sources > eps) then
+          dens_weight = rho_i*(tend%prg_rfz(k) + tend%prg_rcg(k) + tend%prg_rci(k) + tend%prg_rcs(k))/massg_sources
+          if (tend%pbg_scw(k) > eps) dens_weight = dens_weight + tend%prg_scw(k)/tend%pbg_scw(k)*(tend%prg_scw(k)/massg_sources)
+          if (tend%pbg_gcw(k) > eps) dens_weight = dens_weight + tend%prg_gcw(k)/tend%pbg_gcw(k)*(tend%prg_gcw(k)/massg_sources)
+
+          if (dens_weight > eps .and. volg_sources > eps) then
+            final_weight = (1._wp/dens_weight)*(massg_sources/volg_sources)
+          endif
+          if (final_weight <= 1._wp) qbten(k) = qbten(k) * final_weight
+        endif
+      endif
 
       if (temp(k) < t0) then
         tten(k) = tten(k) + &
