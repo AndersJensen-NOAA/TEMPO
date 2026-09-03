@@ -421,7 +421,7 @@ module module_mp_tempo_main
     l_qh = .false.
 
     if (tempo_cfgs%hailhyperaware_flag) then
-      call compute_hail_fraction(qg1d, mvd_g, qr1d, qc1d, temp, tcond, diffu, delqvs, idx_bg, qh1d, hail_fraction)
+      call compute_hail_fraction(l_qg, qg1d, mvd_g, idx_bg, qr1d, qc1d, temp, tcond, diffu, delqvs, qh1d, hail_fraction)
     endif
 
     call hail_check_and_update(rho, l_qh, qh1d, rh, nh, qhten, ilamh, dt, odt)
@@ -967,12 +967,14 @@ module module_mp_tempo_main
     endif
   end subroutine tempo_main
 
-  subroutine compute_hail_fraction(qg1d, mvd_g, qr1d, qc1d, temp, tcond, diffu, delqvs, idx_bg, qh1d, hail_fraction)
-    !! compute hail fraction and hail mass from graupel for all levels
+
+  subroutine compute_hail_fraction(l_qg, qg1d, mvd_g, idx_bg, qr1d, qc1d, temp, tcond, diffu, delqvs, qh1d, hail_fraction)
+    !! compute hail fraction and hail mass from graupel mass and density
     use module_mp_tempo_params, only : eps, t0, lvap0, rho_g
 
     real(wp), dimension(:), intent(in) :: qg1d, mvd_g, qr1d, qc1d, temp, tcond, diffu, delqvs
     integer, dimension(:), intent(in) :: idx_bg
+    logical, dimension(:), intent(in) :: l_qg
     real(wp), dimension(:), intent(out) :: qh1d, hail_fraction
 
     integer :: k, nz
@@ -981,44 +983,49 @@ module module_mp_tempo_main
     nz = size(qg1d)
     do k = 1, nz
       hail_fraction(k) = 0._wp
+      qh1d(k) = 0._wp
       tempc = temp(k) - t0
       melt_prefactor = tempc*tcond(k) - lvap0*diffu(k)*delqvs(k)
       rho_g_val = rho_g(idx_bg(k))
 
-      if (rho_g_val >= 350._wp .and. qg1d(k) > 1.e-6_wp) then
-        if (mvd_g(k) > 2.e-3_wp .and. tempc <= 0._wp) hail_fraction(k) = 0.1_wp
-        if (qg1d(k) > 5.e-4_wp) then
-          hail_fraction(k) = max(min(exp(12._wp*(rho_g_val/1070._wp) - 9.9_wp) + 0.1_wp, 1._wp), 0.1_wp)
-          if (qg1d(k) < 5.e-3_wp) then
-            hail_fraction(k) = hail_fraction(k) + max(min((0.1429_wp*log10(qg1d(k)) + 0.4286_wp), 0.1_wp), 0._wp)
-          else
-            hail_fraction(k) = hail_fraction(k) + 0.1_wp
-          endif
-          if (mvd_g(k) > 2.e-3_wp) hail_fraction(k) = hail_fraction(k) + (mvd_g(k)*1000._wp - 2._wp)*0.1_wp
-          if (qr1d(k)+qc1d(k) > 1.e-3_wp .and. rho_g_val > 499._wp) hail_fraction(k) = 0.5_wp
-          hail_fraction(k) = max(min(hail_fraction(k), 0.5_wp), 0.2_wp)
-
-          if (rho_g_val >= 749._wp .and. melt_prefactor > eps .and. tempc > 0._wp) then
-            if (mvd_g(k) > 4.e-3_wp) then
-              hail_fraction(k) = hail_fraction(k) + (1._wp - (10._wp**(-0.05_wp*tempc)))
-              hail_fraction(k) = max(min(hail_fraction(k), 0.8_wp), 0._wp)
+      if (l_qg(k)) then
+        if (rho_g_val >= 350._wp .and. qg1d(k) > 1.e-6_wp) then
+          if (mvd_g(k) > 2.e-3_wp .and. tempc <= 0._wp) hail_fraction(k) = 0.1_wp
+          
+          ! main if loop for qg1d > 0.5 g/kg
+          if (qg1d(k) > 5.e-4_wp) then
+            hail_fraction(k) = max(min(exp(12._wp*(rho_g_val/1070._wp) - 9.9_wp) + 0.1_wp, 1._wp), 0.1_wp)
+            if (qg1d(k) < 5.e-3_wp) then
+              hail_fraction(k) = hail_fraction(k) + max(min((0.1429_wp*log10(qg1d(k)) + 0.4286_wp), 0.1_wp), 0._wp)
             else
-              if (mvd_g(k) > 2.e-3_wp) then
-                hail_fraction(k) = (hail_fraction(k) + (1._wp - (10._wp**(-0.05_wp*tempc)))) * (mvd_g(k)*1000._wp - 2._wp)*0.5_wp
+              hail_fraction(k) = hail_fraction(k) + 0.1_wp
+            endif
+            if (mvd_g(k) > 2.e-3_wp) hail_fraction(k) = hail_fraction(k) + (mvd_g(k)*1000._wp - 2._wp)*0.1_wp
+            if (qr1d(k)+qc1d(k) > 1.e-3_wp .and. rho_g_val > 499._wp) hail_fraction(k) = 0.5_wp
+            hail_fraction(k) = max(min(hail_fraction(k), 0.5_wp), 0.2_wp)
+            qh1d(k) = hail_fraction(k) * qg1d(k)
+
+            ! melting
+            if (rho_g_val >= 749._wp .and. melt_prefactor > eps .and. tempc > 0._wp) then
+              if (mvd_g(k) > 4.e-3_wp) then
+                hail_fraction(k) = hail_fraction(k) + (1._wp - (10._wp**(-0.05_wp*tempc)))
                 hail_fraction(k) = max(min(hail_fraction(k), 0.8_wp), 0._wp)
               else
-                hail_fraction(k) = 0._wp
+                if (mvd_g(k) > 2.e-3_wp) then
+                  hail_fraction(k) = (hail_fraction(k) + (1._wp - (10._wp**(-0.05_wp*tempc)))) * (mvd_g(k)*1000._wp - 2._wp)*0.5_wp
+                  hail_fraction(k) = max(min(hail_fraction(k), 0.8_wp), 0._wp)
+                else
+                  hail_fraction(k) = 0._wp
+                endif  
               endif
+              qh1d(k) = hail_fraction(k) * qg1d(k)
             endif
           endif
         endif
       endif
     enddo
-
-    ! assign hail mass once for all levels
-    qh1d = hail_fraction * qg1d
-
   end subroutine compute_hail_fraction
+
 
   subroutine aerosol_check_and_update(rho, nwfa1d, nifa1d, nwfa, nifa, nwfaten, nifaten, dt)
     !! sets aerosol number concentrations and checks bounds
@@ -1712,8 +1719,6 @@ module module_mp_tempo_main
       qbten(k) = qbten(k) + (tend%pbg_scw(k) + tend%pbg_rfz(k) + tend%pbg_gcw(k) + &
         tend%pbg_rci(k) + tend%pbg_rcs(k) + tend%pbg_rcg(k) + tend%pbg_sml(k) - &
         tend%pbg_gml(k) + meters3_to_liters * (tend%prg_gde(k) - tend%prg_ihm(k)) / rho_g(1)) * orho
-
-      
       
       qhten(k) = qhten(k) + (tend%prh_rch(k) + tend%prh_hcw(k) + &
         tend%prh_hde(k) - tend%prr_hml(k)) * orho
@@ -3045,7 +3050,7 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(in), optional :: nwfa1d, nifa1d
     real(wp) :: rate_max, tempc, xni, xnc
     integer :: k, nz, idx_in, idx_r, idx_r1, idx_tc, idx_c, idx_n
-    ! no_hail removed; behavior simplified to unconditional checks
+
     nz = size(qv)
     do k = 1, nz
       if (temp(k) < t0) then
@@ -3213,7 +3218,7 @@ module module_mp_tempo_main
     real(dp) :: lami, lamr, n0_r, n0_g, n0_h
     integer :: k, nz, idx_i, idx_i1
     real(wp), dimension(:), allocatable :: t1_subl
-    ! no_hail removed; behavior simplified to unconditional checks
+
     nz = size(l_qi)
     allocate(t1_subl(nz), source=0._wp)
     call get_t1_subl(rho, temp, qvsi, tcond, diffu, ssati, t1_subl)
@@ -3285,10 +3290,7 @@ module module_mp_tempo_main
               ((lamr+fv_r)**(-cre(8)))
             tend%prr_rci(k) = min(real(rr(k)*odt, kind=dp), tend%prr_rci(k))
             tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
-            tend%pbg_rci(k) = meters3_to_liters*tend%prg_rci(k)/rho_g(nrhg)
-
-            ! legacy frozen-scheme removed
-            
+            tend%pbg_rci(k) = meters3_to_liters*tend%prg_rci(k)/rho_g(nrhg)            
           endif
         endif
 
