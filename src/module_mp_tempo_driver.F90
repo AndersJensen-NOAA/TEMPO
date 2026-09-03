@@ -39,7 +39,7 @@ module module_mp_tempo_driver
 !! \section arg_table_tempo_init Argument Table
 !! \htmlinclude tempo_init.html
 !!
-  subroutine tempo_init(aerosolaware_flag, hailaware_flag, semi_sedi_flag, cloud_condensation_flag, &
+  subroutine tempo_init(aerosolaware_flag, hailaware_flag, hailhyperaware_flag, semi_sedi_flag, cloud_condensation_flag, &
     refl10cm_from_melting_flag, ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, tempo_cfgs)
     !! initialize tempo microphysics
     use module_mp_tempo_params, only : get_version, tempo_version, t_efrw, &
@@ -49,7 +49,7 @@ module module_mp_tempo_driver
       initialize_arrays_qr_acr_qs, initialize_arrays_qr_acr_qg, initialize_arrays_freezewater, &
       initialize_bins_for_hail_size, initialize_bins_for_radar
 
-    logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, refl10cm_from_melting_flag, &
+    logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, hailhyperaware_flag, refl10cm_from_melting_flag, &
       ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, semi_sedi_flag, cloud_condensation_flag
     type(ty_tempo_cfgs), intent(inout) :: tempo_cfgs
 
@@ -72,6 +72,7 @@ module module_mp_tempo_driver
     if (initialize_mp_vars) then
       if (present(aerosolaware_flag)) tempo_cfgs%aerosolaware_flag = aerosolaware_flag
       if (present(hailaware_flag)) tempo_cfgs%hailaware_flag = hailaware_flag
+      if (present(hailhyperaware_flag)) tempo_cfgs%hailhyperaware_flag = hailhyperaware_flag
       if (present(ml_for_bl_nc_flag)) tempo_cfgs%ml_for_bl_nc_flag = ml_for_bl_nc_flag
       if (present(ml_for_nc_flag)) tempo_cfgs%ml_for_nc_flag = ml_for_nc_flag
       if (present(semi_sedi_flag)) tempo_cfgs%semi_sedi_flag = semi_sedi_flag
