@@ -483,7 +483,7 @@ module module_mp_tempo_main
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
       call melting(rhof2, rho, temp, qvsi, tcond, diffu, vsc2, ssati, delqvs, &
-        l_qs, rs, smof, smo0, smo1, l_qg, rg, ng, ilamg, idx_bg, l_qh, rh, nh, ilamh, &
+        l_qs, rs, smof, smo0, smo1, l_qg, rg, ng, ilamg, idx_bg, mvd_g, l_qh, rh, nh, ilamh, &
         tend, dt, odt)
     endif
     if (.not. tempo_cfgs%turn_off_micro_flag) then
@@ -1002,21 +1002,20 @@ module module_mp_tempo_main
             endif
             if (mvd_g(k) > 2.e-3_wp) hail_fraction(k) = hail_fraction(k) + (mvd_g(k)*1000._wp - 2._wp)*0.1_wp
             if (qr1d(k)+qc1d(k) > 1.e-3_wp .and. rho_g_val > 499._wp) hail_fraction(k) = 0.5_wp
+            
             hail_fraction(k) = max(min(hail_fraction(k), 0.5_wp), 0.2_wp)
             qh1d(k) = hail_fraction(k) * qg1d(k)
 
             ! melting
             if (rho_g_val >= 749._wp .and. melt_prefactor > eps .and. tempc > 0._wp) then
               if (mvd_g(k) > 4.e-3_wp) then
-                hail_fraction(k) = hail_fraction(k) + (1._wp - (10._wp**(-0.05_wp*tempc)))
-                hail_fraction(k) = max(min(hail_fraction(k), 0.8_wp), 0._wp)
+                 ! hail_fraction(k) = hail_fraction(k) + (1._wp - (10._wp**(-0.15_wp*tempc))) ! PREV was -0.05
+
+                 hail_fraction(k) = hail_fraction(k) + &
+                      (1._wp - max(min((1._wp / (1._wp + exp(temp(k)-t0-5._wp))), 1._wp), 0._wp))
+                hail_fraction(k) = max(min(hail_fraction(k), 0.8_wp), 0._wp) ! prev was 0.8
               else
-                if (mvd_g(k) > 2.e-3_wp) then
-                  hail_fraction(k) = (hail_fraction(k) + (1._wp - (10._wp**(-0.05_wp*tempc)))) * (mvd_g(k)*1000._wp - 2._wp)*0.5_wp
-                  hail_fraction(k) = max(min(hail_fraction(k), 0.8_wp), 0._wp)
-                else
-                  hail_fraction(k) = 0._wp
-                endif  
+                hail_fraction(k) = 0._wp
               endif
               qh1d(k) = hail_fraction(k) * qg1d(k)
             endif
@@ -3076,8 +3075,8 @@ module module_mp_tempo_main
           tend%prg_rfz(k) = min(real(rr(k)*odt, kind=dp), tend%prg_rfz(k))
           tend%pnr_rfz(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rfz(k))
           tend%png_rfz(k) = tend%pnr_rfz(k)
-          if (tend%prg_rcg(k)+tend%prg_rcs(k) > 0.25_wp * tend%prr_wau(k)) then
-            tend%png_rfz(k) = 0.1_wp * tend%pnr_rfz(k)
+          if (tend%prh_rch(k)+tend%prg_rcg(k)+tend%prg_rcs(k) >= 0.25_wp * tend%prr_wau(k)) then
+           tend%png_rfz(k) = 0.1_wp * tend%pnr_rfz(k)
           endif
         elseif (rr(k) > r1 .and. temp(k) < hgfrz) then
           tend%pri_rfz(k) = rr(k)*odt
@@ -3282,7 +3281,7 @@ module module_mp_tempo_main
               ((lamr+fv_r)**(-cre(9)))
             tend%pnr_rci(k) = min(real(nr(k)*odt, kind=dp), tend%pnr_rci(k))
             tend%png_rci(k) = tend%pnr_rci(k)
-            if (tend%prg_rcg(k)+tend%prg_rcs(k) > 0.25_wp * tend%prr_wau(k)) then
+            if (tend%prh_rch(k)+tend%prg_rcg(k)+tend%prg_rcs(k) > 0.25_wp * tend%prr_wau(k)) then
               tend%png_rci(k) = 0.1_wp * tend%pnr_rci(k)
             endif
             tend%pni_rci(k) = tend%pri_rci(k) * oxmi
@@ -3343,7 +3342,7 @@ module module_mp_tempo_main
 
 
   subroutine melting(rhof2, rho, temp, qvsi, tcond, diffu, vsc2, ssati, &
-    delqvs, l_qs, rs, smof, smo0, smo1, l_qg, rg, ng, ilamg, idx, &
+    delqvs, l_qs, rs, smof, smo0, smo1, l_qg, rg, ng, ilamg, idx, mvd_g, &
     l_qh, rh, nh, ilamh, tend, dt, odt)
     !! melting of snow and graupel  
     use module_mp_tempo_params, only : t0, bm_i, mu_i, pi, c_sqrd, c_cube, d0s, &
@@ -3355,7 +3354,7 @@ module module_mp_tempo_main
     type(ty_tend), intent(inout) :: tend
     logical, dimension(:), intent(in) :: l_qs, l_qg, l_qh
     real(wp), dimension(:), intent(in) :: rhof2, rho, rs, &
-      temp, qvsi, tcond, diffu, ssati, delqvs, vsc2, rg, ng, rh, nh
+      temp, qvsi, tcond, diffu, ssati, delqvs, vsc2, rg, ng, rh, nh, mvd_g
     real(dp), dimension(:), intent(in) :: smof, smo0, smo1, ilamg, ilamh
     integer, dimension(:), intent(in) :: idx
     real(wp) :: tempc, otemp, rvs, melt_f, t2_qg_me, t2_qg_sd, t2_qh_me
@@ -3413,7 +3412,8 @@ module module_mp_tempo_main
             ! 1000 is density water, 50 is lower limit (max ice density is 800)
             tend%pbg_gml(k) = meters3_to_liters*tend%prr_gml(k) / &
               max(min(melt_f*rho_g(idx(k)), rho_g(nrhg)), rho_g(1))
-            tend%pnr_gml(k) = tend%prr_gml(k)*ng(k)/rg(k) * max(min((1._wp / (1._wp + exp(temp(k)-t0-7._wp))), 1._wp), 0._wp)
+            ! tend%pnr_gml(k) = tend%prr_gml(k)*ng(k)/rg(k) * 10.0_wp**(-0.33_wp*(temp(k)-t0))
+            tend%pnr_gml(k) = tend%prr_gml(k)*ng(k)/rg(k) * max(min((1._wp / (1._wp + exp(temp(k)-t0-5._wp))), 1._wp), 0._wp)
           else
             tend%prr_gml(k) = 0._dp
             tend%pnr_gml(k) = 0._dp
