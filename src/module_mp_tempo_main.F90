@@ -3371,7 +3371,7 @@ module module_mp_tempo_main
       temp, qvsi, tcond, diffu, ssati, delqvs, vsc2, rg, ng, rh, nh, mvd_g, hail_fraction
     real(dp), dimension(:), intent(in) :: smof, smo0, smo1, ilamg, ilamh
     integer, dimension(:), intent(in) :: idx
-    real(wp) :: tempc, otemp, rvs, melt_f, t2_qg_me, t2_qg_sd, t2_qh_me, melt_sigmoid
+    real(wp) :: tempc, otemp, rvs, melt_f, t2_qg_me, t2_qg_sd, t2_qh_me, melt_sigmoid, melt_sigmoid2
     real(dp) :: n0_g, n0_melt, lamg, n0_h
     integer :: k, nz
     real(wp), dimension(:), allocatable :: t1_subl
@@ -3428,8 +3428,13 @@ module module_mp_tempo_main
               max(min(melt_f*rho_g(idx(k)), rho_g(nrhg)), rho_g(1))
             ! tend%pnr_gml(k) = tend%prr_gml(k)*ng(k)/rg(k) * 10.0_wp**(-0.33_wp*(temp(k)-t0))
             !!!!! tend%pnr_gml(k) = tend%prr_gml(k)*ng(k)/rg(k) * max(min((1._wp / (1._wp + exp(temp(k)-t0-5._wp))), 1._wp), 0._wp)
-            melt_sigmoid = min((1._wp + 4._wp*(hail_fraction(k)/0.5_wp)**0.33), 5._wp)
-            tend%pnr_gml(k) = tend%prr_gml(k)*ng(k)/rg(k) * max(min((1._wp / (1._wp + exp(temp(k)-t0-melt_sigmoid))), 1._wp), 0._wp)
+
+!!            melt_sigmoid = min((1._wp + 4._wp*(hail_fraction(k)/0.5_wp)**0.33), 5._wp)
+!!            tend%pnr_gml(k) = tend%prr_gml(k)*ng(k)/rg(k) * max(min((1._wp / (1._wp + exp(temp(k)-t0-melt_sigmoid))), 1._wp), 0._wp)
+
+            melt_sigmoid = max(min(5._wp*(hail_fraction(k)/0.25_wp)**.33_wp, 5.), 0.)
+            melt_sigmoid2 = (1._wp + exp(-1.215_wp * melt_sigmoid)) / (1._wp + exp(1.215*(temp(k)-t0-melt_sigmoid)))
+            tend%pnr_gml(k) = tend%prr_gml(k)*ng(k)/rg(k) * max(min(melt_sigmoid2, 1._wp), 0._wp)
           else
             tend%prr_gml(k) = 0._dp
             tend%pnr_gml(k) = 0._dp
