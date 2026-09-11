@@ -39,8 +39,9 @@ module module_mp_tempo_driver
 !! \section arg_table_tempo_init Argument Table
 !! \htmlinclude tempo_init.html
 !!
-  subroutine tempo_init(aerosolaware_flag, hailaware_flag, semi_sedi_flag, cloud_condensation_flag, &
-    refl10cm_from_melting_flag, ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, tempo_cfgs)
+  subroutine tempo_init(aerosolaware_flag, hailaware_flag, hailhyperaware_flag, semi_sedi_flag, cloud_condensation_flag, &
+    diagnostic_aerosols_flag, refl10cm_from_melting_flag, ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, &
+    tempo_cfgs)
     !! initialize tempo microphysics
     use module_mp_tempo_params, only : get_version, tempo_version, t_efrw, &
       initialize_graupel_vars, initialize_parameters, initialize_bins_for_tables, &
@@ -49,8 +50,9 @@ module module_mp_tempo_driver
       initialize_arrays_qr_acr_qs, initialize_arrays_qr_acr_qg, initialize_arrays_freezewater, &
       initialize_bins_for_hail_size, initialize_bins_for_radar
 
-    logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, refl10cm_from_melting_flag, &
-      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, semi_sedi_flag, cloud_condensation_flag
+    logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, hailhyperaware_flag, refl10cm_from_melting_flag, &
+      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, semi_sedi_flag, cloud_condensation_flag, &
+      diagnostic_aerosols_flag
     type(ty_tempo_cfgs), intent(inout) :: tempo_cfgs
 
     character(len=100) :: table_filename
@@ -71,7 +73,9 @@ module module_mp_tempo_driver
 
     if (initialize_mp_vars) then
       if (present(aerosolaware_flag)) tempo_cfgs%aerosolaware_flag = aerosolaware_flag
+      if (present(diagnostic_aerosols_flag)) tempo_cfgs%diagnostic_aerosols_flag = diagnostic_aerosols_flag
       if (present(hailaware_flag)) tempo_cfgs%hailaware_flag = hailaware_flag
+      if (present(hailhyperaware_flag)) tempo_cfgs%hailhyperaware_flag = hailhyperaware_flag
       if (present(ml_for_bl_nc_flag)) tempo_cfgs%ml_for_bl_nc_flag = ml_for_bl_nc_flag
       if (present(ml_for_nc_flag)) tempo_cfgs%ml_for_nc_flag = ml_for_nc_flag
       if (present(semi_sedi_flag)) tempo_cfgs%semi_sedi_flag = semi_sedi_flag
@@ -272,31 +276,30 @@ module module_mp_tempo_driver
     real(wp), dimension(:), allocatable :: thten_lwrad1d
     real(wp), dimension(:), allocatable :: thten_swrad1d
 
-    integer :: i, j, k, nz
+    integer :: i, j, k
     logical :: use_temperature, is_first_step
 
     type(ty_tempo_main_diags) :: tempo_main_diags
     type(ty_tempo_driver_diags), intent(inout) :: tempo_diags
 
-    nz = kte - kts + 1
     ! allocate 1d arrays if 3d arrays are present
-    if (present(nwfa)) allocate(nwfa1d(nz), source=0._wp)
-    if (present(nifa)) allocate(nifa1d(nz), source=0._wp)
-    if (present(nc)) allocate(nc1d(nz), source=0._wp)
-    if (present(ng)) allocate(ng1d(nz), source=0._wp)
-    if (present(qb)) allocate(qb1d(nz), source=0._wp)
+    if (present(nwfa)) allocate(nwfa1d(kts:kte), source=0._wp)
+    if (present(nifa)) allocate(nifa1d(kts:kte), source=0._wp)
+    if (present(nc)) allocate(nc1d(kts:kte), source=0._wp)
+    if (present(ng)) allocate(ng1d(kts:kte), source=0._wp)
+    if (present(qb)) allocate(qb1d(kts:kte), source=0._wp)
 
     ! additional optional 1d arrays
-    if (present(qcfrac)) allocate(qcfrac1d(nz), source=0._wp)
-    if (present(qifrac)) allocate(qifrac1d(nz), source=0._wp)
-    if (present(qc_bl)) allocate(qc_bl1d(nz), source=0._wp)
-    if (present(qcfrac_bl)) allocate(qcfrac_bl1d(nz), source=0._wp)
-    if (present(thten_bl)) allocate(thten_bl1d(nz), source=0._wp)
-    if (present(qvten_bl)) allocate(qvten_bl1d(nz), source=0._wp)
-    if (present(qcten_bl)) allocate(qcten_bl1d(nz), source=0._wp)  
-    if (present(qiten_bl)) allocate(qiten_bl1d(nz), source=0._wp)
-    if (present(thten_lwrad)) allocate(thten_lwrad1d(nz), source=0._wp)
-    if (present(thten_swrad)) allocate(thten_swrad1d(nz), source=0._wp) 
+    if (present(qcfrac)) allocate(qcfrac1d(kts:kte), source=0._wp)
+    if (present(qifrac)) allocate(qifrac1d(kts:kte), source=0._wp)
+    if (present(qc_bl)) allocate(qc_bl1d(kts:kte), source=0._wp)
+    if (present(qcfrac_bl)) allocate(qcfrac_bl1d(kts:kte), source=0._wp)
+    if (present(thten_bl)) allocate(thten_bl1d(kts:kte), source=0._wp)
+    if (present(qvten_bl)) allocate(qvten_bl1d(kts:kte), source=0._wp)
+    if (present(qcten_bl)) allocate(qcten_bl1d(kts:kte), source=0._wp)  
+    if (present(qiten_bl)) allocate(qiten_bl1d(kts:kte), source=0._wp)
+    if (present(thten_lwrad)) allocate(thten_lwrad1d(kts:kte), source=0._wp)
+    if (present(thten_swrad)) allocate(thten_swrad1d(kts:kte), source=0._wp) 
     if (present(land_input)) allocate(land1d)
 
     ! allocate diagnostics
@@ -486,8 +489,10 @@ module module_mp_tempo_driver
         ! return variables to model
         do k = kts, kte
           if (present(nc)) nc(i,k,j) = nc1d(k)
-          if (present(nwfa)) nwfa(i,k,j) = nwfa1d(k)
-          if (present(nifa)) nifa(i,k,j) = nifa1d(k)
+          if (.not. tempo_cfgs%diagnostic_aerosols_flag) then
+            if (present(nwfa)) nwfa(i,k,j) = nwfa1d(k)
+            if (present(nifa)) nifa(i,k,j) = nifa1d(k)
+          endif
           if ((present(ng)) .and. (present(qb))) then
             ng(i,k,j) = ng1d(k)
             qb(i,k,j) = qb1d(k)
@@ -513,16 +518,29 @@ module module_mp_tempo_driver
   end subroutine tempo_run
 
 
-  subroutine tempo_aerosol_surface_emissions(dt, nwfa, nwfa2d, ims, ime, jms, jme, kms, kme, kts)
+  subroutine tempo_aerosol_surface_emissions(dt, nwfa, nwfa2d, ims, ime, jms, jme, kms, kme, kts, its, ite, jts, jte)
     !! adds aerosol surface emissions to the 3D field
     real(wp), intent(in) :: dt
     integer, intent(in) :: ims, ime, jms, jme, kms, kme, kts
+    integer, intent(in), optional :: its, ite, jts, jte
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: nwfa 
     real(wp), dimension(ims:ime, jms:jme), intent(in) :: nwfa2d
-    integer :: i, j
+    integer :: i, j, jstart, jend, istart, iend
 
-    do j = jms, jme
-      do i = ims, ime
+    jstart = jms
+    jend = jme
+    istart = ims
+    iend = ime
+
+    if (present(its) .and. present(ite) .and. present(jts) .and. present(jte)) then
+      jstart = jts
+      jend = jte
+      istart = its
+      iend = ite
+    endif
+
+    do j = jstart, jend
+      do i = istart, iend
         nwfa(i,kts,j) = nwfa(i,kts,j) + nwfa2d(i,j) * dt
       enddo
     enddo
