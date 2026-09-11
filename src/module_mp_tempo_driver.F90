@@ -518,17 +518,29 @@ module module_mp_tempo_driver
   end subroutine tempo_run
 
 
-  subroutine tempo_aerosol_surface_emissions(dt, nwfa, nwfa2d, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts)
+  subroutine tempo_aerosol_surface_emissions(dt, nwfa, nwfa2d, ims, ime, jms, jme, kms, kme, kts, its, ite, jts, jte)
     !! adds aerosol surface emissions to the 3D field
     real(wp), intent(in) :: dt
-    integer, intent(in) :: ims, ime, jms, jme, kms, kme
-    integer, intent(in) :: its, ite, jts, jte, kts
+    integer, intent(in) :: ims, ime, jms, jme, kms, kme, kts
+    integer, intent(in), optional :: its, ite, jts, jte
     real(wp), dimension(ims:ime, kms:kme, jms:jme), intent(inout) :: nwfa 
     real(wp), dimension(ims:ime, jms:jme), intent(in) :: nwfa2d
-    integer :: i, j
+    integer :: i, j, jstart, jend, istart, iend
 
-    do j = jts, jte
-      do i = its, ite
+    jstart = jms
+    jend = jme
+    istart = ims
+    iend = ime
+
+    if (present(its) .and. present(ite) .and. present(jts) .and. present(jte)) then
+      jstart = jts
+      jend = jte
+      istart = its
+      iend = ite
+    endif
+
+    do j = jstart, jend
+      do i = istart, iend
         nwfa(i,kts,j) = nwfa(i,kts,j) + nwfa2d(i,j) * dt
       enddo
     enddo
