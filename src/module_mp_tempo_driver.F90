@@ -275,31 +275,30 @@ module module_mp_tempo_driver
     real(wp), dimension(:), allocatable :: thten_lwrad1d
     real(wp), dimension(:), allocatable :: thten_swrad1d
 
-    integer :: i, j, k, nz
+    integer :: i, j, k
     logical :: use_temperature, is_first_step
 
     type(ty_tempo_main_diags) :: tempo_main_diags
     type(ty_tempo_driver_diags), intent(inout) :: tempo_diags
 
-    nz = kte - kts + 1
     ! allocate 1d arrays if 3d arrays are present
-    if (present(nwfa)) allocate(nwfa1d(nz), source=0._wp)
-    if (present(nifa)) allocate(nifa1d(nz), source=0._wp)
-    if (present(nc)) allocate(nc1d(nz), source=0._wp)
-    if (present(ng)) allocate(ng1d(nz), source=0._wp)
-    if (present(qb)) allocate(qb1d(nz), source=0._wp)
+    if (present(nwfa)) allocate(nwfa1d(kts:kte), source=0._wp)
+    if (present(nifa)) allocate(nifa1d(kts:kte), source=0._wp)
+    if (present(nc)) allocate(nc1d(kts:kte), source=0._wp)
+    if (present(ng)) allocate(ng1d(kts:kte), source=0._wp)
+    if (present(qb)) allocate(qb1d(kts:kte), source=0._wp)
 
     ! additional optional 1d arrays
-    if (present(qcfrac)) allocate(qcfrac1d(nz), source=0._wp)
-    if (present(qifrac)) allocate(qifrac1d(nz), source=0._wp)
-    if (present(qc_bl)) allocate(qc_bl1d(nz), source=0._wp)
-    if (present(qcfrac_bl)) allocate(qcfrac_bl1d(nz), source=0._wp)
-    if (present(thten_bl)) allocate(thten_bl1d(nz), source=0._wp)
-    if (present(qvten_bl)) allocate(qvten_bl1d(nz), source=0._wp)
-    if (present(qcten_bl)) allocate(qcten_bl1d(nz), source=0._wp)  
-    if (present(qiten_bl)) allocate(qiten_bl1d(nz), source=0._wp)
-    if (present(thten_lwrad)) allocate(thten_lwrad1d(nz), source=0._wp)
-    if (present(thten_swrad)) allocate(thten_swrad1d(nz), source=0._wp) 
+    if (present(qcfrac)) allocate(qcfrac1d(kts:kte), source=0._wp)
+    if (present(qifrac)) allocate(qifrac1d(kts:kte), source=0._wp)
+    if (present(qc_bl)) allocate(qc_bl1d(kts:kte), source=0._wp)
+    if (present(qcfrac_bl)) allocate(qcfrac_bl1d(kts:kte), source=0._wp)
+    if (present(thten_bl)) allocate(thten_bl1d(kts:kte), source=0._wp)
+    if (present(qvten_bl)) allocate(qvten_bl1d(kts:kte), source=0._wp)
+    if (present(qcten_bl)) allocate(qcten_bl1d(kts:kte), source=0._wp)  
+    if (present(qiten_bl)) allocate(qiten_bl1d(kts:kte), source=0._wp)
+    if (present(thten_lwrad)) allocate(thten_lwrad1d(kts:kte), source=0._wp)
+    if (present(thten_swrad)) allocate(thten_swrad1d(kts:kte), source=0._wp) 
     if (present(land_input)) allocate(land1d)
 
     ! allocate diagnostics
