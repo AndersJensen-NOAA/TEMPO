@@ -13,6 +13,7 @@ module module_mp_tempo_cfgs
   ! tempo configuration flags for init
   type :: ty_tempo_cfgs
     logical :: aerosolaware_flag = .true. !! flag to run aerosol-aware microphysics
+    logical :: diagnostic_aerosols_flag = .false. !! flag to use diagnostic aerosols (no update) in the microphysics
     logical :: hailaware_flag = .true. !! flag to run hail-aware microphysics
     logical :: ml_for_bl_nc_flag = .false. !! flag to run machine-learning prediction for subgrid cloud number concentration
     logical :: ml_for_nc_flag = .false. !! flag to run machine-learning prediction for tempo cloud number concentration

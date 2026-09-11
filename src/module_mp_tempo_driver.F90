@@ -40,7 +40,8 @@ module module_mp_tempo_driver
 !! \htmlinclude tempo_init.html
 !!
   subroutine tempo_init(aerosolaware_flag, hailaware_flag, semi_sedi_flag, cloud_condensation_flag, &
-    refl10cm_from_melting_flag, ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, tempo_cfgs)
+    diagnostic_aerosols_flag, refl10cm_from_melting_flag, ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, &
+    tempo_cfgs)
     !! initialize tempo microphysics
     use module_mp_tempo_params, only : get_version, tempo_version, t_efrw, &
       initialize_graupel_vars, initialize_parameters, initialize_bins_for_tables, &
@@ -50,7 +51,8 @@ module module_mp_tempo_driver
       initialize_bins_for_hail_size, initialize_bins_for_radar
 
     logical, intent(in), optional :: aerosolaware_flag, hailaware_flag, refl10cm_from_melting_flag, &
-      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, semi_sedi_flag, cloud_condensation_flag
+      ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, semi_sedi_flag, cloud_condensation_flag, &
+      diagnostic_aerosols_flag
     type(ty_tempo_cfgs), intent(inout) :: tempo_cfgs
 
     character(len=100) :: table_filename
@@ -71,6 +73,7 @@ module module_mp_tempo_driver
 
     if (initialize_mp_vars) then
       if (present(aerosolaware_flag)) tempo_cfgs%aerosolaware_flag = aerosolaware_flag
+      if (present(diagnostic_aerosols_flag)) tempo_cfgs%diagnostic_aerosols_flag = diagnostic_aerosols_flag
       if (present(hailaware_flag)) tempo_cfgs%hailaware_flag = hailaware_flag
       if (present(ml_for_bl_nc_flag)) tempo_cfgs%ml_for_bl_nc_flag = ml_for_bl_nc_flag
       if (present(ml_for_nc_flag)) tempo_cfgs%ml_for_nc_flag = ml_for_nc_flag
@@ -486,8 +489,10 @@ module module_mp_tempo_driver
         ! return variables to model
         do k = kts, kte
           if (present(nc)) nc(i,k,j) = nc1d(k)
-          if (present(nwfa)) nwfa(i,k,j) = nwfa1d(k)
-          if (present(nifa)) nifa(i,k,j) = nifa1d(k)
+          if (.not. tempo_cfgs%diagnostic_aerosols_flag) then
+            if (present(nwfa)) nwfa(i,k,j) = nwfa1d(k)
+            if (present(nifa)) nifa(i,k,j) = nifa1d(k)
+          endif
           if ((present(ng)) .and. (present(qb))) then
             ng(i,k,j) = ng1d(k)
             qb(i,k,j) = qb1d(k)
