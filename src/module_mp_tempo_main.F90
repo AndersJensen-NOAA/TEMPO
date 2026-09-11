@@ -437,10 +437,13 @@ module module_mp_tempo_main
       endif
     enddo
 
-    call graupel_check_and_update(rho=rho, l_qg=l_qg, qg1d=qg1d, ng1d=ng1d, &
-      qb1d=qb1d, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
-      qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
-   
+    ! if hail is split from graupel, rerun graupel checks
+    if (any(l_qh)) then
+      call graupel_check_and_update(rho=rho, l_qg=l_qg, qg1d=qg1d, ng1d=ng1d, &
+        qb1d=qb1d, rg=rg, ng=ng, rb=rb, idx=idx_bg, qgten=qgten, ngten=ngten, &
+        qbten=qbten, ilamg=ilamg, mvd_g=mvd_g, dt=dt, odt=odt)
+    endif
+
     ! re-zero tendencies after initial check zero tendencies
     do k = 1, nz
       qcten(k) = 0._wp
@@ -469,7 +472,7 @@ module module_mp_tempo_main
         l_qg, rg, ng, ilamg, idx_bg, l_qh, rh, ilamh, tend, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
-      call ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, satw, &
+      call ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, &
         nwfa1d, nifa1d, nwfa, nifa, ni, smo0, rc, nc, rr, nr, ilamr, tend, dt, odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
@@ -1015,7 +1018,7 @@ module module_mp_tempo_main
               if (mvd_g(k) > 4.e-3_wp) then
                 hail_fraction(k) = hail_fraction(k) + &
                   (1._wp - max(min((1._wp / (1._wp + exp(temp(k)-t0-5._wp))), 1._wp), 0._wp))
-                hail_fraction(k) = max(min(hail_fraction(k), 0.8_wp), 0._wp) ! prev was 0.8
+                hail_fraction(k) = max(min(hail_fraction(k), 0.8_wp), 0._wp)
               else
                 hail_fraction(k) = 0._wp
               endif
@@ -3032,7 +3035,7 @@ module module_mp_tempo_main
   end subroutine rain_snow_rain_graupel
 
 
-  subroutine ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, satw, &
+  subroutine ice_nucleation(temp, rho, w1d, qv, qvsi, ssati, ssatw, &
       nwfa1d, nifa1d, nwfa, nifa, ni, smo0, rc, nc, rr, nr, ilamr, tend, dt, odt)
     !! ice nulceation
     use module_mp_tempo_params, only : r_r, r_c, hgfrz, rho_i, xm0i, &
@@ -3043,7 +3046,7 @@ module module_mp_tempo_main
     real(wp), intent(in) :: dt, odt
     type(ty_tend), intent(inout) :: tend
     real(wp), dimension(:), intent(in) :: qv, temp, rho, qvsi, rr, nr, rc, nc, w1d, &
-      ssati, ssatw, satw, ni, nwfa, nifa
+      ssati, ssatw, ni, nwfa, nifa
     real(dp), dimension(:), intent(in) :: ilamr, smo0
     real(wp), dimension(:), intent(in), optional :: nwfa1d, nifa1d
     real(wp) :: rate_max, tempc, xni, xnc, rime_autoconv_ratio
@@ -3122,7 +3125,7 @@ module module_mp_tempo_main
         xni = smo0(k)+ni(k) + (tend%pni_rfz(k)+tend%pni_wfz(k)+tend%pni_inu(k))*dt
         if (present(nwfa1d)) then
           if ((xni <= max_ni) .and.(temp(k) < 238._wp) .and. (ssati(k) >= 0.4_wp)) then
-            xnc = koop_nucleation(temp(k), satw(k), nwfa(k), dt)
+            xnc = koop_nucleation(temp(k), ssatw(k), nwfa(k), dt)
             tend%pni_iha(k) = xnc*odt
             tend%pri_iha(k) = min(real(rate_max, kind=dp), xm0i*0.1_wp*tend%pni_iha(k))
             tend%pni_iha(k) = tend%pri_iha(k)/(xm0i*0.1_wp)
@@ -3304,7 +3307,7 @@ module module_mp_tempo_main
               ((lamr+fv_r)**(-cre(8)))
             tend%prr_rci(k) = min(real(rr(k)*odt, kind=dp), tend%prr_rci(k))
             tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
-            tend%pbg_rci(k) = meters3_to_liters * tend%prg_rci(k)/rho_i
+            tend%pbg_rci(k) = meters3_to_liters * tend%prg_rci(k)/rho_g(nrhg)
           endif
         endif
 
@@ -3436,7 +3439,6 @@ module module_mp_tempo_main
             melt_constant_2 = (1._wp + exp(-1.215_wp * melt_constant_1)) / &
               (1._wp + exp(1.215_wp*(temp(k)-t0-melt_constant_1)))
             tend%pnr_gml(k) = tend%prr_gml(k)*ng(k)/rg(k) * max(min(melt_constant_2, 1._wp), 0._wp)
-
           else
             tend%prr_gml(k) = 0._dp
             tend%pnr_gml(k) = 0._dp
