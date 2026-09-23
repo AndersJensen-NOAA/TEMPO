@@ -152,7 +152,7 @@ module module_mp_tempo_main
     
     ! local variables
     real(wp) :: tempc, tc0, odt, hgt, hgt_cf, sgs_nc, uval
-    real(wp), dimension(kts:kte) :: cf_rh
+    real(wp), dimension(kts:kte) :: cf_rh, cf_rhi
     logical :: do_micro, supersaturated, above_cloud_fraction_rh
     logical, save :: first_call_main = .true.
     integer :: k, nz
@@ -346,7 +346,12 @@ module module_mp_tempo_main
       rho(k) = roverrv*pres(k)/(rdry*temp(k)*(qv(k)+roverrv))
       
       cf_rh(k) = cloud_fraction_rh
+      cf_rhi(k) = cloud_fraction_rhi
       hgt = hgt + dz1d(k)
+      
+      if (dz1d(k) > 100._wp .and. temp(k) > (t0 - 68._wp)) then
+         cf_rhi(k) = cloud_fraction_rhi - dz1d(k)*0.0001_wp
+      endif
 
       if (hgt < hgt_cf) then
          cf_rh(k) = cloud_fraction_rh_pbl_water
@@ -499,7 +504,7 @@ module module_mp_tempo_main
         rr=rr, nr=nr, ilamr=ilamr, tend=tend, dt=dt, odt=odt)
     endif 
     if (.not. tempo_cfgs%turn_off_micro_flag) then
-      call ice_processes(rhof, rhof2, rho, w1d, temp, qv, qvsi, tcond, diffu, &
+      call ice_processes(rhof, rhof2, rho, w1d, temp, cf_rhi, qv, qvsi, tcond, diffu, &
       vsc2, ssati, l_qi, ri, ni, ilami, l_qs, rs, smoe, smof, smo1, rr, nr, &
       ilamr, mvd_r, l_qg, rg, ng, ilamg, idx_bg, qia1d, tend, odt)
     endif
@@ -659,10 +664,10 @@ module module_mp_tempo_main
     endif 
 
    ! cloud fraction
-    call ice_cloud_fraction(dz1d, temp, l_qi, rho, qv, qvsi, qi1d, l_qs, qs1d, ssati, qia1d, &
+    call ice_cloud_fraction(dz1d, temp, cf_rhi, l_qi, rho, qv, qvsi, qi1d, l_qs, qs1d, ssati, qia1d, &
       qca1d, qiten_bl1d, qiten, w1d, ocp, tend, dt, odt)
 
-    call liquid_cloud_fraction(cf_rh=cf_rh, temp=temp, pres=pres, dz1d=dz1d, l_qc=l_qc, rho=rho, qv=qv, &
+    call liquid_cloud_fraction(cf_rh=cf_rh, temp=temp, pres=pres, dz1d=dz1d, l_qc=l_qc, l_qr=l_qr, rho=rho, qv=qv, &
       qvs=qvs, qc1d=qc1d, nc1d=nc1d, qcfrac1d=qca1d, w1d=w1d, lvap=lvap, ocp=ocp, &
       ssatw=ssatw, thten_swrad1d=thten_swrad1d, thten_lwrad1d=thten_lwrad1d, &
       qvten_bl1d=qvten_bl1d, qcten_bl1d=qcten_bl1d, thten_bl1d=thten_bl1d, nwfa=nwfa, qc_bl1d=qc_bl1d, qcfrac_bl1d=qcfrac_bl1d, tend=tend, dt=dt, odt=odt)
@@ -701,7 +706,7 @@ module module_mp_tempo_main
       if(ri(k) > r1) then
          !AAJ TEST 4         qifracten(k) = qifracten(k) + ((1.-tend%prs_iau(k)*dt/qi1d(k)/rho(k))**0.5 - 1.) * qia1d(k)
          qifracten(k) = qifracten(k) + ((1.-tend%prs_iau(k)*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)
-         qifracten(k) = qifracten(k) + ((1.-tend%pri_ide(k)*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)                  
+         qifracten(k) = qifracten(k) + ((1.-(tend%prs_sci(k)+tend%prs_ide(k)+tend%pri_ide(k))*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)                  
 !!!         qifracten(k) = qifracten(k) + ((1.-tend%prs_iau(k)/qi1d(k)/rho(k))**0.5 - 1.) * qia1d(k)         
          !! OFF 13 JUNE 2026  if (tend%pri_ide(k) < 0.) qifracten(k) = qifracten(k) + ((1.+tend%pri_ide(k)*dt/qi1d(k)/rho(k))**0.5 - 1.) * qia1d(k)         
       endif
@@ -715,7 +720,7 @@ module module_mp_tempo_main
 !!!!      nifaten(k) = nifaten(k) - tend%prw_ini(k)/xm0i
       
       if (qcfrac_bl1d(k) > 0.05 .and. qcfrac_bl1d(k) < 0.5 .and. temp(k) > 253.15 .and. &
-        qcten_bl1d(k) > eps .and. (ri(k)/rho(k)+rc(k)/rho(k)+qcten(k)*dt+qiten(k)*dt) <= r1) then
+        qcten_bl1d(k) > r1 .and. (ri(k)/rho(k)+rc(k)/rho(k)+rr(k)/rho(k)+qcten(k)*dt+qiten(k)*dt+qrten(k)*dt) <= r1) then
          qcfracten(k) = qcfracten(k) + max(qcfrac_bl1d(k) * odt, 0.075*odt)
          qcten(k) = qcten(k) + (qcfrac_bl1d(k)**(1./0.78))/5.57/1000.*odt
          qvten(k) = qvten(k) - (qcfrac_bl1d(k)**(1./0.78))/5.57/1000.*odt         
@@ -992,11 +997,8 @@ module module_mp_tempo_main
 !! 15 JUNE TESET      if ((qs1d(k) > 1.e-4) .and. (qi1d(k) > 1.e-9)) then
 
       ! 01 JULY 2026
-!!      if ((qs1d(k) > 1.e-5) .and. (qi1d(k) > 1.e-9) .and. qia1d(k) <= cf_low) then
-      if ((qi1d(k) + qs1d(k) > 1.e-4) .and. (qi1d(k) > 1.e-9)) then
-!!!         if (qia1d(k) <= cf_low .or. qs1d(k) > 1.e-4) then                  
-         qia1d(k) = min(qia1d(k) + max(5.57_wp*(1000._wp*qs1d(k))**(0.78_wp), cf_low), 1._wp)
-!!!         endif
+      if ((qi1d(k) + qs1d(k) > 1.e-4) .and. (qi1d(k) > 1.e-9) .and. qia1d(k) < 0.9) then
+         qia1d(k) = min(qia1d(k) + max(5.57_wp*(1000._wp*qs1d(k))**(0.78_wp), cf_low), 0.9_wp)
       endif
    enddo
 
@@ -1812,8 +1814,8 @@ module module_mp_tempo_main
           (lsub*ocp(k)*(tend%pri_inu(k) + tend%pri_ide(k) + &
           tend%prs_ide(k) + tend%prs_sde(k) + tend%prg_gde(k) + tend%pri_iha(k)) + &
           lfus2*ocp(k)*(tend%pri_wfz(k) + tend%pri_rfz(k) + tend%prg_rfz(k) + &
-          tend%prs_scw(k) + tend%prg_scw(k) + tend%prg_gcw(k) + tend%prg_rcs(k) + &
-          tend%prs_rcs(k) + tend%prr_rci(k) + tend%prg_rcg(k)))*orho
+          tend%prs_scw(k) + tend%prg_scw(k) + tend%prg_gcw(k) - tend%prr_rcs(k) + &
+          tend%prr_rci(k) - tend%prr_rcg(k)))*orho
       else
         tten(k) = tten(k) + &
           (lfus*ocp(k)*(-tend%prr_sml(k) - tend%prr_gml(k) - &
@@ -2450,13 +2452,13 @@ module module_mp_tempo_main
   end subroutine rain_evaporation
 
 
-  subroutine ice_cloud_fraction(dz1d, temp, l_qi, rho, qv, qvsi, qi1d, l_qs, qs1d, ssati, qifrac1d, &
+  subroutine ice_cloud_fraction(dz1d, temp, cf_rhi, l_qi, rho, qv, qvsi, qi1d, l_qs, qs1d, ssati, qifrac1d, &
       qcfrac1d, qiten_bl1d, qiten, w1d, ocp, tend, dt, odt)
     use module_mp_tempo_params, only : rv, cloud_fraction_rhi, eps, lsub, hgfrz
 
     real(wp), intent(in) :: dt, odt
     real(wp), dimension(:), intent(in) :: dz1d, temp, rho, qv, qvsi, ssati, qi1d, qs1d, qifrac1d, &
-      qcfrac1d, w1d, ocp, qiten_bl1d, qiten
+      qcfrac1d, w1d, ocp, qiten_bl1d, qiten, cf_rhi
     logical, dimension(:), intent(in) :: l_qi, l_qs
     type(ty_tend), intent(inout) :: tend
     real(wp) :: orho, omega, dqsdti, al, bs, sd, qi_mean, qtot_mean, ls_cond, &
@@ -2468,18 +2470,18 @@ module module_mp_tempo_main
       if (qi1d(k) <= r1) then
 
           
-        if (tend%pri_rfz(k)*dt > eps) then
+        if (tend%pri_rfz(k)*dt > r1) then
           tend%pra_ini(k) = 1._dp*odt
-        elseif (tend%pri_wfz(k)*dt > eps .and. qcfrac1d(k) > cf_low) then
+        elseif (tend%pri_wfz(k)*dt > r1 .and. qcfrac1d(k) > cf_low) then
           tend%pra_ini(k) = max(qcfrac1d(k), cf_low)*odt
         else
-          if (qiten(k)*dt > r1) tend%pra_ini(k) = 0.25*odt 
+          if (qiten(k)*dt > r1) tend%pra_ini(k) = min(max(ssati(k)+1._wp-cf_rhi(k), 0.1_wp), 1._wp) ! 0.25*odt 
        endif
     endif
 
-    ! vertical motion (exiisting ice (which can submliate and destabilize) or large grid spacing with unresolved
+    ! vertical motion (existing ice (which can submliate and destabilize) or large grid spacing with unresolved
 !!    if ((qi1d(k) + qs1d(k) > 1.e-9) .or. w1d(k) > eps .or. dz1d(k) > 500.) then
-    if ((qi1d(k) + qs1d(k) > 1.e-9 .and. dz1d(k) > 250.) .or. w1d(k) > eps) then       
+    if ((qi1d(k) + qs1d(k) > 1.e-9 .and. dz1d(k) > 100.) .or. (w1d(k) > 0.001 .and. qi1d(k) <= r1)) then       
        if (temp(k) < 268.15 .and. temp(k) >= hgfrz) then
           orho = 1._wp / rho(k)
           omega = 0._wp
@@ -2488,10 +2490,13 @@ module module_mp_tempo_main
           
           if (dz1d(k) <= 500.) then
              !!             w_tmp = max(10.**(0.01*(dz1d(k)-600.)), 0.01)
-             w_tmp = max(0.2 - 0.19 * (10**(-0.008525024*(dz1d(k)-250.))), 0.01)
+! 250             w_tmp = max(0.2 - 0.19 * (10**(-0.008525024*(dz1d(k)-250.))), 0.01)
+             w_tmp = max(0.2 - 0.19 * (10**(-0.0056969*(dz1d(k)-100.))), 0.01)             
           else
              w_tmp = 0.2
           endif
+          if (qs1d(k) > qi1d(k)) w_tmp = 0._wp
+          
           w_tmp = max(w1d(k), w_tmp)
           
           omega = -9.8_wp * w_tmp * rho(k)
@@ -2502,16 +2507,17 @@ module module_mp_tempo_main
  
           dqsdti = lsub * qvsi(k) / (rv*temp(k)**2)
           al = 1._wp / (1._wp + dqsdti*lsub*ocp(k))
-          bs = al * (1._wp-cloud_fraction_rhi) * qvsi(k)
+          bs = al * (1._wp-cf_rhi(k)) * qvsi(k)
           sd = al*(qvsi(k)-qv(k))
           qtot_mean = qv(k) + qi1d(k) !! + qs1d(k)
           qi_mean = al*(qtot_mean-qvsi(k))
           ls_cond = -al * dqsdti * (omega*orho*ocp(k))
-          ssati_total = (qv(k) + qi1d(k) + qs1d(k)) / qvsi(k)
+!          ssati_total = (qv(k) + qi1d(k) + qs1d(k)) / qvsi(k)
+          ssati_total = (qv(k)) / qvsi(k)          
 !!!          ssati_total = (qv(k) + qs1d(k)) / qvsi(k)          
 
 !!          if (ssati(k) > (cloud_fraction_rhi-0.99_wp) .and. ssati(k) < 0._wp .and. temp(k) < 263.15 .and. omega < eps) then
-          if (ssati_total > (cloud_fraction_rhi) .and. ssati(k) < 0._wp) then             
+          if (ssati_total > (cf_rhi(k)) .and. ssati(k) < 0._wp) then             
              qi_ = qi1d(k) !!!! JULy 09 + tend%prw_ini(k)*orho*dt
              if ((abs(sd) > 1.e-6_wp) .and. qi_ > r1) then
                 qifrac_ = qifrac1d(k)
@@ -2567,7 +2573,7 @@ module module_mp_tempo_main
   end subroutine ice_cloud_fraction
 
 
-  subroutine liquid_cloud_fraction(cf_rh, temp, pres, dz1d, l_qc, rho, qv, qvs, qc1d, nc1d, qcfrac1d, &
+  subroutine liquid_cloud_fraction(cf_rh, temp, pres, dz1d, l_qc, l_qr, rho, qv, qvs, qc1d, nc1d, qcfrac1d, &
       w1d, lvap, ocp, ssatw, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
       thten_bl1d, nwfa, qc_bl1d, qcfrac_bl1d, tend, dt, odt)
     use module_mp_tempo_params, only : rv, cloud_fraction_rh, eps, nt_c_min
@@ -2578,7 +2584,7 @@ module module_mp_tempo_main
       w1d, lvap, ocp, ssatw, nwfa, thten_swrad1d, thten_lwrad1d, qvten_bl1d, qcten_bl1d, &
       thten_bl1d, dz1d, qc_bl1d, qcfrac_bl1d
     real(wp), dimension(:), intent(in), optional :: nc1d
-    logical, dimension(:), intent(in) :: l_qc
+    logical, dimension(:), intent(in) :: l_qc, l_qr
     type(ty_tend), intent(inout) :: tend
     real(wp) :: orho, omega, dqsdt, al, bs, sd, qc_mean, qtot_mean, ls_cond, &
       term1, term2, term3, gterm, eros_term, theta_to_temp, xnc, qcfrac_
@@ -2599,7 +2605,7 @@ module module_mp_tempo_main
         
       ! initialization of cloud water and cloud fraction
       ! tendencies are grid-mean
-      if (.not. l_qc(k)) then
+      if (.not. l_qc(k) .and. .not. l_qr(k)) then
          
 !        if (ssatw(k) > (cf_rh(k)-0.99_wp) .and. ssatw(k) < 0._wp) then 
 !            tend%pra_sgi(k) = 0.5_dp/bs*(bs+qc_mean) * odt
@@ -2758,14 +2764,14 @@ module module_mp_tempo_main
   end subroutine freeze_cloud_melt_ice
 
 
-  function koop_nucleation(temp, satw, naero, dt) result(nuc)
+  function koop_nucleation(temp, ssatw, naero, dt) result(nuc)
     !! aqueous solution freezing of water from 
     !! [Koop et al. (2000)](https://doi.org/10.1038/35020537)
     !! newer research suggests that the freezing rate should be lower 
     !! than original paper, so J_rate is reduced by two orders of magnitude
     use module_mp_tempo_params, only : r_uni, ar_volume
 
-    real(wp), intent(in) :: temp, satw, naero, dt
+    real(wp), intent(in) :: temp, ssatw, naero, dt
     real(wp) :: xni, mu_diff, a_w_i, delta_aw, log_j_rate, j_rate, prob_h
     real(wp) :: nuc
 
@@ -2774,7 +2780,7 @@ module module_mp_tempo_main
     mu_diff = 210368._wp + (131.438_wp*temp) - &
       (3.32373e6_wp/temp) - (41729.1_wp*log(temp))
     a_w_i = exp(mu_diff/(r_uni*temp))
-    delta_aw = satw - a_w_i
+    delta_aw = ssatw - a_w_i + 1._wp
 
     log_j_rate = -906.7_wp + (8502._wp*delta_aw) - &
       (26924._wp*delta_aw*delta_aw) + (29180._wp*delta_aw*delta_aw*delta_aw)
@@ -2906,7 +2912,7 @@ module module_mp_tempo_main
       if (l_qc(k)) then
         ! if (rc(k)*qcfrac1d(k) > 0.01e-3_wp) then ! .and. qcfrac1d(k) > 0.99) then
 !         if (rc(k)*qcfrac1d(k) > 0.1e-3_wp) then ! .and. qcfrac1d(k) > 0.99) then
-        if (rc(k)*qcfrac1d(k) > 0.01e-3_wp) then                        
+        if (rc(k)*qcfrac1d(k) > 0.01e-3_wp) then
           nu_c = get_nuc(nc(k))
           lamc = 1._dp / ilamc(k)       
           xdc = max(d0c*1.e6_wp, ((rc(k)/(am_r*nc(k)))**obmr) * 1.e6_wp)
@@ -2922,8 +2928,8 @@ module module_mp_tempo_main
           tend%prr_wau(k) = min(real(rc(k)*odt, kind=dp), &
                tend%prr_wau(k))
 ! JUNE 15 2026          
-!          tend%pnr_wau(k) = tend%prr_wau(k) / (qcfrac1d(k)*am_r*nu_c*autocon_nr_factor*d0r*d0r*d0r)
-          tend%pnr_wau(k) = tend%prr_wau(k) / (am_r*nu_c*autocon_nr_factor*d0r*d0r*d0r)
+          tend%pnr_wau(k) = tend%prr_wau(k) / (qcfrac1d(k)*am_r*nu_c*autocon_nr_factor*d0r*d0r*d0r)
+!!          tend%pnr_wau(k) = tend%prr_wau(k) / (am_r*nu_c*autocon_nr_factor*d0r*d0r*d0r)
           tend%pnc_wau(k) = min(real(nc(k)*odt, kind=dp), &
             tend%prr_wau(k) / (am_r*mvd_c(k)*mvd_c(k)*mvd_c(k)))
           
@@ -3394,6 +3400,7 @@ module module_mp_tempo_main
         !> deposition nucleation from dust is from
         !> [DeMott et al. (2010)](https://doi.org/10.1073/pnas.0910818107)
         if ((ssati(k) >= demott_nuc_ssati - (1.-cloud_fraction_rhi)) .or. (ssatw(k) > (cloud_fraction_rh-1._wp) .and. tempc < -20._wp)) then
+!!        if (ssati(k) >= demott_nuc_ssati .or. (ssatw(k) > 0._wp .and. tempc < -20._wp)) then           
           if (present(nifa)) then
             xnc = demott_nucleation(tempc, rho(k), nifa(k))
           else
@@ -3495,7 +3502,7 @@ module module_mp_tempo_main
   end subroutine get_t1_subl
 
 
-  subroutine ice_processes(rhof, rhof2, rho, w1d, temp, qv, qvsi, tcond, diffu, &
+  subroutine ice_processes(rhof, rhof2, rho, w1d, temp, cf_rhi, qv, qvsi, tcond, diffu, &
     vsc2, ssati, l_qi, ri, ni, ilami, l_qs, rs, smoe, smof, smo1, rr, nr, ilamr, &
     mvd_r, l_qg, rg, ng, ilamg, idx, qifrac1d, tend, odt)
     !! ice processes including cloud ice depositional growth, conversion of cloud ice
@@ -3511,7 +3518,7 @@ module module_mp_tempo_main
     type(ty_tend), intent(inout) :: tend
     logical, dimension(:), intent(in) :: l_qi, l_qs, l_qg
     real(wp), dimension(:), intent(in) :: rhof, rhof2, rho, w1d, ri, ni, rs, rr, nr, &
-      temp, qv, qvsi, tcond, diffu, ssati, vsc2, mvd_r, rg, ng, qifrac1d
+      temp, qv, qvsi, tcond, diffu, ssati, vsc2, mvd_r, rg, ng, qifrac1d, cf_rhi
     real(dp), dimension(:), intent(in) :: ilami, smoe, smof, smo1, ilamr, ilamg
     integer, dimension(:), intent(in) :: idx
     real(wp) :: xdi, xmi, oxmi, c_snow, rate_max, otemp, rvs, t2_qg_sd
@@ -3538,7 +3545,7 @@ module module_mp_tempo_main
           tend%pri_ide(k) = c_cube*t1_subl(k)*diffu(k)*ssati(k)*rvs &
                *oig1*cig(5)*ni(k)*ilami(k) ! * qifrac1d(k)
           
-          if (ssati(k) >= cloud_fraction_rhi-0.99_wp) then
+          if (ssati(k) >= cf_rhi(k)-0.99_wp) then
              tend%pri_ide(k) = max(tend%pri_ide(k), 0._dp)
           endif
           
@@ -3547,7 +3554,7 @@ module module_mp_tempo_main
             tend%pni_ide(k) = tend%pri_ide(k)*oxmi
             tend%pni_ide(k) = max(real(-ni(k)*odt, kind=dp), tend%pni_ide(k))
           else
-             tend%pri_ide(k) = min(tend%pri_ide(k), real(rate_max, kind=dp))
+            tend%pri_ide(k) = min(tend%pri_ide(k), real(rate_max, kind=dp))
             tend%prs_ide(k) = (1.0_dp-tpi_ide(idx_i,idx_i1))*tend%pri_ide(k)
             tend%pri_ide(k) = tpi_ide(idx_i,idx_i1)*tend%pri_ide(k)
           endif
