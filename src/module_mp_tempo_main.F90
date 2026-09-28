@@ -1735,7 +1735,7 @@ module module_mp_tempo_main
     if (tempo_cfgs%refl10cm_flag) then
       call nvtx_range_push('reflectivity_10cm')
       call reflectivity_10cm(kts, kte, its, ite, jts, jte, tempo_cfgs%refl10cm_from_melting_flag, &
-        temp, l_qr, rr, nr, ilamr, l_qs, rs, smoc, smob, smoz, l_qg, rg, ng, idx_bg, ilamg, &
+        temp, l_qr, rr, nr, ilamr, l_qs, rs, smoc, smob, smoz, l_qg, rg, ng, idx_bg, ilamg, l_qh, nh, ilamh, &
         tempo_main_diags%refl10cm, column_mp_active)
       call nvtx_range_pop()
     endif
