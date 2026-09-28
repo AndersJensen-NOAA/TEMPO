@@ -38,7 +38,7 @@ module module_mp_tempo_diags
   contains 
 
   subroutine effective_radius(kts, kte, its, ite, jts, jte, temp, l_qc, nc, ilamc, l_qi, ilami, l_qs, rs, &
-      re_qc, re_qi, re_qs, column_mp_active)
+    re_qc, re_qi, re_qs, column_mp_active)
     !! effective radius values for cloud water, cloud ice and snow (horizontal tile)
     !!
     !! \(r_{e} = 0.5\frac{\int_0^\infty D^{3}n(D)dD}{\int_0^\infty D^2n(D)dD}\)
@@ -98,9 +98,9 @@ module module_mp_tempo_diags
   end subroutine effective_radius
 
 
-    subroutine reflectivity_10cm(kts, kte, its, ite, jts, jte, refl10cm_from_melting_flag, &
-      temp, l_qr, rr, nr, ilamr, l_qs, rs, smoc, smob, smoz, &
-      l_qg, rg, ng, idx, ilamg, l_qh, nh, ilamh, dbz, column_mp_active)
+  subroutine reflectivity_10cm(kts, kte, its, ite, jts, jte, refl10cm_from_melting_flag, &
+    temp, l_qr, rr, nr, ilamr, l_qs, rs, smoc, smob, smoz, &
+    l_qg, rg, ng, idx, ilamg, l_qh, nh, ilamh, dbz, column_mp_active)
     !! 10-cm radar reflectivity over a horizontal tile
     !!
     !! contributions from melting snow and graupel are optionally included
