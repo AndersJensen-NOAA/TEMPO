@@ -98,9 +98,9 @@ module module_mp_tempo_diags
   end subroutine effective_radius
 
 
-  subroutine reflectivity_10cm(kts, kte, its, ite, jts, jte, refl10cm_from_melting_flag, &
+    subroutine reflectivity_10cm(kts, kte, its, ite, jts, jte, refl10cm_from_melting_flag, &
       temp, l_qr, rr, nr, ilamr, l_qs, rs, smoc, smob, smoz, &
-      l_qg, rg, ng, idx, ilamg, l_qh, nh, ilamh, dbz, column_mp_active)
+      l_qg, rg, ng, idx, ilamg, dbz, column_mp_active, l_qh, nh, ilamh)
     !! 10-cm radar reflectivity over a horizontal tile
     !!
     !! contributions from melting snow and graupel are optionally included
@@ -114,11 +114,14 @@ module module_mp_tempo_diags
     real(wp), dimension(kts:kte, TEMPO_ITS:TEMPO_ITE, TEMPO_JTS:TEMPO_JTE), intent(in) :: temp, rg, ng, rr, nr, rs
     real(dp), dimension(kts:kte, TEMPO_ITS:TEMPO_ITE, TEMPO_JTS:TEMPO_JTE), intent(in) :: ilamr, smoc, smob, smoz, ilamg
     integer, dimension(kts:kte, TEMPO_ITS:TEMPO_ITE, TEMPO_JTS:TEMPO_JTE), intent(in) :: idx
-    real(wp), dimension(:,:,:), intent(out) :: dbz !! assumed-shape so a full-tile diag can be filled per sub-tile block (absolute i,j)
+    real(wp), dimension(kts:kte, TEMPO_ITS:TEMPO_ITE, TEMPO_JTS:TEMPO_JTE), intent(out) :: dbz
     logical, dimension(TEMPO_ITS:TEMPO_ITE, TEMPO_JTS:TEMPO_JTE), intent(in), optional :: column_mp_active
+    logical, dimension(kts:kte, TEMPO_ITS:TEMPO_ITE, TEMPO_JTS:TEMPO_JTE), intent(in), optional :: l_qh
+    real(wp), dimension(kts:kte, TEMPO_ITS:TEMPO_ITE, TEMPO_JTS:TEMPO_JTE), intent(in), optional :: nh
+    real(dp), dimension(kts:kte, TEMPO_ITS:TEMPO_ITE, TEMPO_JTS:TEMPO_JTE), intent(in), optional :: ilamh
     integer :: i, j, k, k_melt
     real(wp) :: ze_rain(kts:kte), ze_snow(kts:kte), ze_graupel(kts:kte), ze_hail(kts:kte)
-    real(dp) :: n0_r, lamr, n0_g
+    real(dp) :: n0_r, lamr, n0_g, n0_h
     logical :: use_cmp, compute_col
 
     use_cmp = present(column_mp_active)

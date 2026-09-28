@@ -10,8 +10,6 @@ program run_tempo_tests
 
   real, dimension(7) :: sedi_tests = &
     [1., 10., 20., 60., 120., 300., 600.]
-  real, dimension(1) :: sedi_tests = &
-    [20.]
   integer :: t, ncells, nargs, i, nout, stride
   character(len=32) :: arg
   character(len=160) :: nvtx_lbl

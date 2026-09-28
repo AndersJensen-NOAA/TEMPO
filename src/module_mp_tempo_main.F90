@@ -3755,7 +3755,7 @@ module module_mp_tempo_main
   end subroutine freeze_cloud_melt_ice
 
 
-  function koop_nucleation(temp, satw, naero, dt) result(nuc)
+  function koop_nucleation(temp, ssatw, naero, dt) result(nuc)
   !$acc routine seq
     !! aqueous solution freezing of water from
     !! [Koop et al. (2000)](https://doi.org/10.1038/35020537)
@@ -4031,11 +4031,10 @@ module module_mp_tempo_main
               tend%prs_scw(k,i,j) = (1._wp - g_frac)*tend%prs_scw(k,i,j)
             endif
           endif
+          endif
         endif
-      endif
-      endif
 
-      if (l_qc(k, i, j) .and. l_qg(k, i, j)) then
+        if (l_qc(k, i, j) .and. l_qg(k, i, j)) then
         !>
         !> graupel collecting cloud water - assume dc << dg and vtc \(\approx 0\)
         if (rg(k, i, j) >= r_g(1) .and. mvd_c(k, i, j) > d0c) then
