@@ -64,7 +64,7 @@ module module_mp_tempo_driver
     call nvtx_range_push('tempo_init')
 
     ! get tempo version from readme file
-    call get_version(tempo_version) 
+    call get_version(tempo_version, tempo_cfgs%verbose) 
 
     ! check an allocatable array (t_efrw) to see if initialization can be skipped
     ! but allow for force initialization useful for testing
