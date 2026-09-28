@@ -60,14 +60,14 @@ module module_mp_tempo_main
 #endif
  
   type :: ty_tempo_main_diags
-    real(wp), dimension(:,:), allocatable :: rain_precip = 0._wp
-    real(wp), dimension(:,:), allocatable :: cloud_precip = 0._wp
-    real(wp), dimension(:,:), allocatable :: ice_liquid_equiv_precip = 0._wp
-    real(wp), dimension(:,:), allocatable :: snow_liquid_equiv_precip = 0._wp
-    real(wp), dimension(:,:), allocatable :: graupel_liquid_equiv_precip = 0._wp
-    real(wp), dimension(:,:), allocatable :: hail_liquid_equiv_precip = 0._wp
-    real(wp), dimension(:,:), allocatable :: frozen_fraction = 0._wp
-    real(wp), dimension(:,:), allocatable :: frz_rain_precip = 0._wp
+    real(wp), dimension(:,:), allocatable :: rain_precip
+    real(wp), dimension(:,:), allocatable :: cloud_precip
+    real(wp), dimension(:,:), allocatable :: ice_liquid_equiv_precip
+    real(wp), dimension(:,:), allocatable :: snow_liquid_equiv_precip
+    real(wp), dimension(:,:), allocatable :: graupel_liquid_equiv_precip
+    real(wp), dimension(:,:), allocatable :: hail_liquid_equiv_precip
+    real(wp), dimension(:,:), allocatable :: frozen_fraction
+    real(wp), dimension(:,:), allocatable :: frz_rain_precip
     real(wp), dimension(:,:,:), allocatable :: rain_med_vol_diam
     real(wp), dimension(:,:,:), allocatable :: graupel_med_vol_diam
     real(wp), dimension(:,:,:), allocatable :: refl10cm
