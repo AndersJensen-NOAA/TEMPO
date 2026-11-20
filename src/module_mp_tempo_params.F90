@@ -106,6 +106,11 @@ module module_mp_tempo_params
   real(wp), parameter :: nt_c_l = 100.e6_wp !! cloud number concentration over land (non-aerosol aware) \([m^{-3}]\)
   real(wp), parameter :: nt_c_max = 1999.e6_wp !! maximum cloud number concentration \([m^{-3}]\)
   real(wp), parameter :: nt_c_min = 2._wp !! minimum cloud number concentration \([m^{-3}]\)
+  ! droplet activation: cloud droplet number relaxes toward the activated number over a timescale
+  ! tau = dz / max(w, act_w_min), limited to act_tau_min - act_tau_max (the time to rise through the layer)
+  real(wp), parameter :: act_w_min = 0.1_wp !! minimum vertical velocity for the activation timescale \([m\; s^{-1}]\)
+  real(wp), parameter :: act_tau_min = 1._wp !! minimum activation timescale \([s]\)
+  real(wp), parameter :: act_tau_max = 300._wp !! maximum activation timescale \([s]\)
 
   real(wp), parameter :: tno = 5.0_wp !! constant in the [Cooper](https://doi.org/10.1007/978-1-935704-17-1_4) curve for ice nucleation
   real(wp), parameter :: ato = 0.304_wp !! constant in the [Cooper](https://doi.org/10.1007/978-1-935704-17-1_4) curve for ice nucleation

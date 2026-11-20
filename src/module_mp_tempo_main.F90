@@ -593,7 +593,7 @@ module module_mp_tempo_main
     ! after update do cloud condensation / rain evaporation --------------------------------------
     ! cloud condensation
     if (.not. tempo_cfgs%turn_off_micro_flag .and. tempo_cfgs%cloud_condensation_flag) then
-      call cloud_condensation(rho, temp, w1d, ssatw, lvap, tcond, diffu, lvt2, &
+      call cloud_condensation(rho, temp, w1d, dz1d, ssatw, lvap, tcond, diffu, lvt2, &
         nwfa1d, nwfa, ncsave, qv, qvs, l_qc, rc, nc, tend, dt, odt)
 
       do k = 1, nz
@@ -2337,20 +2337,24 @@ module module_mp_tempo_main
   end subroutine cloud_fallspeed
 
 
-  subroutine cloud_condensation(rho, temp, w1d, ssatw, lvap, tcond, diffu, lvt2, &
+  subroutine cloud_condensation(rho, temp, w1d, dz1d, ssatw, lvap, tcond, diffu, lvt2, &
     nwfa1d, nwfa, ncsave, qv, qvs, l_qc, rc, nc, tend, dt, odt)
     !! cloud condensation and evaporation
+    !!
+    !! droplet activation relaxes the cloud droplet number toward the activated number with
+    !! timescale tau = dz / max(w, act_w_min) (limited to act_tau_min - act_tau_max), integrated
+    !! exactly over the timestep so the result does not depend on the timestep
     use module_mp_tempo_params, only : eps, r1, t0, orv, pi, rho_w, nbc, &
-      tnc_wev, nt_c_min, nt_c_l
+      tnc_wev, nt_c_min, nt_c_l, act_w_min, act_tau_min, act_tau_max
 
     real(wp), intent(in) :: dt, odt
     type(ty_tend), intent(inout) :: tend
-    real(wp), dimension(:), intent(in) :: rho, temp, w1d, ssatw, lvap, tcond, diffu, lvt2, &
+    real(wp), dimension(:), intent(in) :: rho, temp, w1d, dz1d, ssatw, lvap, tcond, diffu, lvt2, &
       nwfa, qv, qvs, rc, nc
     real(wp), dimension(:), intent(in), optional :: nwfa1d, ncsave
     logical, dimension(:), intent(in) :: l_qc
     real(wp) :: clap, fcd, dfcd, xrc, xnc, orho, tempc, otemp, &
-      rvs, rvs_p, rvs_pp, gamsc, alphsc, xsat, t1_evap
+      rvs, rvs_p, rvs_pp, gamsc, alphsc, xsat, t1_evap, tau_act
     real(dp) :: dc_star
     integer :: k, nz, n, idx_d, idx_n, idx_c
 
@@ -2381,7 +2385,9 @@ module module_mp_tempo_main
           else
             xnc = nt_c_l
           endif
-          tend%pnc_wcd(k) = 0.5_wp*(xnc-nc(k) + abs(xnc-nc(k)))*odt*orho
+          ! relax toward the activated number over tau, the time to rise through the layer
+          tau_act = max(act_tau_min, min(act_tau_max, dz1d(k)/max(w1d(k), act_w_min)))
+          tend%pnc_wcd(k) = max(0._wp, xnc-nc(k)) * (1._wp - exp(-dt/tau_act)) * odt * orho
         elseif (l_qc(k) .and. ssatw(k) < -1.e-6_wp .and. clap < -eps) then ! evaporation
           tempc = temp(k) - t0
           otemp = 1._wp/temp(k)
