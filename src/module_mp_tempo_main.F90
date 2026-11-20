@@ -15,6 +15,11 @@ module module_mp_tempo_main
 
   public :: tempo_main, ty_tempo_main_diags
 
+  !! debugging aid: when verify_depletion is true, tempo_main counts the levels where, after
+  !! check_over_depletion, a category's net process tendency would remove more mass than it holds
+  logical, public :: verify_depletion = .false.
+  integer(8), public :: depletion_levels_checked = 0, depletion_violations = 0
+
   !! needed for effective radius calculations when using FV3 since advection
   !! happens between the effective radius calcuation and call to radiation
   public :: cloud_check_and_update, ice_check_and_update, snow_check_and_update
@@ -513,6 +518,9 @@ module module_mp_tempo_main
     call check_over_depletion(rho=rho, temp=temp, qvsi=qvsi, qv=qv, l_qc=l_qc, rc=rc, &
       l_qi=l_qi, ri=ri, l_qr=l_qr, rr=rr, l_qs=l_qs, rs=rs, l_qg=l_qg, rg=rg, &
       l_qh=l_qh, rh=rh, idx=idx_bg, tend=tend, odt=odt)
+
+    if (verify_depletion) call count_depletion_violations(l_qc, rc, l_qi, ri, l_qr, rr, l_qs, rs, &
+      l_qg, rg, l_qh, rh, tend, odt)
 
     call sum_tendencies(rho, temp, idx_bg, lvap, ocp, tend, tten, qvten, qcten, &
       ncten, qiten, niten, qsten, qrten, nrten, qgten, ngten, qbten, qhten)
@@ -1556,6 +1564,11 @@ module module_mp_tempo_main
     !!
     !! when a mass rate is scaled, the number (and graupel volume) rates computed from it
     !! are scaled by the same ratio, so the size of what is transferred is unchanged
+    !!
+    !! for cloud ice, rain, snow, graupel, and hail only the losses are scaled, and only as
+    !! far as needed: losses <= mass available + gains within the timestep (forward Euler).
+    !! A gain counted by one category can be another category's loss that a later limit
+    !! reduces, so these limits and the resets that follow are repeated until nothing changes
     use module_mp_tempo_params, only : eps, rho_i, t0, meters3_to_liters
 
     real(wp), intent(in) :: odt
@@ -1564,7 +1577,9 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(in) :: rho, temp, qvsi, qv, rc, ri, rr, rs, rg, rh
     integer, dimension(:), intent(in) :: idx !! graupel density index
     real(wp) :: sump, rate_max, ratio
-    real(dp) :: rate_before
+    real(dp) :: rate_before, gains, losses
+    integer :: pass
+    logical :: limited
     integer :: k, nz
 
     nz = size(qv)
@@ -1623,146 +1638,211 @@ module module_mp_tempo_main
         endif
       endif 
 
-      ! losses to cloud ice include sublimation; conversion to snow;
-      ! collection by snow and rain
-      sump = tend%pri_ide(k) - tend%prs_iau(k) - tend%prs_sci(k) - tend%pri_rci(k)
-      rate_max = -ri(k)*odt
-      if (l_qi(k)) then
-        if (sump < rate_max) then
-          ratio = rate_max/sump
-          tend%pri_ide(k) = tend%pri_ide(k) * ratio
-          tend%prs_iau(k) = tend%prs_iau(k) * ratio
-          tend%prs_sci(k) = tend%prs_sci(k) * ratio
-          tend%pri_rci(k) = tend%pri_rci(k) * ratio
-          tend%pni_ide(k) = tend%pni_ide(k) * ratio ! scales with pri_ide
-          tend%pni_iau(k) = tend%pni_iau(k) * ratio
-          tend%pni_sci(k) = tend%pni_sci(k) * ratio
-          tend%pni_rci(k) = tend%pni_rci(k) * ratio
+      ! repeat until no limit changes a rate (each pass only reduces rates; a few passes at most)
+      do pass = 1, 20
+        limited = .false.
+
+        ! cloud ice: losses include sublimation; conversion to snow; collection by snow and rain
+        ! gains include nucleation, rime splintering, freezing of cloud water and rain, deposition
+        if (l_qi(k)) then
+          gains = tend%pri_inu(k) + tend%pri_iha(k) + tend%pri_ihm(k) + tend%pri_wfz(k) + tend%pri_rfz(k) + &
+            max(tend%pri_ide(k), 0._dp)
+          losses = max(-tend%pri_ide(k), 0._dp) + tend%prs_iau(k) + tend%prs_sci(k) + tend%pri_rci(k)
+          if (losses > eps .and. losses > ri(k)*odt + gains) then
+            ratio = real((ri(k)*odt + gains) / losses, kind=wp)
+            limited = .true.
+            if (tend%pri_ide(k) < 0._dp) then
+              tend%pri_ide(k) = tend%pri_ide(k) * ratio
+              tend%pni_ide(k) = tend%pni_ide(k) * ratio
+            endif
+            tend%prs_iau(k) = tend%prs_iau(k) * ratio
+            tend%pni_iau(k) = tend%pni_iau(k) * ratio
+            tend%prs_sci(k) = tend%prs_sci(k) * ratio
+            tend%pni_sci(k) = tend%pni_sci(k) * ratio
+            tend%pri_rci(k) = tend%pri_rci(k) * ratio
+            tend%pni_rci(k) = tend%pni_rci(k) * ratio
+          endif
         endif
-      endif 
-
-      ! losses to rain include freezing; collection by ice, snow, and graupel
-      ! resulting in freezing
-      sump = -tend%prg_rfz(k) - tend%pri_rfz(k) - tend%prr_rci(k) + &
-        tend%prr_rcs(k) + tend%prr_rcg(k) + tend%prr_rch(k)
-      rate_max = -rr(k)*odt
-      if (l_qr(k)) then
-        if (sump < rate_max) then
-          ratio = rate_max/sump
-          tend%prg_rfz(k) = tend%prg_rfz(k) * ratio
-          tend%pbg_rfz(k) = tend%pbg_rfz(k) * ratio ! scales with prg_rfz
-          tend%pri_rfz(k) = tend%pri_rfz(k) * ratio
-          tend%prr_rci(k) = tend%prr_rci(k) * ratio
-          tend%prr_rcs(k) = tend%prr_rcs(k) * ratio
-          tend%prr_rcg(k) = tend%prr_rcg(k) * ratio
-          tend%prr_rch(k) = tend%prr_rch(k) * ratio
-          tend%pnr_rfz(k) = tend%pnr_rfz(k) * ratio
-          tend%pni_rfz(k) = tend%pni_rfz(k) * ratio
-          tend%png_rfz(k) = tend%png_rfz(k) * ratio
-          tend%pnr_rci(k) = tend%pnr_rci(k) * ratio
-          tend%png_rci(k) = tend%png_rci(k) * ratio
-          tend%pnr_rcs(k) = tend%pnr_rcs(k) * ratio
-          tend%png_rcs(k) = tend%png_rcs(k) * ratio
-          tend%pnr_rcg(k) = tend%pnr_rcg(k) * ratio
-          tend%pnr_rch(k) = tend%pnr_rch(k) * ratio
+        ! rain: losses include freezing; collection by ice; collection by snow, graupel, and hail below freezing
+        ! gains include autoconversion, accretion, melting, and collisions with snow, graupel, and hail above freezing
+        if (l_qr(k)) then
+          gains = tend%prr_wau(k) + tend%prr_rcw(k) + tend%prr_sml(k) + tend%prr_gml(k) + tend%prr_hml(k) + &
+            max(tend%prr_rcs(k), 0._dp) + max(tend%prr_rcg(k), 0._dp) + max(tend%prr_rch(k), 0._dp)
+          losses = max(-tend%prr_rcs(k), 0._dp) + max(-tend%prr_rcg(k), 0._dp) + max(-tend%prr_rch(k), 0._dp) + &
+            tend%prg_rfz(k) + tend%pri_rfz(k) + tend%prr_rci(k)
+          if (losses > eps .and. losses > rr(k)*odt + gains) then
+            ratio = real((rr(k)*odt + gains) / losses, kind=wp)
+            limited = .true.
+            if (tend%prr_rcs(k) < 0._dp) then
+              tend%prr_rcs(k) = tend%prr_rcs(k) * ratio
+              tend%pnr_rcs(k) = tend%pnr_rcs(k) * ratio
+              tend%png_rcs(k) = tend%png_rcs(k) * ratio
+            endif
+            if (tend%prr_rcg(k) < 0._dp) then
+              tend%prr_rcg(k) = tend%prr_rcg(k) * ratio
+              tend%pnr_rcg(k) = tend%pnr_rcg(k) * ratio
+            endif
+            if (tend%prr_rch(k) < 0._dp) then
+              tend%prr_rch(k) = tend%prr_rch(k) * ratio
+              tend%pnr_rch(k) = tend%pnr_rch(k) * ratio
+            endif
+            tend%prg_rfz(k) = tend%prg_rfz(k) * ratio
+            tend%pnr_rfz(k) = tend%pnr_rfz(k) * ratio
+            tend%png_rfz(k) = tend%png_rfz(k) * ratio
+            tend%pbg_rfz(k) = tend%pbg_rfz(k) * ratio
+            tend%pri_rfz(k) = tend%pri_rfz(k) * ratio
+            tend%pni_rfz(k) = tend%pni_rfz(k) * ratio
+            tend%prr_rci(k) = tend%prr_rci(k) * ratio
+            tend%pnr_rci(k) = tend%pnr_rci(k) * ratio
+            tend%png_rci(k) = tend%png_rci(k) * ratio
+          endif
         endif
-      endif
-
-      ! Limit snow and graupel sources if rain was limited in the previous step
-      if (temp(k) < t0) then
-        if (tend%prs_rcs(k) > -tend%prr_rcs(k)) tend%prs_rcs(k) = -tend%prr_rcs(k)
-        if (tend%prg_rcg(k) > -tend%prr_rcg(k)) tend%prg_rcg(k) = -tend%prr_rcg(k)
-      endif
-
-      ! losses to snow include sublimation; melting; collection by rain; 
-      ! rime splintering
-      sump = tend%prs_sde(k) - tend%prs_ihm(k) - tend%prr_sml(k) + &
-        tend%prs_rcs(k)
-      rate_max = -rs(k)*odt
-      if (l_qs(k)) then 
-        if (sump < rate_max) then
-          ratio = rate_max/sump
-          tend%prs_sde(k) = tend%prs_sde(k) * ratio
-          tend%prs_ihm(k) = tend%prs_ihm(k) * ratio
-          tend%prr_sml(k) = tend%prr_sml(k) * ratio
-          tend%prs_rcs(k) = tend%prs_rcs(k) * ratio
-          tend%pnr_sml(k) = tend%pnr_sml(k) * ratio ! scales with prr_sml
+        ! limit snow and graupel sources if rain was limited (below freezing transfers)
+        if (temp(k) < t0) then
+          if (tend%prs_rcs(k) > -tend%prr_rcs(k)) tend%prs_rcs(k) = -tend%prr_rcs(k)
+          if (tend%prg_rcg(k) > -tend%prr_rcg(k)) tend%prg_rcg(k) = -tend%prr_rcg(k)
         endif
-      endif
 
-      ! losses to graupel include sublimation; melting; rime splintering; 
-      ! collection by rain
-      sump = tend%prg_gde(k) - tend%prg_ihm(k) - tend%prr_gml(k) + tend%prg_rcg(k)
-      rate_max = -rg(k)*odt
-      if (l_qg(k)) then
-        if (sump < rate_max) then
-          ratio = rate_max/sump
-          tend%prg_gde(k) = tend%prg_gde(k) * ratio
-          tend%prg_ihm(k) = tend%prg_ihm(k) * ratio
-          tend%prr_gml(k) = tend%prr_gml(k) * ratio
-          tend%prg_rcg(k) = tend%prg_rcg(k) * ratio
-          tend%pbg_rcg(k) = tend%pbg_rcg(k) * ratio ! scales with prg_rcg
-          tend%pnr_gml(k) = tend%pnr_gml(k) * ratio ! scales with prr_gml (also the graupel number lost)
-          tend%pbg_gml(k) = tend%pbg_gml(k) * ratio ! scales with prr_gml
-          tend%png_gde(k) = tend%png_gde(k) * ratio ! scales with prg_gde
-          tend%png_rcg(k) = tend%png_rcg(k) * ratio ! scales with prg_rcg (graupel loss above freezing)
+        ! snow: losses include sublimation; melting; rime splintering; collection by rain
+        ! gains include conversion from ice, collection of ice and cloud water, deposition, collection of rain below freezing
+        if (l_qs(k)) then
+          gains = tend%prs_iau(k) + tend%prs_sci(k) + tend%prs_scw(k) + tend%prs_ide(k) + &
+            max(tend%prs_sde(k), 0._dp) + max(tend%prs_rcs(k), 0._dp)
+          losses = max(-tend%prs_sde(k), 0._dp) + max(-tend%prs_rcs(k), 0._dp) + tend%prs_ihm(k) + &
+            tend%prr_sml(k)
+          if (losses > eps .and. losses > rs(k)*odt + gains) then
+            ratio = real((rs(k)*odt + gains) / losses, kind=wp)
+            limited = .true.
+            if (tend%prs_sde(k) < 0._dp) then
+              tend%prs_sde(k) = tend%prs_sde(k) * ratio
+            endif
+            if (tend%prs_rcs(k) < 0._dp) then
+              tend%prs_rcs(k) = tend%prs_rcs(k) * ratio
+            endif
+            tend%prs_ihm(k) = tend%prs_ihm(k) * ratio
+            tend%prr_sml(k) = tend%prr_sml(k) * ratio
+            tend%pnr_sml(k) = tend%pnr_sml(k) * ratio
+          endif
         endif
-      endif
-
-      ! losses to hail include sublimation; melting
-      sump = tend%prh_hde(k) - tend%prr_hml(k)
-      rate_max = -rh(k)*odt
-      if (l_qh(k)) then
-        if (sump < rate_max) then
-          ratio = rate_max/sump
-          tend%prr_hml(k) = tend%prr_hml(k) * ratio
-          tend%prh_hde(k) = tend%prh_hde(k) * ratio
-          tend%pnr_hml(k) = tend%pnr_hml(k) * ratio ! scales with prr_hml
+        ! graupel: losses include sublimation; melting; rime splintering; collection by rain above freezing
+        ! gains include riming, frozen raindrops, rain-ice and rain-snow collisions, collection of rain below freezing
+        if (l_qg(k)) then
+          gains = tend%prg_scw(k) + tend%prg_rfz(k) + tend%prg_gcw(k) + tend%prg_rci(k) + tend%prg_rcs(k) + &
+            max(tend%prg_gde(k), 0._dp) + max(tend%prg_rcg(k), 0._dp)
+          losses = max(-tend%prg_gde(k), 0._dp) + max(-tend%prg_rcg(k), 0._dp) + tend%prg_ihm(k) + &
+            tend%prr_gml(k)
+          if (losses > eps .and. losses > rg(k)*odt + gains) then
+            ratio = real((rg(k)*odt + gains) / losses, kind=wp)
+            limited = .true.
+            if (tend%prg_gde(k) < 0._dp) then
+              tend%prg_gde(k) = tend%prg_gde(k) * ratio
+              tend%png_gde(k) = tend%png_gde(k) * ratio
+            endif
+            if (tend%prg_rcg(k) < 0._dp) then
+              tend%prg_rcg(k) = tend%prg_rcg(k) * ratio
+              tend%png_rcg(k) = tend%png_rcg(k) * ratio
+              tend%pbg_rcg(k) = tend%pbg_rcg(k) * ratio
+            endif
+            tend%prg_ihm(k) = tend%prg_ihm(k) * ratio
+            tend%prr_gml(k) = tend%prr_gml(k) * ratio
+            tend%pnr_gml(k) = tend%pnr_gml(k) * ratio
+            tend%pbg_gml(k) = tend%pbg_gml(k) * ratio
+          endif
         endif
-      endif
-
+        ! hail: losses include sublimation; melting
+        ! gains include collection of rain and cloud water
+        if (l_qh(k)) then
+          gains = tend%prh_rch(k) + tend%prh_hcw(k) + max(tend%prh_hde(k), 0._dp)
+          losses = max(-tend%prh_hde(k), 0._dp) + tend%prr_hml(k)
+          if (losses > eps .and. losses > rh(k)*odt + gains) then
+            ratio = real((rh(k)*odt + gains) / losses, kind=wp)
+            limited = .true.
+            if (tend%prh_hde(k) < 0._dp) then
+              tend%prh_hde(k) = tend%prh_hde(k) * ratio
+            endif
+            tend%prr_hml(k) = tend%prr_hml(k) * ratio
+            tend%pnr_hml(k) = tend%pnr_hml(k) * ratio
+          endif
+        endif
       ! updates after adjustments
-      ! reset sum of rime splintering
-      rate_before = tend%pri_ihm(k)
-      tend%pri_ihm(k) = tend%prs_ihm(k) + tend%prg_ihm(k)
-      ! splinter number follows splinter mass
-      if (rate_before > 0._dp) tend%pni_ihm(k) = tend%pni_ihm(k) * (tend%pri_ihm(k) / rate_before)
+        ! reset sum of rime splintering
+        rate_before = tend%pri_ihm(k)
+        tend%pri_ihm(k) = tend%prs_ihm(k) + tend%prg_ihm(k)
+        ! splinter number follows splinter mass
+        if (rate_before > 0._dp) tend%pni_ihm(k) = tend%pni_ihm(k) * (tend%pri_ihm(k) / rate_before)
 
-      ! reset total rain-graupel collection amount if reduced
-      rate_before = tend%prr_rcg(k)
-      ratio = min(abs(tend%prr_rcg(k)), abs(tend%prg_rcg(k)))
-      tend%prr_rcg(k) = ratio * sign(1.0_dp, tend%prr_rcg(k))
-      tend%prg_rcg(k) = -tend%prr_rcg(k)
-      if (abs(rate_before) > 0._dp) tend%pnr_rcg(k) = tend%pnr_rcg(k) * (tend%prr_rcg(k) / rate_before)
-      ! volume change: below freezing graupel gains frozen drops at the maximum graupel density;
-      ! above freezing graupel loses mass at its own density
-      if (temp(k) < t0) then
-        tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_g(nrhg)
-      else
-        tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_g(idx(k))
-      endif
+        ! reset total rain-graupel collection amount if reduced
+        rate_before = tend%prr_rcg(k)
+        ratio = min(abs(tend%prr_rcg(k)), abs(tend%prg_rcg(k)))
+        tend%prr_rcg(k) = ratio * sign(1.0_dp, tend%prr_rcg(k))
+        tend%prg_rcg(k) = -tend%prr_rcg(k)
+        if (abs(rate_before) > 0._dp) tend%pnr_rcg(k) = tend%pnr_rcg(k) * (tend%prr_rcg(k) / rate_before)
+        ! volume change: below freezing graupel gains frozen drops at the maximum graupel density;
+        ! above freezing graupel loses mass at its own density
+        if (temp(k) < t0) then
+          tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_g(nrhg)
+        else
+          tend%pbg_rcg(k) = meters3_to_liters*tend%prg_rcg(k)/rho_g(idx(k))
+        endif
 
-      tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
-      tend%pbg_rci(k) = meters3_to_liters * tend%prg_rci(k) / rho_g(nrhg)
+        tend%prg_rci(k) = tend%pri_rci(k) + tend%prr_rci(k)
+        tend%pbg_rci(k) = meters3_to_liters * tend%prg_rci(k) / rho_g(nrhg)
 
-      ! reset total rain-snow collection amount if reduced
-      if (temp(k) >= t0) then
-        ratio = min(abs(tend%prr_rcs(k)), abs(tend%prs_rcs(k)))
-        tend%prr_rcs(k) = ratio * sign(1.0_dp, tend%prr_rcs(k))
-        tend%prs_rcs(k) = -tend%prr_rcs(k)
-      else
-        tend%prg_rcs(k) = -(tend%prr_rcs(k) + tend%prs_rcs(k))
-        tend%pbg_rcs(k) = meters3_to_liters * tend%prg_rcs(k) / rho_g(nrhg)
-      endif
+        ! reset total rain-snow collection amount if reduced
+        if (temp(k) >= t0) then
+          ratio = min(abs(tend%prr_rcs(k)), abs(tend%prs_rcs(k)))
+          tend%prr_rcs(k) = ratio * sign(1.0_dp, tend%prr_rcs(k))
+          tend%prs_rcs(k) = -tend%prr_rcs(k)
+        else
+          tend%prg_rcs(k) = -(tend%prr_rcs(k) + tend%prs_rcs(k))
+          tend%pbg_rcs(k) = meters3_to_liters * tend%prg_rcs(k) / rho_g(nrhg)
+        endif
 
-      ! update to rain-hail
-      rate_before = tend%prr_rch(k)
-      ratio = min(abs(tend%prr_rch(k)), abs(tend%prh_rch(k)))
-      tend%prr_rch(k) = ratio * sign(1.0_dp, tend%prr_rch(k))
-      tend%prh_rch(k) = ratio * sign(1.0_dp, tend%prh_rch(k))
-      if (abs(rate_before) > 0._dp) tend%pnr_rch(k) = tend%pnr_rch(k) * (tend%prr_rch(k) / rate_before)
+        ! update to rain-hail
+        rate_before = tend%prr_rch(k)
+        ratio = min(abs(tend%prr_rch(k)), abs(tend%prh_rch(k)))
+        tend%prr_rch(k) = ratio * sign(1.0_dp, tend%prr_rch(k))
+        tend%prh_rch(k) = ratio * sign(1.0_dp, tend%prh_rch(k))
+        if (abs(rate_before) > 0._dp) tend%pnr_rch(k) = tend%pnr_rch(k) * (tend%prr_rch(k) / rate_before)
+
+        if (.not. limited) exit
+      enddo
     enddo
   end subroutine check_over_depletion
+
+
+  subroutine count_depletion_violations(l_qc, rc, l_qi, ri, l_qr, rr, l_qs, rs, l_qg, rg, l_qh, rh, tend, odt)
+    !! debugging aid (see verify_depletion): after check_over_depletion, counts levels where a
+    !! category's net process tendency (as summed in sum_tendencies) exceeds its mass per timestep
+    real(wp), intent(in) :: odt
+    type(ty_tend), intent(in) :: tend
+    logical, dimension(:), intent(in) :: l_qc, l_qi, l_qr, l_qs, l_qg, l_qh
+    real(wp), dimension(:), intent(in) :: rc, ri, rr, rs, rg, rh
+    real(dp), parameter :: tol = 1._dp + 1.e-9_dp
+    real(dp) :: net(6), avail(6)
+    logical :: present_cat(6)
+    integer :: k, n
+
+    do k = 1, size(rc)
+      net(1) = -(tend%prr_wau(k) + tend%pri_wfz(k) + tend%prr_rcw(k) + tend%prs_scw(k) + tend%prg_scw(k) + &
+        tend%prg_gcw(k) + tend%prh_hcw(k))
+      net(2) = tend%pri_inu(k) + tend%pri_iha(k) + tend%pri_ihm(k) + tend%pri_wfz(k) + tend%pri_rfz(k) + &
+        tend%pri_ide(k) - tend%prs_iau(k) - tend%prs_sci(k) - tend%pri_rci(k)
+      net(3) = tend%prr_wau(k) + tend%prr_rcw(k) + tend%prr_sml(k) + tend%prr_gml(k) + tend%prr_rcs(k) + &
+        tend%prr_rcg(k) + tend%prr_rch(k) - tend%prg_rfz(k) - tend%pri_rfz(k) - tend%prr_rci(k) + tend%prr_hml(k)
+      net(4) = tend%prs_iau(k) + tend%prs_sde(k) + tend%prs_sci(k) + tend%prs_scw(k) + tend%prs_rcs(k) + &
+        tend%prs_ide(k) - tend%prs_ihm(k) - tend%prr_sml(k)
+      net(5) = tend%prg_scw(k) + tend%prg_rfz(k) + tend%prg_gde(k) + tend%prg_rcg(k) + tend%prg_gcw(k) + &
+        tend%prg_rci(k) + tend%prg_rcs(k) - tend%prg_ihm(k) - tend%prr_gml(k)
+      net(6) = tend%prh_rch(k) + tend%prh_hcw(k) + tend%prh_hde(k) - tend%prr_hml(k)
+      avail = [rc(k), ri(k), rr(k), rs(k), rg(k), rh(k)] * odt
+      present_cat = [l_qc(k), l_qi(k), l_qr(k), l_qs(k), l_qg(k), l_qh(k)]
+      depletion_levels_checked = depletion_levels_checked + 1
+      do n = 1, 6
+        if (present_cat(n) .and. net(n) < -avail(n)*tol) depletion_violations = depletion_violations + 1
+      enddo
+    enddo
+  end subroutine count_depletion_violations
 
 
   subroutine sum_tendencies(rho, temp, idx, lvap, ocp, tend, tten, qvten, qcten, &
