@@ -833,7 +833,8 @@ module module_mp_tempo_main
       
       if(rc(k) > r1) then
          !! AAJ TEST4         qcfracten(k) = qcfracten(k) + ((1.-tend%prr_wau(k)*dt/qc1d(k)/rho(k))**0.5 - 1.) * qca1d(k)
-         qcfracten(k) = qcfracten(k) + ((1.-tend%prr_wau(k)*dt/rc(k))**0.5 - 1.) * odt * qca1d(k)         
+         ! autoconversion does not change the liquid cloud fraction (PC2, Wilson et al. 2008, Table II)
+!         qcfracten(k) = qcfracten(k) + ((1.-tend%prr_wau(k)*dt/rc(k))**0.5 - 1.) * odt * qca1d(k)
    !!!      qcfracten(k) = qcfracten(k) + ((1.-tend%prr_wau(k)/qc1d(k)/rho(k))**0.5 - 1.) * qca1d(k)         
       endif      
       
