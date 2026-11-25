@@ -77,7 +77,7 @@ module module_mp_tempo_main
 
   subroutine tempo_main(tempo_cfgs, is_first_step, &
     qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, qb1d, ni1d, nr1d, nc1d, ng1d, &
-    nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, hpbl1d, xland1d, land1d, &
+    nwfa1d, nifa1d, t1d, p1d, w1d, dz1d, hpbl1d, land1d, &
     qcfrac1d, qifrac1d, qc_bl1d, qcfrac_bl1d, &
     thten_bl1d, qvten_bl1d, qcten_bl1d, qiten_bl1d, &
     thten_lwrad1d, thten_swrad1d, &
@@ -108,7 +108,7 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(inout), optional :: ng1d !! 1D graupel number mixing ratio \([kg^{-1}]\)
     real(wp), dimension(kts:kte), intent(in) :: w1d !! 1D vertical velocity \(m\; s^{-1}]\)
     real(wp), dimension(kts:kte), intent(in) :: dz1d !! 1D vertical grid spacing \([m]\)
-    integer, intent(in), optional :: land1d !! grid-point land type
+    integer, intent(in), optional :: land1d !! grid-point land type (1 = land, otherwise ocean)
 
     ! additional optional arrays
     real(wp), dimension(:), intent(inout), optional :: qcfrac1d !! cloud fraction
@@ -122,7 +122,6 @@ module module_mp_tempo_main
     real(wp), dimension(:), intent(in), optional :: thten_lwrad1d !! potential temperature tendency from longwave radiation scheme
     real(wp), dimension(:), intent(in), optional :: thten_swrad1d !! potential temperature tendency from shortwave radiation scheme
     real(wp), dimension(:), intent(in), optional :: hpbl1d !! boundary layer height \([m]\)
-    real(wp), dimension(:), intent(in), optional :: xland1d !! land values = 1 for land, 2 for ocean
     
     real(wp), dimension(kts:kte) :: tten, qvten, qcten, qiten, qrten, qsten, &
       qgten, qbten, niten, nrten, ncten, ngten, qhten, nwfaten, nifaten, qcfracten, &
@@ -160,7 +159,7 @@ module module_mp_tempo_main
     real(wp) :: tempc, tc0, odt, hgt, hgt_cf, sgs_nc, uval
     real(wp), dimension(kts:kte) :: cf_rh, cf_rhi
     real(wp), dimension(kts:kte) :: hail_fraction
-    logical :: do_micro, supersaturated, above_cloud_fraction_rh, local_first_step
+    logical :: do_micro, supersaturated, above_cloud_fraction_rh, local_first_step, is_ocean
     integer :: k, nz
 
     ! --------------------------------------------------------------------------------------------
@@ -360,7 +359,12 @@ module module_mp_tempo_main
     ! initialization -----------------------------------------------------------------------------
 !    hgt_cf = max(hpbl1d(1)+1000._wp, 1000._wp)
 !    hgt_cf = max(hpbl1d(1), 500._wp)
-    hgt_cf = hpbl1d(1) 
+    ! without a boundary layer height, all levels use the above-pbl critical rh
+    hgt_cf = 0._wp
+    if (present(hpbl1d)) hgt_cf = hpbl1d(1)
+    ! land/ocean follows get_constant_cloud_number: land unless land1d is present and /= 1
+    is_ocean = .false.
+    if (present(land1d)) is_ocean = (land1d /= 1)
     hgt = 0.
     do k = 1, nz
       temp(k) = t1d(k)
@@ -380,7 +384,7 @@ module module_mp_tempo_main
          cf_rh(k) = cloud_fraction_rh_pbl_water
       else
          uval = 1.5 - 0.0025*(pres(k)/100.)         
-         if (xland1d(1) > 1.5) then !ocean
+         if (is_ocean) then
             cf_rh(k) = cloud_fraction_rh_pbl_water
   !!          cf_rh(k) = max(min(0.95 + ((0.078*uval) / (1.-uval*uval)), 0.99), 0.87)      
          else ! land
@@ -389,12 +393,12 @@ module module_mp_tempo_main
          endif
       endif
       
-!      if ((xland1d(1) > 1.5) .and. (hgt <= hgt_cf + 0.)) then ! ocean
+!      if (is_ocean .and. (hgt <= hgt_cf + 0.)) then ! ocean
 !        cf_rh(k) = cloud_fraction_rh_pbl_water
 !      endif
      
-!      if (xland1d(1) < 1.5) then ! land
-!         if (hgt < hpbl1d(1)) then 
+!      if (.not. is_ocean) then ! land
+!         if (hgt < hgt_cf) then 
 !            cf_rh(k) = cloud_fraction_rh_pbl_water
 !         else
 !            uval = 1.5 - 0.0025*(pres(k)/100.)
