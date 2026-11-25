@@ -829,7 +829,8 @@ module module_mp_tempo_main
 !         qifracten(k) = qifracten(k) + ((1.-tend%prs_iau(k)*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)
          ! only sublimation (pri_ide < 0) reduces the ice fraction (PC2, Wilson et al. 2008, Table II);
          ! deposition onto ice, snow deposition (prs_ide) and capture by snow (prs_sci) leave it unchanged
-         qifracten(k) = qifracten(k) + ((1.-max(0._dp, -tend%pri_ide(k))*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)
+         ! ri already has this step's loss removed, so the ratio can exceed 1; clamp to avoid a NaN
+         qifracten(k) = qifracten(k) + (max(0._wp, 1.-max(0._dp, -tend%pri_ide(k))*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)
 !!!         qifracten(k) = qifracten(k) + ((1.-tend%prs_iau(k)/qi1d(k)/rho(k))**0.5 - 1.) * qia1d(k)         
          !! OFF 13 JUNE 2026  if (tend%pri_ide(k) < 0.) qifracten(k) = qifracten(k) + ((1.+tend%pri_ide(k)*dt/qi1d(k)/rho(k))**0.5 - 1.) * qia1d(k)         
       endif
