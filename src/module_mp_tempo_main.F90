@@ -163,6 +163,7 @@ module module_mp_tempo_main
     ! local variables
     real(wp) :: tempc, tc0, odt, hgt, hgt_cf, sgs_nc, uval
     real(wp) :: cf_avail, cf_pos, cf_neg, cf_ratio !! limiter for the liquid cloud fraction sinks
+    real(wp) :: subl_loss, qi_grid_after !! ice sublimation fraction update
     real(wp), dimension(kts:kte) :: cf_rh, cf_rhi
     real(wp), dimension(kts:kte) :: hail_fraction
     logical :: do_micro, supersaturated, above_cloud_fraction_rh, local_first_step, is_ocean
@@ -829,8 +830,14 @@ module module_mp_tempo_main
 !         qifracten(k) = qifracten(k) + ((1.-tend%prs_iau(k)*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)
          ! only sublimation (pri_ide < 0) reduces the ice fraction (PC2, Wilson et al. 2008, Table II);
          ! deposition onto ice, snow deposition (prs_ide) and capture by snow (prs_sci) leave it unchanged
-         ! ri already has this step's loss removed, so the ratio can exceed 1; clamp to avoid a NaN
-         qifracten(k) = qifracten(k) + (max(0._wp, 1.-max(0._dp, -tend%pri_ide(k))*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)
+         ! sublimation: C_f -> C_f*(1 + dq_cf/q_cf)^(1/2) with grid-mean ice before the loss
+         ! (PC2, Wilson et al. 2008, Table II). ri is in-cloud ice after this step's tendencies,
+         ! so the grid-mean ice after the loss is ri*qia1d and before it ri*qia1d + loss
+         subl_loss = max(0._dp, -tend%pri_ide(k))*dt
+         if (subl_loss > 0._wp) then
+           qi_grid_after = ri(k)*qia1d(k)
+           qifracten(k) = qifracten(k) + (sqrt(qi_grid_after/(qi_grid_after + subl_loss)) - 1._wp) * odt * qia1d(k)
+         endif
 !!!         qifracten(k) = qifracten(k) + ((1.-tend%prs_iau(k)/qi1d(k)/rho(k))**0.5 - 1.) * qia1d(k)         
          !! OFF 13 JUNE 2026  if (tend%pri_ide(k) < 0.) qifracten(k) = qifracten(k) + ((1.+tend%pri_ide(k)*dt/qi1d(k)/rho(k))**0.5 - 1.) * qia1d(k)         
       endif
