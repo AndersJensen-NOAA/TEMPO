@@ -610,8 +610,9 @@ module module_mp_tempo_main
     endif 
 
     ! check and sum tendencies -------------------------------------------------------------------
-    call check_over_depletion(rho=rho, temp=temp, qvsi=qvsi, qv=qv, l_qc=l_qc, rc=rc, &
-      l_qi=l_qi, ri=ri, l_qr=l_qr, rr=rr, l_qs=l_qs, rs=rs, l_qg=l_qg, rg=rg, &
+    ! rc and ri are in-cloud values; limit sinks by the grid-mean mass (fractions are 1 when cloud fraction is off)
+    call check_over_depletion(rho=rho, temp=temp, qvsi=qvsi, qv=qv, l_qc=l_qc, rc=rc*qca1d, &
+      l_qi=l_qi, ri=ri*qia1d, l_qr=l_qr, rr=rr, l_qs=l_qs, rs=rs, l_qg=l_qg, rg=rg, &
       l_qh=l_qh, rh=rh, idx=idx_bg, tend=tend, odt=odt)
 
     call sum_tendencies(rho, temp, idx_bg, lvap, ocp, tend, tten, qvten, qcten, &
