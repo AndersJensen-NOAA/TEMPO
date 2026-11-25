@@ -2985,7 +2985,8 @@ module module_mp_tempo_main
     ! vertical motion (existing ice (which can submliate and destabilize) or large grid spacing with unresolved
 !!    if ((qi1d(k) + qs1d(k) > 1.e-9) .or. w1d(k) > eps .or. dz1d(k) > 500.) then
     if ((qi1d(k) + qs1d(k) > 1.e-9 .and. dz1d(k) > 100.) .or. (w1d(k) > 0.001 .and. qi1d(k) <= r1)) then       
-       if (temp(k) < 268.15 .and. temp(k) >= hgfrz) then
+       ! large-scale ice growth also below the homogeneous freezing temperature (cirrus)
+       if (temp(k) < 268.15) then
           orho = 1._wp / rho(k)
           omega = 0._wp
           !!          w_tmp = min(max(10.**(-0.0869565*(temp(k)-240.)), 0.01),1.)
