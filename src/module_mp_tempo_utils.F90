@@ -5,7 +5,8 @@ module module_mp_tempo_utils
   private
   
   public :: snow_moments, calc_gamma_p, get_nuc, get_constant_cloud_number, &
-    calc_rslf, calc_rsif, compute_efrw, compute_efsw, compute_drop_evap, qi_aut_qs
+    calc_rslf, calc_rsif, compute_efrw, compute_efsw, compute_drop_evap, qi_aut_qs, &
+    calc_ice_number, calc_cloud_number, calc_rain_number
 
   contains
 
@@ -34,8 +35,15 @@ module module_mp_tempo_utils
     real(wp), intent(in) :: a, x
     real(wp) :: gamma_p
 
-    if ((x < 0.0_wp) .or. (a <= 0.0_wp)) stop "Invalid arguments for function gamma_p"
-    if (x < (a+1.0_wp)) then
+    if ((x < 0.0_wp) .or. (a <= 0.0_wp)) then
+      write(*,*) "Invalid arguments for function gamma_p"
+      return
+    endif
+
+    ! tests show that the continued fraction solution will blow up
+    ! if a = x + 1, and so while faster, series expansion is used
+    ! for a > x - 1
+    if (x < (a + 1.0_wp)) then
       gamma_p = calc_gamma_series(a, x)
     else
       ! gammma_cf computes the upper series
@@ -52,54 +60,74 @@ module module_mp_tempo_utils
     !! see [Equation 8.7.1](https://dlmf.nist.gov/8.7)
     !! \(\gamma(a,x) = exp(-x) * \sum_{k=0}^{\infty} \frac{x^{k}}{\Gamma(a+k+1)}\)
     !!
+    !! see also [Equation 8.2.6](https://dlmf.nist.gov/8.2#E6)
+    !! see also Numerical Recipes in Fortran
+    !!
     !! input: a = gamma function argument, x = upper limit of integration
     !!
     !! output: normalized lower gamma function \(\gamma(a, x) / \Gamma(a)\)
+
+    ! Iterations:
+    ! k_term = k-1_term * x * (Gamma(a+k)/Gamma(a+k+1)) = k-1_term * x * (1 / (a + k))
+
     real(wp), intent(in) :: a, x
     integer :: k
     integer, parameter :: it_max = 100
     real(wp), parameter :: smallvalue = 1.e-7_wp
-    real(wp) :: ap1, sum_term, sum
+    real(wp) :: aj, sum_term, sum
     real(wp) :: gamma_series
 
-    if (x <= 0.0_wp) stop "Invalid arguments for function gamma_series"
+    ! if (x <= 0.0_wp) stop "Invalid arguments for function gamma_series"
     ! k = 0 summation term is 1 / Gamma(a+1)
-    ap1 = a
-    sum_term = 1.0_wp / gamma(ap1+1.0_wp)
+    aj = a
+    sum_term = 1.0_wp / gamma(aj+1.0_wp)
     sum = sum_term
     do k = 1, it_max
-      ap1 = ap1 + 1.0_wp
-      sum_term = sum_term * x / ap1
+      aj = aj + 1.0_wp
+      sum_term = sum_term * x / aj
       sum = sum + sum_term
       if (abs(sum_term) < (abs(sum) * smallvalue)) exit
     enddo
-    if (k == it_max) stop "gamma_series solution did not converge"
+    ! if (k == it_max) stop "gamma_series solution did not converge"
     gamma_series = sum * x**a * exp(-x)
   end function calc_gamma_series
     
 
   function calc_gamma_cf(a, x) result(gamma_cf)
-  !! solves the normalized upper gamma function \(\gamma(a,x) / \Gamma(a)\)
-  !! using a continued fractions method
-  !! [(modified Lentz Algorithm)](http://functions.wolfram.com/06.06.10.0003.01)
-  !!
-  !!input: a = gamma function argument, x = lower limit of integration
-  !!
-  !!output: normalized upper gamma function: \(\gamma(a, x) / \Gamma(a)\)
+    !! solves the normalized upper gamma function \(\gamma(a,x) / \Gamma(a)\)
+    !! using a continued fractions method
+    !! [(modified Lentz Algorithm)](http://functions.wolfram.com/06.06.10.0003.01)
+    !! see also Numerical Recipes in Fortran
+    !!
+    !!input: a = gamma function argument, x = lower limit of integration
+    !!
+    !!output: normalized upper gamma function: \(\gamma(a, x) / \Gamma(a)\)
+
+    ! Iteration:
+    ! set f0 = b0, where b0 = 0
+    ! set c0 = f0
+    ! set d0 = 0
+    ! dj = bj + aj * dj-1 (set dj to TINY if dj = 0)
+    ! cj = bj + aj / cj-1 (set cj to TINY if cj = 0)
+    ! dj = 1 / dj
+    ! deltaj = cj * dj
+    ! fj = fj-1 * deltaj
+
     real(wp), intent(in) :: a, x
     integer :: k
     integer, parameter :: it_max = 100
     real(wp), parameter :: smallvalue = 1.e-7_wp
     real(wp), parameter :: offset = 1.e-30_wp
-    real(wp) :: b, d, h0, c, delta, h, aj
+    real(wp) :: b, d, f0, c, delta, f, aj
     real(wp) :: gamma_cf
-  
+
+    f0 = offset
+    ! iteration 1
     b = 1.0_wp - a + x
     d = 1.0_wp / b
-    h0 = offset
-    c = b + (1.0_wp/offset)
+    c = b + (1.0_wp / f0)
     delta = c * d
-    h = h0 * delta
+    f = f0 * delta
 
     do k = 1, it_max
       aj = k * (a-k)
@@ -110,11 +138,11 @@ module module_mp_tempo_utils
       if(abs(c) < offset) c = offset
       d = 1.0_wp / d
       delta = c * d
-      h = h * delta
+      f = f * delta
       if (abs(delta-1.0_wp) < smallvalue) exit
     enddo
-    if (k == it_max) stop "gamma_cf solution did not converge"
-    gamma_cf = exp(-x+a*log(x)) * h / gamma(a)
+    ! if (k == it_max) stop "gamma_cf solution did not converge"
+    gamma_cf = exp(-x+a*log(x)) * f / gamma(a)
   end function calc_gamma_cf   
 
 
@@ -250,7 +278,7 @@ module module_mp_tempo_utils
       + sb(5)*tc*tc + sb(6)*cse(3)*cse(3) &
       + sb(7)*tc*tc*cse(3) + sb(8)*tc*cse(3)*cse(3) &
       + sb(9)*tc*tc*tc + sb(10)*cse(3)*cse(3)*cse(3)
-    if (present(smoz)) smoz = a_ * smo2**b_
+    if (present(smoz)) smoz = a_ * smo2_**b_
 
   end subroutine snow_moments
 
@@ -259,8 +287,8 @@ module module_mp_tempo_utils
     !! calculates liquid saturation vapor mixing ratio
     real(wp), intent(in) :: p, t
     real(wp) :: esl, x
-    real(wp), parameter :: c0 = .611583699E03_wp
-    real(wp), parameter :: c1 = .444606896E02_wp
+    real(wp), parameter :: c0 = .611583699e03_wp
+    real(wp), parameter :: c1 = .444606896e02_wp
     real(wp), parameter :: c2 = .143177157e01_wp
     real(wp), parameter :: c3 = .264224321e-1_wp
     real(wp), parameter :: c4 = .299291081e-3_wp
@@ -283,7 +311,7 @@ module module_mp_tempo_utils
 
 
   function calc_rsif(p, t) result(rsif)
-    !! calculates liquid saturation vapor mixing ratio
+    !! calculates ice saturation vapor mixing ratio
     real(wp), intent(in) :: p, t
     real(wp) :: esi, x
     real(wp), parameter :: c0 = .609868993e03_wp
@@ -362,7 +390,7 @@ module module_mp_tempo_utils
           g = -0.1007_dp - 0.358_dp*f + 0.0261_dp*f*f
           k0 = exp(g)
           z = log(stokes / (k0+1.e-15_dp))
-          H = 0.1465_dp + 1.302_dp*z - 0.607_dp*z*z + 0.293_dp*z*z*z
+          h = 0.1465_dp + 1.302_dp*z - 0.607_dp*z*z + 0.293_dp*z*z*z
           yc0 = 2.0_dp / pi * atan(h)
           ef_rw = (yc0+p)*(yc0+p) / ((1.+p)*(1.+p))
         endif
@@ -498,5 +526,114 @@ module module_mp_tempo_utils
       enddo
     enddo
   end subroutine compute_drop_evap
+
+
+  elemental function calc_ice_number(q_ice, temp) result(n_ice)
+    !! calculates ice number mixing ratio from mass
+    !! fit of the RRTMG ice effective radius table and code by Gemini
+    use module_mp_tempo_params, only : pi, rho_i, t0
+
+    real(wp), intent(in) :: q_ice, temp
+    real(wp) :: temp_c, reice, deice
+    real(dp) :: lambda
+    real(wp) :: n_ice
+
+    ! parameters for the rational function fit
+    real(wp), parameter :: a = 1.219493e-03_wp
+    real(wp), parameter :: b = 1.986621e-01_wp
+    real(wp), parameter :: c = 1.041724e+01_wp
+    real(wp), parameter :: d = 2.398733e+02_wp
+    real(wp), parameter :: e = 5.566982e-04_wp
+    real(wp), parameter :: f = 1.134207e-02_wp
+
+    ! safety limits matching the original retab boundaries from RRTMG
+    real(wp), parameter :: min_reice = 5.92779_wp
+    real(wp), parameter :: max_reice = 250.639_wp
+
+    if (q_ice == 0.0_wp) then
+      n_ice = 0.0_wp
+      return
+    end if
+
+    !! calculate the radiative effective size of ice.
+    !! converts temperature from kelvin to celsius and applies a 
+    !! single continuous rational function to replace the discrete lookup.
+    temp_c = temp - t0
+
+    !! single continuous function for all temperatures
+    reice = (a * temp_c**3 + b * temp_c**2 + c * temp_c + d) / &
+            (e * temp_c**2 + f * temp_c + 1.0_wp)
+
+    !! safety clamp: strictly bound the radius for extreme hot/cold
+    reice = max(min_reice, min(reice, max_reice))
+
+    !! convert effective radius (microns) to diameter (meters)
+    deice = 2.0_wp * reice * 1.e-6_wp
+
+    !! calculate the number concentration from the mean size and mass 
+    !! mixing ratio, assuming an inverse exponential size distribution.
+    lambda = 3.0_wp / deice
+    n_ice = q_ice * lambda*lambda*lambda / (pi*rho_i)
+  end function calc_ice_number
+
+
+  elemental function calc_cloud_number (q_cloud, qnwfa) result(n_cloud)
+    !! calculates cloud number mixing ratio from mass
+    use module_mp_tempo_params, only : am_r
+
+    real(wp), intent(in) :: q_cloud, qnwfa
+    real(wp), dimension(15), parameter:: g_ratio = [24._wp,60._wp,120._wp,210._wp,336._wp, &
+      504._wp,720._wp,990._wp,1320._wp,1716._wp,2184._wp,2730._wp,3360._wp,4080._wp,4896._wp]
+    real(dp) :: lambda
+    real(wp) :: q_nwfa, x1, xdc
+    integer :: nu_c
+    real(wp) :: n_cloud
+
+    if (q_cloud == 0._wp) then
+      n_cloud = 0._wp
+      return
+    end if
+
+    q_nwfa = max(99.e6_wp, min(qnwfa, 5.e10_wp))
+    nu_c = max(2, min(nint(2.5e10_wp/q_nwfa), 15))
+
+    x1 = max(1._wp, min(q_nwfa*1.e-9_wp, 10._wp)) - 1._wp
+    xdc = (30._wp - x1*20._wp/9._wp) * 1.e-6_wp
+
+    lambda = (4._dp + nu_c) / xdc
+    n_cloud = q_cloud / g_ratio(nu_c) * lambda*lambda*lambda / am_r
+  end function calc_cloud_number
+
+
+  elemental function calc_rain_number (q_rain, temp) result(n_rain)
+    !! calculates rain number mixing ratio from mass
+    use module_mp_tempo_params, only : am_r, t0
+
+    real(wp), intent(in) :: q_rain, temp
+    real(dp) :: lambda, n0
+    real(wp) :: n_rain
+
+    if (q_rain == 0._wp) then
+      n_rain = 0._wp
+      return
+    end if
+
+    !! Original note from Greg:
+    !! Not thrilled with it, but set y-intercept parameter to Marshall-Palmer value
+    !! that basically assumes melting snow becomes typical rain. However, for
+    !! -2C < T < 0C, make linear increase in exponent to attempt to keep
+    !! supercooled collision-coalescence (warm-rain) similar to drizzle rather
+    !! than bigger rain drops. While this could also exist at T > 0C, it is
+    !! more difficult to assume it directly from having mass and not number.
+    n0 = 8.e6_wp
+    if (temp <= 271.15_wp) then
+      n0 = 8.e8_wp
+    elseif (temp > 271.15_wp .and. temp < t0) then
+      n0 = 8._wp * 10**(279.15_wp-temp)
+    endif
+
+    lambda = sqrt(sqrt(n0*am_r*6._wp/q_rain))
+    n_rain = q_rain / 6._wp * lambda*lambda*lambda / am_r
+  end function calc_rain_number
 
 end module module_mp_tempo_utils
