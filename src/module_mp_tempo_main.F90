@@ -4168,7 +4168,10 @@ module module_mp_tempo_main
             tend%pni_ide(k) = tend%pri_ide(k)*oxmi
             tend%pni_ide(k) = max(real(-ni(k)*odt, kind=dp), tend%pni_ide(k))
           else
-            tend%pri_ide(k) = min(tend%pri_ide(k), real(rate_max, kind=dp))
+            ! deposition is limited by the vapor excess over ice saturation; when sublimation is
+            ! blocked by the cloud fraction guard above in subsaturated air, rate_max < 0 and the
+            ! limit must not turn the blocked (zero) rate into sublimation to ice saturation
+            tend%pri_ide(k) = max(0._dp, min(tend%pri_ide(k), real(rate_max, kind=dp)))
             tend%prs_ide(k) = (1.0_dp-tpi_ide(idx_i,idx_i1))*tend%pri_ide(k)
             tend%pri_ide(k) = tpi_ide(idx_i,idx_i1)*tend%pri_ide(k)
           endif
