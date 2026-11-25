@@ -16,10 +16,9 @@ program run_tempo_tests
   ! vapor exchanged. The energy budget is approximate: the cldfra = .false. control
   ! reaches |R_E/latent| = 0.93% at dt = 600 s, so the tolerance is about twice that
   real, parameter :: cf_energy_tolerance = 2.e-2
-  ! known issue: with cloud fraction on, the scheme creates water at dt >= 120 s
-  ! (R/P = 2% at 120 s to 28% at 600 s); those cases are reported but not enforced
-  ! until fixed. Set to .false. to enforce them
-  logical, parameter :: cf_large_dt_known_issue = .true.
+  ! set to .true. to report (not stop on) cloud fraction failures at dt >= 120 s while
+  ! an open bug is investigated; all cases currently pass and are enforced
+  logical, parameter :: cf_large_dt_known_issue = .false.
   integer :: t
 
   ! tempo init

@@ -161,6 +161,7 @@ module module_mp_tempo_main
     
     ! local variables
     real(wp) :: tempc, tc0, odt, hgt, hgt_cf, sgs_nc, uval
+    real(wp) :: cf_avail, cf_pos, cf_neg, cf_ratio !! limiter for the liquid cloud fraction sinks
     real(wp), dimension(kts:kte) :: cf_rh, cf_rhi
     real(wp), dimension(kts:kte) :: hail_fraction
     logical :: do_micro, supersaturated, above_cloud_fraction_rh, local_first_step, is_ocean
@@ -774,6 +775,21 @@ module module_mp_tempo_main
 
     do k = 1, nz
       if (satw(k) > cf_rh(k) .and. satw(k) < 1.) then
+        ! the liquid cloud fraction sinks are limited inside liquid_cloud_fraction by the cloud
+        ! water at the start of the step; earlier tendencies may already have removed some or
+        ! all of it, so scale the negative terms to the cloud water that remains
+        cf_avail = max(0._wp, qc1d(k) + qcten(k)*dt)*odt
+        cf_pos = max(0._dp, tend%prw_sgi(k)) + max(0._dp, tend%prw_slw(k)) + &
+          max(0._dp, tend%prw_sbl(k)) + max(0._dp, tend%prw_sge(k))
+        cf_neg = min(0._dp, tend%prw_sgi(k)) + min(0._dp, tend%prw_slw(k)) + &
+          min(0._dp, tend%prw_sbl(k)) + min(0._dp, tend%prw_sge(k))
+        if (-cf_neg > cf_avail + cf_pos) then
+          cf_ratio = (cf_avail + cf_pos) / (-cf_neg)
+          if (tend%prw_sgi(k) < 0._dp) tend%prw_sgi(k) = tend%prw_sgi(k)*cf_ratio
+          if (tend%prw_slw(k) < 0._dp) tend%prw_slw(k) = tend%prw_slw(k)*cf_ratio
+          if (tend%prw_sbl(k) < 0._dp) tend%prw_sbl(k) = tend%prw_sbl(k)*cf_ratio
+          if (tend%prw_sge(k) < 0._dp) tend%prw_sge(k) = tend%prw_sge(k)*cf_ratio
+        endif
         qvten(k) = qvten(k) - tend%prw_sgi(k) - tend%prw_slw(k) - tend%prw_sbl(k) - tend%prw_sge(k) ! - tend%prw_ini(k)
         qcten(k) = qcten(k) + tend%prw_sgi(k) + tend%prw_slw(k) + tend%prw_sbl(k) + tend%prw_sge(k)
         ncten(k) = ncten(k) + tend%pnc_sgs(k)
@@ -2931,7 +2947,7 @@ module module_mp_tempo_main
     logical, dimension(:), intent(in) :: l_qi, l_qs
     type(ty_tend), intent(inout) :: tend
     real(wp) :: orho, omega, dqsdti, al, bs, sd, qi_mean, qtot_mean, ls_cond, &
-      term1, term2, gterm, qifrac_, qi_, ssati_total, w_tmp
+      term1, term2, gterm, qifrac_, qi_, ssati_total, w_tmp, dep_rate, frac_rate, dep_max
     integer :: k, nz
 
     nz = size(rho)
@@ -2995,9 +3011,19 @@ module module_mp_tempo_main
                 gterm = 0.5_wp*term1/term2
                 
                 ! large-scale forcing
-                tend%pra_ini(k) = tend%pra_ini(k) + max(gterm*ls_cond, 0._dp)
+                dep_rate = max(qifrac_*ls_cond, 0._wp)
+                frac_rate = max(gterm*ls_cond, 0._wp)
+                ! the gate above requires qv > cf_rhi*qvsi; within the step, deposition may
+                ! only bring vapor down to that threshold (otherwise, at long time steps, it can
+                ! remove more vapor than exists and the qv floor in the final update creates water)
+                dep_max = max(0._wp, (qv(k) - cf_rhi(k)*qvsi(k))*odt - real(tend%prw_ini(k), kind=wp))
+                if (dep_rate > dep_max) then
+                  frac_rate = frac_rate * dep_max/dep_rate
+                  dep_rate = dep_max
+                endif
+                tend%pra_ini(k) = tend%pra_ini(k) + frac_rate
 !!!                tend%prw_ini(k) = tend%prw_ini(k) + max(min(1., qifrac_ + tend%pra_ini(k)*dt)*ls_cond, 0._dp)
-                tend%prw_ini(k) = tend%prw_ini(k) + max(qifrac_*ls_cond, 0._dp)                
+                tend%prw_ini(k) = tend%prw_ini(k) + dep_rate
 
              endif
           endif
