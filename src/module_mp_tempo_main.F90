@@ -151,6 +151,9 @@ module module_mp_tempo_main
     real(wp), dimension(kts:kte) :: xrx, xnx !! temporary arrays
     real(wp), dimension(kts:kte), target :: xqcfrac !! temporary arrays
     real(wp), dimension(kts:kte) :: frac_sedi_scratch !! discarded tendency from cloud fraction sedimentation
+    real(wp) :: cf_overhang !! ice cloud overhanging clear air below (PC2 eq. 14)
+    real(wp), dimension(kts:kte) :: qia_start !! ice fraction before the fall-streak update
+    real(wp), parameter :: fall_streak_shear = 1.5e-4_wp !! assumed wind shear for ice fall streaks \([s^{-1}]\) (PC2)
     real(wp), dimension(:), allocatable :: xncx, xngx, xqbx, ncsave !! temporary arrays
 
     real(wp), dimension(kts:kte+1) :: vtrr, vtnr, vtrs, vtri, vtni, vtrg, vtng, vtrc, vtnc, vtrh !! fallspeeds
@@ -1096,11 +1099,23 @@ module module_mp_tempo_main
           steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%ice_liquid_equiv_precip, dt=dt)
         call sedimentation(xr=ni, vt=vtni, dz1d=dz1d, rho=rho, xten=niten, qifrac1d=qia_opt, limit=r2, &
           steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
-        ! the fraction is updated in place (xr); its xten copy would count the fall-out a second
-        ! time in the final update and carries a 1/rho meant for mass, so it goes to a scratch array
-        if (cf_on) call sedimentation(xr=qia1d, vt=vtri, dz1d=dz1d, rho=rho, xten=frac_sedi_scratch, limit=cf_low, &
-          steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
       enddo
+
+      ! ice fraction from falling ice (PC2, Wilson et al. 2008, eq. 14 and Table II): the layer the
+      ! ice falls from keeps its fraction (fall streaks); the layer below gains fraction where the
+      ! falling ice overhangs clear air, O = max(C_f(k+1) - C_f(k), 0) + w_shear*dz/v, as
+      ! dC_f(k) = min(O, 1 - C_f(k)) * min(v*dt/dz, 1), with v the fall speed of the ice above
+      if (cf_on) then
+        qia_start = qia1d
+        do k = 1, nz-1
+          if (l_qi(k+1) .and. vtri(k+1) > eps) then
+            cf_overhang = max(qia_start(k+1) - qia_start(k), 0._wp) + &
+              fall_streak_shear*dz1d(k)/vtri(k+1)
+            qia1d(k) = qia1d(k) + min(cf_overhang, 1._wp - qia_start(k)) * &
+              min(vtri(k+1)*dt/dz1d(k), 1._wp)
+          endif
+        enddo
+      endif
     endif
 
     ! cloud
