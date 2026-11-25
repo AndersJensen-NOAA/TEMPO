@@ -7,7 +7,8 @@ module tests
 
   public :: test_tempo_init, test_graupel_sedimentation, test_snow_sedimentation, &
     test_cloud_number_aerosolaware, test_cloud_number_non_aerosolaware, &
-    test_cloud_number_ml, test_ml_cloud_effective_radius, test_water_conservation
+    test_cloud_number_ml, test_ml_cloud_effective_radius, test_water_conservation, &
+    test_cloud_fraction_conservation
 
   type(ty_tempo_cfgs) :: tempo_cfgs
   contains
@@ -746,6 +747,235 @@ module tests
       error stop 'water conservation test failed'
     endif
   end subroutine test_water_conservation
+
+
+  subroutine test_cloud_fraction_conservation(dt, cldfra, water_tolerance, energy_tolerance, known_issue)
+    !! column water and energy budgets with the prognostic cloud fraction scheme
+    !!
+    !! uses the 59-level MPAS column from test_water_conservation (aerosol aware, with
+    !! water vapor added in ascent outside tempo_run so cloud keeps forming) and adds the
+    !! cloud fraction inputs: liquid/ice cloud fractions, PBL height, land mask, PBL
+    !! subgrid cloud, and a longwave cooling rate. With cldfra = .false. the same column
+    !! runs without the scheme as a control.
+    !!
+    !! water: R = (W_after - W_before) + P per step, as in test_water_conservation, with
+    !!   the layer mass from the density TEMPO computes on entry to the step;
+    !!   fails if |R/P| > water_tolerance
+    !! energy: E = sum(m * (cp*T - Lv(T)*(qc+qr) - Ls*(qi+qs+qg))), with Lv(T) as in TEMPO;
+    !!   the residual R_E = (E_after - E_before) - Lv(T_1)*P_liquid - Ls*P_frozen is
+    !!   compared with the latent heat of the vapor exchanged, L = sum over steps and
+    !!   levels of m*Lv(T)*|dqv|; fails if |R_E/L| > energy_tolerance. E is not exactly
+    !!   conserved by TEMPO (moist cp, constant Ls, Lv evaluated at the end of the step),
+    !!   so the control run sets the floor for this tolerance
+    !!
+    !! known_issue = .true. reports a tolerance failure as a known issue instead of
+    !! stopping, for cases with an open bug that should still be run and reported
+    use module_mp_tempo_params, only : wp, sp, dp, roverrv, rdry, min_qv, cp, lsub, lvap0
+
+    real(wp), intent(in) :: dt
+    logical, intent(in) :: cldfra
+    real(wp), intent(in) :: water_tolerance, energy_tolerance
+    logical, intent(in), optional :: known_issue
+    logical :: report_only
+    integer :: itimestep
+    integer, parameter :: nz = 59
+    integer, parameter :: ids = 1, ide = 1, ims = 1, ime = 1, its = 1, ite = 1
+    integer, parameter :: jds = 1, jde = 1, jms = 1, jme = 1, jts = 1, jte = 1
+    integer, parameter :: kds = 1, kde = nz, kms = 1, kme = nz, kts = 1, kte = nz
+    real(wp), dimension(its:ite, kts:kte, jts:jte) :: qv, t, th, pii, p, w, dz, &
+      qc, qr, qi, qs, qg, ni, nr, ng, qb, nc, nwfa, nifa, &
+      qcfrac, qifrac, qc_bl, qcfrac_bl, thten_bl, qvten_bl, qcten_bl, qiten_bl, &
+      thten_lwrad, thten_swrad
+    real(wp), dimension(its:ite, jts:jte) :: hpbl
+    integer, dimension(its:ite, jts:jte) :: land
+    real(wp), dimension(nz) :: klevs_in, qv_in, qc_in, qr_in, qi_in, qs_in, &
+      qg_in, ni_in, nr_in, nc_in, nwfa_in, nifa_in, theta_in, ng_in, volg_in, &
+      pressure_in, w_in, dz_in
+    real(wp), dimension(nz) :: layer_mass, qv_before
+    real(dp) :: water_before, water_after, energy_before, energy_after, &
+      precip_liq, precip_frz, precip_sum, water_residual_sum, energy_residual_sum, &
+      latent_sum, water_ratio, energy_ratio, cloud_frac_max
+    real(wp), parameter :: forcing_gamma = 1.e-6_wp !! vapor added per meter of ascent \([kg\; kg^{-1}\; m^{-1}]\)
+    real(wp), parameter :: forcing_w_max = 4._wp !! vertical velocity cap for the forcing \([m\; s^{-1}]\)
+    character(len=20) :: dt_string
+    character(len=20) :: case_string
+    type(ty_tempo_driver_diags) :: tempo_driver_diags
+    integer :: io1, io2, k, total_timesteps
+    integer, parameter :: integration_time = 1200
+
+    report_only = .false.
+    if (present(known_issue)) report_only = known_issue
+
+    write(dt_string, '(I7)') int(dt)
+    if (cldfra) then
+      case_string = '_cldfra_on'
+    else
+      case_string = '_cldfra_off'
+    endif
+
+    ! read input file
+    open(newunit=io1, file='../test/data/mpas_59lev_test.txt', status='old')
+    read(io1,*) ! header
+    do k = 1, nz
+      read(io1,*) klevs_in(k), qv_in(k), qc_in(k), qr_in(k), qi_in(k), qs_in(k), &
+          qg_in(k), ni_in(k), nr_in(k), nc_in(k), nwfa_in(k), nifa_in(k), &
+          theta_in(k), ng_in(k), volg_in(k), pressure_in(k), w_in(k), dz_in(k)
+    end do
+    close(io1)
+
+    qv(1,:,1) = qv_in
+    t(1,:,1) = theta_in * (pressure_in/100000.)**0.286
+    p(1,:,1) = pressure_in
+    dz(1,:,1) = dz_in
+    w(1,:,1) = w_in
+    qc(1,:,1) = qc_in
+    nc(1,:,1) = nc_in
+    qr(1,:,1) = qr_in
+    nr(1,:,1) = nr_in
+    qi(1,:,1) = qi_in
+    ni(1,:,1) = ni_in
+    qs(1,:,1) = qs_in
+    qg(1,:,1) = qg_in
+    ng(1,:,1) = ng_in
+    qb(1,:,1) = volg_in * 1000. ! convert meters^3 -> liters
+    nwfa(1,:,1) = nwfa_in
+    nifa(1,:,1) = nifa_in
+
+    ! cloud fraction inputs: fractions start at 0 (TEMPO sets them to 1 on the first call),
+    ! subgrid PBL cloud in the lowest levels, longwave cooling, and small PBL tendencies
+    qcfrac = 0._wp
+    qifrac = 0._wp
+    qc_bl = 0._wp
+    qcfrac_bl = 0._wp
+    do k = 2, 6
+      qc_bl(1,k,1) = 5.e-5_wp
+      qcfrac_bl(1,k,1) = 0.3_wp
+    enddo
+    thten_bl = 0._wp
+    qvten_bl = 1.e-7_wp
+    qcten_bl = 1.e-8_wp
+    qiten_bl = 0._wp
+    thten_lwrad = -2.e-5_wp
+    thten_swrad = 0._wp
+    hpbl = 1000._wp
+    land = 1
+
+    ! set configs
+    tempo_cfgs%turn_off_micro_flag = .false.
+    tempo_cfgs%semi_sedi_flag = .false.
+    tempo_cfgs%cldfra_flag = cldfra
+
+    total_timesteps = int(integration_time/dt)
+    precip_sum = 0._dp
+    water_residual_sum = 0._dp
+    energy_residual_sum = 0._dp
+    latent_sum = 0._dp
+    cloud_frac_max = 0._dp
+    open(newunit=io2, file="cloud_fraction_budget_dt_"//trim(adjustl(dt_string))//trim(case_string)//".txt", &
+      status="new", action="write")
+    write(io2, '(A)') 'time precip_sum water_residual_sum energy_residual_sum latent_sum'
+
+    do itimestep = 1, total_timesteps
+      ! forcing: add water vapor in ascent, outside tempo_run
+      do k = 1, nz
+        qv(1,k,1) = qv(1,k,1) + forcing_gamma*min(max(w(1,k,1), 0._wp), forcing_w_max)*dt
+      enddo
+
+      ! layer mass from the density TEMPO computes on entry to the step
+      do k = 1, nz
+        layer_mass(k) = roverrv*p(1,k,1) / (rdry*t(1,k,1)*(max(min_qv, qv(1,k,1))+roverrv)) * dz(1,k,1)
+      enddo
+      qv_before = qv(1,:,1)
+      water_before = column_water(layer_mass, qv(1,:,1), qc(1,:,1), qr(1,:,1), &
+        qi(1,:,1), qs(1,:,1), qg(1,:,1))
+      energy_before = column_energy(layer_mass, t(1,:,1), qc(1,:,1)+qr(1,:,1), &
+        qi(1,:,1)+qs(1,:,1)+qg(1,:,1))
+
+      call  tempo_run(tempo_cfgs=tempo_cfgs, itimestep=itimestep, dt=dt, &
+                      ids=ids, ide=ide, ims=ims, ime=ime, its=its, ite=ite, &
+                      jds=jds, jde=jde, jms=jms, jme=jme, jts=jts, jte=jte, &
+                      kds=kds, kde=kde, kms=kms, kme=kme, kts=kts, kte=kte, &
+                      t=t, p=p, w=w, dz=dz, qv=qv, th=th, pii=pii, &
+                      qc=qc, nc=nc, qr=qr, qi=qi, qs=qs, qg=qg, ni=ni, nr=nr, ng=ng, qb=qb, &
+                      nwfa=nwfa, nifa=nifa, &
+                      qc_bl=qc_bl, qcfrac_bl=qcfrac_bl, qcfrac=qcfrac, qifrac=qifrac, hpbl=hpbl, &
+                      thten_bl=thten_bl, qvten_bl=qvten_bl, qcten_bl=qcten_bl, qiten_bl=qiten_bl, &
+                      thten_lwrad=thten_lwrad, thten_swrad=thten_swrad, land_input=land, &
+                      tempo_diags=tempo_driver_diags)
+
+      water_after = column_water(layer_mass, qv(1,:,1), qc(1,:,1), qr(1,:,1), &
+        qi(1,:,1), qs(1,:,1), qg(1,:,1))
+      energy_after = column_energy(layer_mass, t(1,:,1), qc(1,:,1)+qr(1,:,1), &
+        qi(1,:,1)+qs(1,:,1)+qg(1,:,1))
+
+      ! graupel_liquid_equiv_precip includes hail
+      precip_liq = tempo_driver_diags%rain_precip(1,1) + tempo_driver_diags%cloud_precip(1,1)
+      precip_frz = tempo_driver_diags%ice_liquid_equiv_precip(1,1) + &
+        tempo_driver_diags%snow_liquid_equiv_precip(1,1) + tempo_driver_diags%graupel_liquid_equiv_precip(1,1)
+
+      precip_sum = precip_sum + precip_liq + precip_frz
+      water_residual_sum = water_residual_sum + (water_after - water_before) + precip_liq + precip_frz
+      energy_residual_sum = energy_residual_sum + (energy_after - energy_before) - &
+        latent_vap(t(1,1,1))*precip_liq - lsub*precip_frz
+      do k = 1, nz
+        latent_sum = latent_sum + real(layer_mass(k)*latent_vap(t(1,k,1))*abs(qv(1,k,1) - qv_before(k)), kind=dp)
+      enddo
+      cloud_frac_max = max(cloud_frac_max, real(maxval(qcfrac), kind=dp), real(maxval(qifrac), kind=dp))
+      write(io2, '(I7, 4E16.8)') int(itimestep*dt), precip_sum, water_residual_sum, energy_residual_sum, latent_sum
+    enddo
+    close(io2)
+    tempo_cfgs%cldfra_flag = .false.
+
+    water_ratio = 0._dp
+    if (precip_sum > 0._dp) water_ratio = water_residual_sum / precip_sum
+    energy_ratio = 0._dp
+    if (latent_sum > 0._dp) energy_ratio = energy_residual_sum / latent_sum
+
+    write(*,'(A,I5,A,L1,A,ES11.4,A,ES11.4,A,ES10.2,A,ES11.4,A,ES10.2,A,F6.3)') &
+      'test_cloud_fraction_conservation() --- dt = ', int(dt), ' cldfra = ', cldfra, &
+      ' P = ', precip_sum, ' kg m-2  R = ', water_residual_sum, ' kg m-2  R/P = ', water_ratio, &
+      '  latent = ', latent_sum, ' J m-2  R_E/latent = ', energy_ratio, '  max fraction = ', cloud_frac_max
+
+    if (abs(water_ratio) > water_tolerance) then
+      if (report_only) then
+        write(*,'(A,ES10.2,A,ES10.2)') 'test_cloud_fraction_conservation() --- *** KNOWN ISSUE *** |R/P| = ', &
+          abs(water_ratio), ' exceeds tolerance of ', water_tolerance
+      else
+        write(*,'(A,ES10.2,A,ES10.2)') 'test_cloud_fraction_conservation() --- *** FAILED *** |R/P| = ', &
+          abs(water_ratio), ' exceeds tolerance of ', water_tolerance
+        error stop 'cloud fraction water conservation test failed'
+      endif
+    endif
+    if (abs(energy_ratio) > energy_tolerance) then
+      if (report_only) then
+        write(*,'(A,ES10.2,A,ES10.2)') 'test_cloud_fraction_conservation() --- *** KNOWN ISSUE *** |R_E/latent| = ', &
+          abs(energy_ratio), ' exceeds tolerance of ', energy_tolerance
+      else
+        write(*,'(A,ES10.2,A,ES10.2)') 'test_cloud_fraction_conservation() --- *** FAILED *** |R_E/latent| = ', &
+          abs(energy_ratio), ' exceeds tolerance of ', energy_tolerance
+        error stop 'cloud fraction energy conservation test failed'
+      endif
+    endif
+
+  contains
+
+    real(wp) function latent_vap(tk)
+      !! latent heat of vaporization as computed in TEMPO
+      real(wp), intent(in) :: tk
+      latent_vap = lvap0 + (2106._wp - 4218._wp)*(tk - 273.15_wp)
+    end function latent_vap
+
+    function column_energy(mass, tk, ql, qf) result(energy)
+      !! column-integrated liquid/ice water static energy (without the geopotential term) \([J\; m^{-2}]\)
+      real(wp), dimension(:), intent(in) :: mass, tk, ql, qf
+      real(dp) :: energy
+      integer :: kk
+      energy = 0._dp
+      do kk = 1, size(mass)
+        energy = energy + real(mass(kk)*(cp*tk(kk) - latent_vap(tk(kk))*ql(kk) - lsub*qf(kk)), kind=dp)
+      enddo
+    end function column_energy
+  end subroutine test_cloud_fraction_conservation
 
 
   function column_water(layer_mass, qv, qc, qr, qi, qs, qg) result(water)
