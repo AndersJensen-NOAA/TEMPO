@@ -17,6 +17,7 @@ module module_mp_tempo_driver
 
   type :: ty_tempo_driver_diags
     real(wp), dimension(:,:), allocatable :: rain_precip
+    real(wp), dimension(:,:), allocatable :: cloud_precip
     real(wp), dimension(:,:), allocatable :: ice_liquid_equiv_precip
     real(wp), dimension(:,:), allocatable :: snow_liquid_equiv_precip
     real(wp), dimension(:,:), allocatable :: graupel_liquid_equiv_precip
@@ -41,7 +42,7 @@ module module_mp_tempo_driver
 !!
   subroutine tempo_init(aerosolaware_flag, hailaware_flag, hailhyperaware_flag, semi_sedi_flag, cloud_condensation_flag, &
     diagnostic_aerosols_flag, cldfra_flag, refl10cm_from_melting_flag, ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, &
-    tempo_cfgs)
+    tempo_cfgs, errflg, errmsg)
     !! initialize tempo microphysics
     use module_mp_tempo_params, only : get_version, tempo_version, t_efrw, &
       initialize_graupel_vars, initialize_parameters, initialize_bins_for_tables, &
@@ -54,10 +55,17 @@ module module_mp_tempo_driver
       ml_for_bl_nc_flag, ml_for_nc_flag, force_init_flag, semi_sedi_flag, cloud_condensation_flag, &
       diagnostic_aerosols_flag, cldfra_flag
     type(ty_tempo_cfgs), intent(inout) :: tempo_cfgs
+    integer, intent(out), optional :: errflg
+    character(len=*), intent(out), optional :: errmsg
 
     character(len=100) :: table_filename
     integer :: table_size
+    integer :: table_status_local
     logical :: initialize_mp_vars, force_init
+
+    table_status_local = 0
+    if (present(errflg)) errflg = 0
+    if (present(errmsg)) errmsg = ''
 
     ! get tempo version from readme file
     call get_version(tempo_version, tempo_cfgs%verbose)
@@ -135,13 +143,21 @@ module module_mp_tempo_driver
       ! CCN activation table
       table_filename = tempo_table_cfgs%ccn_table_name
       call initialize_arrays_ccn(table_size)
-      call read_table_ccn(trim(table_filename), table_size, tempo_cfgs)
+      call read_table_ccn(trim(table_filename), table_size, tempo_cfgs, status=table_status_local, errmsg=errmsg)
+      if (table_status_local /= 0) then
+        if (present(errflg)) errflg = table_status_local
+        return
+      endif
       if (tempo_cfgs%verbose) write(*,'(A)') 'tempo_init() --- initialized data for ccn lookup table'
 
       ! freeze water collection lookup table
       table_filename = tempo_table_cfgs%freezewater_table_name
       call initialize_arrays_freezewater(table_size)
-      call read_table_freezewater(trim(table_filename), table_size, tempo_cfgs)
+      call read_table_freezewater(trim(table_filename), table_size, tempo_cfgs, status=table_status_local, errmsg=errmsg)
+      if (table_status_local /= 0) then
+        if (present(errflg)) errflg = table_status_local
+        return
+      endif
       if (tempo_cfgs%verbose) then
         write(*,'(A)') 'tempo_init() --- initialized data for frozen cloud water and rain lookup table'
       endif 
@@ -149,7 +165,11 @@ module module_mp_tempo_driver
       ! rain-snow collection lookup table
       table_filename = tempo_table_cfgs%qrqs_table_name
       call initialize_arrays_qr_acr_qs(table_size)
-      call read_table_qr_acr_qs(trim(table_filename), table_size, tempo_cfgs)
+      call read_table_qr_acr_qs(trim(table_filename), table_size, tempo_cfgs, status=table_status_local, errmsg=errmsg)
+      if (table_status_local /= 0) then
+        if (present(errflg)) errflg = table_status_local
+        return
+      endif
       if (tempo_cfgs%verbose) then
         write(*,'(A)') 'tempo_init() --- initialized data for rain-snow collection lookup table'
       endif 
@@ -157,7 +177,11 @@ module module_mp_tempo_driver
       ! rain-graupel collection lookup table
       table_filename = tempo_table_cfgs%qrqg_table_name
       call initialize_arrays_qr_acr_qg(table_size)
-      call read_table_qr_acr_qg(trim(table_filename), table_size, tempo_cfgs)
+      call read_table_qr_acr_qg(trim(table_filename), table_size, tempo_cfgs, status=table_status_local, errmsg=errmsg)
+      if (table_status_local /= 0) then
+        if (present(errflg)) errflg = table_status_local
+        return
+      endif
       if (tempo_cfgs%verbose) then
         write(*,'(A)') 'tempo_init() --- initialized data for rain-graupel collection lookup table'
       endif 
@@ -382,6 +406,7 @@ module module_mp_tempo_driver
     ! precipitation
     if (.not. allocated(tempo_diags%rain_precip)) then
       allocate(tempo_diags%rain_precip(its:ite, jts:jte), source=0._wp)
+      allocate(tempo_diags%cloud_precip(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%ice_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%snow_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
       allocate(tempo_diags%graupel_liquid_equiv_precip(its:ite, jts:jte), source=0._wp)
@@ -389,6 +414,7 @@ module module_mp_tempo_driver
       allocate(tempo_diags%frz_rain_precip(its:ite, jts:jte), source=0._wp)
     else
       tempo_diags%rain_precip = 0._wp
+      tempo_diags%cloud_precip = 0._wp
       tempo_diags%ice_liquid_equiv_precip = 0._wp
       tempo_diags%snow_liquid_equiv_precip = 0._wp
       tempo_diags%graupel_liquid_equiv_precip = 0._wp
@@ -472,6 +498,7 @@ module module_mp_tempo_driver
           
         ! precipitation
         tempo_diags%rain_precip(i,j) = tempo_main_diags%rain_precip
+        tempo_diags%cloud_precip(i,j) = tempo_main_diags%cloud_precip
         tempo_diags%ice_liquid_equiv_precip(i,j) = tempo_main_diags%ice_liquid_equiv_precip
         tempo_diags%snow_liquid_equiv_precip(i,j) = tempo_main_diags%snow_liquid_equiv_precip
         tempo_diags%graupel_liquid_equiv_precip(i,j) = tempo_main_diags%graupel_liquid_equiv_precip
@@ -570,7 +597,7 @@ module module_mp_tempo_driver
   end subroutine tempo_aerosol_surface_emissions
 
 
-  subroutine read_table_freezewater(filename, table_size, tempo_cfgs)
+  subroutine read_table_freezewater(filename, table_size, tempo_cfgs, status, errmsg)
     !! read lookup table for frozen cloud and rain water
     use module_mp_tempo_params, only : tpi_qrfz, tni_qrfz, &
       tpg_qrfz, tnr_qrfz, tpi_qcfz, tni_qcfz
@@ -578,8 +605,12 @@ module module_mp_tempo_driver
     type(ty_tempo_cfgs), intent(in) :: tempo_cfgs
     character(len=*), intent(in) :: filename
     integer, intent(in) :: table_size
-    
+    integer, intent(out), optional :: status
+    character(len=*), intent(out), optional :: errmsg
     integer :: mp_unit, istat
+
+    if (present(status)) status = 0
+    if (present(errmsg)) errmsg = ''
 
     mp_unit = 11
     if (tempo_cfgs%check_tables) call check_before_table_read(filename, table_size)
@@ -589,17 +620,25 @@ module module_mp_tempo_driver
       , convert='big_endian' &
 #endif
     )
+    if (istat /= 0) then
+      if (present(status)) status = istat
+      if (present(errmsg)) write(errmsg,'(3A,I0,A)') &
+        'tempo_init() --- failed to open TEMPO lookup table "', trim(filename), '" (iostat = ', istat, ')'
+      return
+    endif
+
     read(mp_unit) tpi_qrfz
     read(mp_unit) tni_qrfz
     read(mp_unit) tpg_qrfz
     read(mp_unit) tnr_qrfz
     read(mp_unit) tpi_qcfz
     read(mp_unit) tni_qcfz
+
     close(unit=mp_unit)
   end subroutine read_table_freezewater
 
 
-  subroutine read_table_qr_acr_qs(filename, table_size, tempo_cfgs)
+  subroutine read_table_qr_acr_qs(filename, table_size, tempo_cfgs, status, errmsg)
     !! read lookup table for rain-snow collection
     use module_mp_tempo_params, only : tcs_racs1, tmr_racs1, &
       tcs_racs2, tmr_racs2, tcr_sacr1, tms_sacr1, tcr_sacr2, &
@@ -608,8 +647,12 @@ module module_mp_tempo_driver
     type(ty_tempo_cfgs), intent(in) :: tempo_cfgs
     character(len=*), intent(in) :: filename
     integer, intent(in) :: table_size
-    
+    integer, intent(out), optional :: status
+    character(len=*), intent(out), optional :: errmsg
     integer :: mp_unit, istat
+
+    if (present(status)) status = 0
+    if (present(errmsg)) errmsg = ''
 
     mp_unit = 11
     if (tempo_cfgs%check_tables) call check_before_table_read(filename, table_size)
@@ -619,6 +662,13 @@ module module_mp_tempo_driver
       , convert='big_endian' &
 #endif
     )
+    if (istat /= 0) then
+      if (present(status)) status = istat
+      if (present(errmsg)) write(errmsg,'(3A,I0,A)') &
+        'tempo_init() --- failed to open TEMPO lookup table "', trim(filename), '" (iostat = ', istat, ')'
+      return
+    endif
+
     read(mp_unit) tcs_racs1
     read(mp_unit) tmr_racs1
     read(mp_unit) tcs_racs2
@@ -635,7 +685,7 @@ module module_mp_tempo_driver
   end subroutine read_table_qr_acr_qs
 
 
-  subroutine read_table_qr_acr_qg(filename, table_size, tempo_cfgs)
+  subroutine read_table_qr_acr_qg(filename, table_size, tempo_cfgs, status, errmsg)
     !! read lookup table for rain-graupel collection
     use module_mp_tempo_params, only : tcg_racg, tmr_racg, &
       tcr_gacr, tnr_racg, tnr_gacr
@@ -643,8 +693,12 @@ module module_mp_tempo_driver
     type(ty_tempo_cfgs), intent(in) :: tempo_cfgs
     character(len=*), intent(in) :: filename
     integer, intent(in) :: table_size
-    
+    integer, intent(out), optional :: status
+    character(len=*), intent(out), optional :: errmsg
     integer :: mp_unit, istat
+
+    if (present(status)) status = 0
+    if (present(errmsg)) errmsg = ''
 
     mp_unit = 11
     if (tempo_cfgs%check_tables) call check_before_table_read(filename, table_size)
@@ -654,6 +708,13 @@ module module_mp_tempo_driver
       , convert='big_endian' &
 #endif
     )
+    if (istat /= 0) then
+      if (present(status)) status = istat
+      if (present(errmsg)) write(errmsg,'(3A,I0,A)') &
+        'tempo_init() --- failed to open TEMPO lookup table "', trim(filename), '" (iostat = ', istat, ')'
+      return
+    endif
+
     read(mp_unit) tcg_racg
     read(mp_unit) tmr_racg
     read(mp_unit) tcr_gacr
@@ -663,7 +724,7 @@ module module_mp_tempo_driver
   end subroutine read_table_qr_acr_qg
 
 
-  subroutine read_table_ccn(filename, table_size, tempo_cfgs)
+  subroutine read_table_ccn(filename, table_size, tempo_cfgs, status, errmsg)
     !! read static file containing CCN activation of aerosols;
     !! the data were created from a parcel model by Feingold and Heymsfield (1992)
     !! https://doi.org/10.1175/1520-0469(1992)049<2325:POCGOD>2.0.CO;2
@@ -673,10 +734,14 @@ module module_mp_tempo_driver
     type(ty_tempo_cfgs), intent(in) :: tempo_cfgs
     character(len=*), intent(in) :: filename
     integer, intent(in) :: table_size
-    
+    integer, intent(out), optional :: status
+    character(len=*), intent(out), optional :: errmsg
     integer :: mp_unit, istat
 
-    if (tempo_cfgs%check_tables) call check_before_table_read(filename=filename, table_size=table_size)
+    if (present(status)) status = 0
+    if (present(errmsg)) errmsg = ''
+
+    if (tempo_cfgs%check_tables) call check_before_table_read(filename, table_size)
 
     mp_unit = 11
     open(unit=mp_unit, file=filename, form='unformatted', status='old', &
@@ -685,6 +750,13 @@ module module_mp_tempo_driver
       , convert='big_endian' &
 #endif
     )
+    if (istat /= 0) then
+      if (present(status)) status = istat
+      if (present(errmsg)) write(errmsg,'(3A,I0,A)') &
+        'tempo_init() --- failed to open TEMPO lookup table "', trim(filename), '" (iostat = ', istat, ')'              
+      return
+    endif
+
     read(mp_unit) tnccn_act
     close(unit=mp_unit)
   end subroutine read_table_ccn
