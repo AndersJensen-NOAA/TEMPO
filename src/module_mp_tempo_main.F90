@@ -150,6 +150,7 @@ module module_mp_tempo_main
     
     real(wp), dimension(kts:kte) :: xrx, xnx !! temporary arrays
     real(wp), dimension(kts:kte), target :: xqcfrac !! temporary arrays
+    real(wp), dimension(kts:kte) :: frac_sedi_scratch !! discarded tendency from cloud fraction sedimentation
     real(wp), dimension(:), allocatable :: xncx, xngx, xqbx, ncsave !! temporary arrays
 
     real(wp), dimension(kts:kte+1) :: vtrr, vtnr, vtrs, vtri, vtni, vtrg, vtng, vtrc, vtnc, vtrh !! fallspeeds
@@ -448,6 +449,7 @@ module module_mp_tempo_main
     qca1d = 1._wp
     qia1d = 1._wp
     xqcfrac = 1._wp
+    frac_sedi_scratch = 0._wp
     nullify(qca_opt, qia_opt, one_opt)
     if (cf_on) then
       if (present(qcfrac1d) .and. present(qifrac1d)) then
@@ -1083,7 +1085,9 @@ module module_mp_tempo_main
           steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%ice_liquid_equiv_precip, dt=dt)
         call sedimentation(xr=ni, vt=vtni, dz1d=dz1d, rho=rho, xten=niten, qifrac1d=qia_opt, limit=r2, &
           steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
-        if (cf_on) call sedimentation(xr=qia1d, vt=vtri, dz1d=dz1d, rho=rho, xten=qifracten, limit=cf_low, &
+        ! the fraction is updated in place (xr); its xten copy would count the fall-out a second
+        ! time in the final update and carries a 1/rho meant for mass, so it goes to a scratch array
+        if (cf_on) call sedimentation(xr=qia1d, vt=vtri, dz1d=dz1d, rho=rho, xten=frac_sedi_scratch, limit=cf_low, &
           steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
       enddo
     endif
@@ -1097,7 +1101,8 @@ module module_mp_tempo_main
         steps=substeps_sedi, ktop_sedi=ktop_sedi, precip=tempo_main_diags%cloud_precip, dt=dt)
       call sedimentation(xr=nc, vt=vtnc, dz1d=dz1d, rho=rho, xten=ncten, limit=r2, &
         steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
-      if (cf_on) call sedimentation(xr=qca1d, vt=vtrc, dz1d=dz1d, rho=rho, xten=qcfracten, limit=cf_low, &
+      ! fraction updated in place only (see ice above)
+      if (cf_on) call sedimentation(xr=qca1d, vt=vtrc, dz1d=dz1d, rho=rho, xten=frac_sedi_scratch, limit=cf_low, &
         steps=substeps_sedi, ktop_sedi=ktop_sedi, dt=dt)
     endif 
 
