@@ -815,7 +815,9 @@ module module_mp_tempo_main
         
       qvten(k) = qvten(k) - tend%prw_ini(k)
       qiten(k) = qiten(k) + tend%prw_ini(k)
-      niten(k) = niten(k) + (tend%prw_ini(k))/(0.1*xm0i)
+      ! prw_ini is deposition onto existing ice and adds no crystals; where the ice fraction
+      ! expands (pra_ini), the new cloudy area gets the existing in-cloud number concentration
+      niten(k) = niten(k) + ni1d(k)/max(qia1d(k), cf_low) * tend%pra_ini(k)
 
 !      if (tend%prs_ide(k) < 0. .and. qs1d(k) > r1 .and. temp(k) < 263.15) then
 !         qifracten(k) = qifracten(k) + max((5.57_wp*(-1000._wp*tend%prs_ide(k)*dt)**(0.78_wp) * odt), cf_low)
