@@ -713,8 +713,9 @@ module module_mp_tempo_main
           if (rc(k) > r1) then
              qcfracten(k) = qcfracten(k) + ((1.+tend%prw_vcd(k)*rho(k)*dt/rc(k))**0.5 - 1.) * odt * qca1d(k)
           else
+             ! new cloud from condensation starts at a fraction of 0.25 (rate, so 0.25*odt)
              if (tend%prw_vcd(k)*qca1d(k) > r1) then
-                qcfracten(k) = qcfracten(k) + 0.25 / odt
+                qcfracten(k) = qcfracten(k) + 0.25_wp*odt
              endif
           endif
            
