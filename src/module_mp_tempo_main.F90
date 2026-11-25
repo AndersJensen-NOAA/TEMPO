@@ -825,7 +825,8 @@ module module_mp_tempo_main
       
       if(ri(k) > r1) then
          !AAJ TEST 4         qifracten(k) = qifracten(k) + ((1.-tend%prs_iau(k)*dt/qi1d(k)/rho(k))**0.5 - 1.) * qia1d(k)
-         qifracten(k) = qifracten(k) + ((1.-tend%prs_iau(k)*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)
+         ! ice autoconversion to snow does not change the ice cloud fraction (PC2, Wilson et al. 2008, Table II)
+!         qifracten(k) = qifracten(k) + ((1.-tend%prs_iau(k)*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)
          ! only sublimation (pri_ide < 0) reduces the ice fraction (PC2, Wilson et al. 2008, Table II);
          ! deposition onto ice, snow deposition (prs_ide) and capture by snow (prs_sci) leave it unchanged
          qifracten(k) = qifracten(k) + ((1.-max(0._dp, -tend%pri_ide(k))*dt/ri(k))**0.5 - 1.) * odt * qia1d(k)
