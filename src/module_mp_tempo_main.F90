@@ -3172,7 +3172,9 @@ module module_mp_tempo_main
           ! new erosion
           !          if (tend%pra_sgi(k) < eps) then
           if (ssatw(k) > (cf_rh(k)-0.99_wp) .and. ssatw(k) < 0._wp) then
-             tend%prw_sge(k) = min(0._dp, 1. * 0.3333_wp * 3.e-4_wp * qcfrac1d(k) * (1._wp - qcfrac1d(k))*(qvs(k)-qv(k)))
+             ! Morcrette (2012) eq. 10 gives the size of the erosion sink, alpha*K*C(1-C)*(qs-qv) > 0
+             ! in subsaturated air (alpha = 1/3, K = 3e-4 s-1); prw_sge is the signed cloud water tendency
+             tend%prw_sge(k) = -0.3333_wp * 3.e-4_wp * qcfrac1d(k) * (1._wp - qcfrac1d(k))*(qvs(k)-qv(k))
              tend%pra_sge(k) = min(0._dp, (-gterm * qc_mean) / (qc1d(k) - qcfrac1d(k)*qc_mean) * tend%prw_sge(k))
           endif
 
